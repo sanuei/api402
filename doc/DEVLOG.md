@@ -1,5 +1,33 @@
 # Development Log
 
+## 2026-03-08
+
+### 本轮目标
+
+- 提升真实支付结算的可用性，避免单一 Base RPC 波动导致支付验证误判失败
+
+### 已完成
+
+- 新增 `BASE_RPC_URLS`（逗号分隔）配置，支持主备 Base RPC 顺序回退
+- Base RPC 调用新增超时控制，避免单节点长时间挂起拖慢结算验证
+- 支付验证中的 `eth_getTransactionReceipt` / `eth_blockNumber` 现统一走多节点回退逻辑
+- 增加测试：主 RPC 故障时自动切换备用 RPC 仍可完成支付验证
+- 更新 README 与 ROADMAP，补充多 RPC 部署建议与当前能力说明
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 为上游代理接口补统一熔断 / 降级策略与 machine-readable 错误码
+2. 在 catalog 里补充 endpoint latency / availability 指标字段
+3. 继续推进 AI 类接口从 demo 到 live upstream 的替换
+
 ## 2026-03-07
 
 ### 本轮目标

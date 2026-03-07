@@ -56,6 +56,7 @@ npm run deploy
 当前仓库默认已配置为 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`。
 支付资产固定为 `Base` 主网原生 `USDC`，合约地址为 `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`。
 默认 Base RPC 为 `https://mainnet.base.org`，可通过 `BASE_RPC_URL` 覆盖。
+生产建议配置 `BASE_RPC_URLS`（逗号分隔）提供主备 RPC，Worker 会按顺序自动回退，提高结算校验可用性。
 `PAYMENT_MIN_CONFIRMATIONS` 用于控制交易回执最少确认块数，默认值为 `2`。
 `REPLAY_GUARD` Durable Object 负责持久化 nonce / tx hash 防重放状态。
 

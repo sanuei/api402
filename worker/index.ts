@@ -12,6 +12,7 @@ export interface Env {
   PAY_TO?: string;
   APP_NAME?: string;
   BASE_RPC_URL?: string;
+  BASE_RPC_URLS?: string;
   PAYMENT_MIN_CONFIRMATIONS?: string;
   REPLAY_GUARD?: DurableObjectNamespace;
   ASSETS?: Fetcher;
@@ -99,6 +100,7 @@ export interface PaymentVerificationResult {
 
 const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
 const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
+const BASE_RPC_TIMEOUT_MS = 6000;
 const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const PAYMENT_TX_HASH_HEADER = 'X-PAYMENT-TX-HASH';
@@ -432,28 +434,55 @@ type JsonRpcTransactionReceipt = {
   logs?: JsonRpcReceiptLog[];
 };
 
+function getBaseRpcUrls(env: Env): string[] {
+  const raw = env.BASE_RPC_URLS || env.BASE_RPC_URL || DEFAULT_BASE_RPC_URL;
+  const urls = raw
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  return urls.length > 0 ? urls : [DEFAULT_BASE_RPC_URL];
+}
+
 async function callBaseRpc(env: Env, method: string, params: unknown[]): Promise<unknown> {
-  const response = await fetch(env.BASE_RPC_URL || DEFAULT_BASE_RPC_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: 1,
-      method,
-      params,
-    }),
-  });
+  const rpcUrls = getBaseRpcUrls(env);
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    throw new Error(`rpc ${response.status}`);
+  for (const rpcUrl of rpcUrls) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), BASE_RPC_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(rpcUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method,
+          params,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`rpc ${response.status}`);
+      }
+
+      const payload = (await response.json()) as { result?: unknown; error?: { message?: string } };
+      if (payload.error) {
+        throw new Error(payload.error.message || 'unknown rpc error');
+      }
+
+      return payload.result ?? null;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
-  const payload = (await response.json()) as { result?: unknown; error?: { message?: string } };
-  if (payload.error) {
-    throw new Error(payload.error.message || 'unknown rpc error');
-  }
-
-  return payload.result ?? null;
+  throw lastError || new Error('base rpc unavailable');
 }
 
 async function verifyBaseUsdcSettlement(

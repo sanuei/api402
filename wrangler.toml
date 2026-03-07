@@ -17,6 +17,7 @@ class_name = "ReplayGuardDurableObject"
 APP_NAME = "API Market"
 PAY_TO = "0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18"
 BASE_RPC_URL = "https://mainnet.base.org"
+BASE_RPC_URLS = "https://mainnet.base.org,https://base.llamarpc.com"
 PAYMENT_MIN_CONFIRMATIONS = "2"
 
 [[migrations]]

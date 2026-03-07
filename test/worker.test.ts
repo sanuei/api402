@@ -391,6 +391,63 @@ test('replayed signed payment nonce is rejected', async () => {
   );
 });
 
+test('payment verification falls back to secondary Base RPC when primary fails', async () => {
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+  const request = new Request('https://api-402.com/api/deepseek', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(payload),
+      'X-PAYMENT-TX-HASH': '0x4444444444444444444444444444444444444444444444444444444444444444',
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+    const body = init?.body ? (JSON.parse(String(init.body)) as { method?: string }) : {};
+
+    if (url.includes('rpc-primary.example')) {
+      return new Response(JSON.stringify({ error: 'primary down' }), { status: 503 });
+    }
+
+    if (!url.includes('rpc-backup.example')) {
+      return new Response(JSON.stringify({ error: 'unknown rpc target' }), { status: 500 });
+    }
+
+    if (body.method === 'eth_getTransactionReceipt') {
+      return new Response(JSON.stringify(createTransferReceipt(payload.from, TEST_PAY_TO, '0.003')), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (body.method === 'eth_blockNumber') {
+      return new Response(JSON.stringify(createBlockNumberResponse('0x101')), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: 'Unsupported RPC method in test' }), { status: 500 });
+  };
+
+  try {
+    const response = await worker.fetch(request, {
+      ...createEnv(),
+      BASE_RPC_URLS: 'https://rpc-primary.example, https://rpc-backup.example',
+    });
+    const body = (await response.json()) as { _meta: { paid: boolean; paymentMode: string } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body._meta.paid, true);
+    assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('whale positions endpoint proxies live upstream trades when available', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (_input, init) => {
