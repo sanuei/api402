@@ -27,6 +27,7 @@
 - 非 demo 请求现在要求提供 `PAYMENT-SIGNATURE` 和 `X-PAYMENT-TX-HASH`，Worker 会回查 Base 链上 USDC 转账回执
 - 支付通过或被 402 拒绝时都会返回结构化 `settlement` 上下文（txHash、receiptBlock、confirmations），便于 SDK 自动重试
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
+- 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
 
 ## Core Routes
@@ -61,6 +62,7 @@ npm run deploy
 `PAYMENT_MIN_CONFIRMATIONS` 用于控制交易回执最少确认块数，默认值为 `2`。
 `PAYMENT_MAX_AGE_SECONDS` 用于限制支付 payload 的最大有效时间窗（默认 `900` 秒）。
 `PAYMENT_MAX_FUTURE_SKEW_SECONDS` 用于限制 `issuedAt` 允许的未来时钟偏差（默认 `120` 秒）。
+`PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS` 用于限制链上结算证明允许的最大区块年龄（默认 `7200` 块）。
 `REPLAY_GUARD` Durable Object 负责持久化 nonce / tx hash 防重放状态。
 
 `deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。

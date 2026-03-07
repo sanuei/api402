@@ -16,6 +16,7 @@ export interface Env {
   PAYMENT_MIN_CONFIRMATIONS?: string;
   PAYMENT_MAX_AGE_SECONDS?: string;
   PAYMENT_MAX_FUTURE_SKEW_SECONDS?: string;
+  PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS?: string;
   REPLAY_GUARD?: DurableObjectNamespace;
   ASSETS?: Fetcher;
 }
@@ -95,6 +96,7 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_TRANSFER_MISSING'
     | 'PAYMENT_TRANSFER_AMOUNT_TOO_LOW'
     | 'PAYMENT_TX_NOT_CONFIRMED'
+    | 'PAYMENT_TX_TOO_OLD'
     | 'PAYMENT_ISSUED_AT_IN_FUTURE'
     | 'PAYMENT_STALE'
     | 'PAYMENT_DEADLINE_TOO_FAR'
@@ -109,6 +111,7 @@ const BASE_RPC_TIMEOUT_MS = 6000;
 const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
 const DEFAULT_PAYMENT_MAX_AGE_SECONDS = 15 * 60;
 const DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS = 2 * 60;
+const DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS = 7200;
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const PAYMENT_TX_HASH_HEADER = 'X-PAYMENT-TX-HASH';
 const ERC20_TRANSFER_TOPIC =
@@ -512,6 +515,10 @@ async function verifyBaseUsdcSettlement(
   payTo: string,
 ): Promise<PaymentVerificationResult> {
   const requiredConfirmations = parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS);
+  const maxSettlementAgeBlocks = parsePositiveInt(
+    env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+    DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+  );
   const createSettlementContext = (
     receiptBlock: bigint | null,
     latestBlock: bigint | null,
@@ -587,6 +594,16 @@ async function verifyBaseUsdcSettlement(
   }
 
   const confirmations = latestBlock >= receiptBlock ? latestBlock - receiptBlock + 1n : 0n;
+  const txAgeBlocks = latestBlock >= receiptBlock ? latestBlock - receiptBlock : 0n;
+  if (txAgeBlocks > BigInt(maxSettlementAgeBlocks)) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_TOO_OLD',
+      message: `Payment transaction is too old for replay. Maximum settlement proof age is ${maxSettlementAgeBlocks.toString()} blocks.`,
+      settlement: createSettlementContext(receiptBlock, latestBlock, confirmations),
+    };
+  }
+
   if (confirmations < BigInt(requiredConfirmations)) {
     return {
       ok: false,
@@ -818,6 +835,7 @@ export function createCatalog(
   minConfirmations = DEFAULT_PAYMENT_MIN_CONFIRMATIONS,
   maxAgeSeconds = DEFAULT_PAYMENT_MAX_AGE_SECONDS,
   futureSkewSeconds = DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS,
+  maxSettlementAgeBlocks = DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
 ) {
   return {
     name: 'API Market',
@@ -837,6 +855,7 @@ export function createCatalog(
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementMethod: 'base-usdc-transfer-receipt',
       settlementConfirmationsRequired: minConfirmations,
+      maxSettlementAgeBlocks,
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       payloadSchema: {
@@ -872,6 +891,7 @@ function createPaymentRequired(
   minConfirmations: number,
   maxAgeSeconds: number,
   futureSkewSeconds: number,
+  maxSettlementAgeBlocks: number,
 ): Response {
   return apiResponse(
     {
@@ -891,6 +911,7 @@ function createPaymentRequired(
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementConfirmationsRequired: minConfirmations,
+      maxSettlementAgeBlocks,
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       settlement: verification.settlement || null,
@@ -936,6 +957,7 @@ function createPaymentRequired(
         'Connect a wallet with Base USDC.',
         'Submit the Base USDC transaction hash in X-PAYMENT-TX-HASH.',
         `Wait for at least ${minConfirmations} Base block confirmations before replaying.`,
+        `Use a recent transaction proof (<= ${maxSettlementAgeBlocks} blocks old).`,
         `Set issuedAt close to current time (<= ${futureSkewSeconds}s future skew, <= ${maxAgeSeconds}s max age).`,
         'Build a payment payload for the requested resource.',
         'Sign the canonical JSON string of the payload without the signature field.',
@@ -1458,6 +1480,10 @@ const worker = {
           parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS),
           parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS),
           parsePositiveInt(env.PAYMENT_MAX_FUTURE_SKEW_SECONDS, DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS),
+          parsePositiveInt(
+            env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+            DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+          ),
         ),
       );
     }
@@ -1495,6 +1521,10 @@ const worker = {
           parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS),
           parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS),
           parsePositiveInt(env.PAYMENT_MAX_FUTURE_SKEW_SECONDS, DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS),
+          parsePositiveInt(
+            env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+            DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+          ),
         );
       }
 

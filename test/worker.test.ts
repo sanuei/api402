@@ -195,6 +195,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
       acceptance: string;
       settlementProofHeader: string;
       settlementConfirmationsRequired: number;
+      maxSettlementAgeBlocks: number;
       maxPaymentAgeSeconds: number;
       maxFutureSkewSeconds: number;
       payloadSchema: { requiredFields: string[] };
@@ -216,6 +217,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.acceptance, 'base-mainnet-usdc-only');
   assert.equal(body.payment.settlementProofHeader, 'X-PAYMENT-TX-HASH');
   assert.equal(body.payment.settlementConfirmationsRequired, 2);
+  assert.equal(body.payment.maxSettlementAgeBlocks, 7200);
   assert.equal(body.payment.maxPaymentAgeSeconds, 900);
   assert.equal(body.payment.maxFutureSkewSeconds, 120);
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
@@ -388,6 +390,42 @@ test('signed payment requires block confirmations before acceptance', async () =
       assert.equal(body.settlement?.confirmations, 1);
       assert.equal(body.settlement?.receiptBlock, 256);
       assert.equal(body.settlement?.latestBlock, 256);
+    },
+  );
+});
+
+test('signed payment with stale settlement proof is rejected', async () => {
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+  const request = new Request('https://api-402.com/api/deepseek', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(payload),
+      'X-PAYMENT-TX-HASH': '0x6666666666666666666666666666666666666666666666666666666666666666',
+    },
+  });
+
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003', '0x1'),
+      eth_blockNumber: () => createBlockNumberResponse('0x1c22'),
+    },
+    async () => {
+      const response = await worker.fetch(request, createEnv());
+      const body = (await response.json()) as {
+        reason: string;
+        maxSettlementAgeBlocks?: number;
+        settlement?: {
+          confirmations: number;
+          receiptBlock: number | null;
+          latestBlock: number | null;
+        };
+      };
+
+      assert.equal(response.status, 402);
+      assert.equal(body.reason, 'PAYMENT_TX_TOO_OLD');
+      assert.equal(body.maxSettlementAgeBlocks, 7200);
+      assert.equal(body.settlement?.receiptBlock, 1);
+      assert.equal(body.settlement?.latestBlock, 7202);
+      assert.ok((body.settlement?.confirmations || 0) > 7200);
     },
   );
 });

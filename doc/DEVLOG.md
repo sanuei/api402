@@ -4,6 +4,40 @@
 
 ### 本轮目标
 
+- 继续提升真实支付验证稳健性，阻断“历史旧交易”被拿来延迟重放的风险
+
+### 已完成
+
+- Base USDC 结算校验新增交易证明区块年龄限制（默认 `7200` blocks）
+- 当交易过旧时返回机器可读错误码 `PAYMENT_TX_TOO_OLD`
+- catalog 与 402 challenge 新增 `maxSettlementAgeBlocks` 字段，便于 SDK 静态建模
+- `wrangler.toml` 新增 `PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS` 默认配置
+- 测试新增“过旧交易证明被拒绝”场景，覆盖 402 reason 与 settlement 上下文
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 13 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 给关键上游代理补统一熔断 / fallback 策略与 machine-readable 错误码
+2. 在 catalog 增加 latency / availability 指标字段
+3. 继续推进 AI 类接口真实上游替换，进一步降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 继续提升真实支付验证稳健性，收紧签名 payload 时间窗，降低延迟重放和时钟漂移导致的误验风险
 
 ### 已完成

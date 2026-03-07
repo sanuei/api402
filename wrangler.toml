@@ -21,6 +21,7 @@ BASE_RPC_URLS = "https://mainnet.base.org,https://base.llamarpc.com"
 PAYMENT_MIN_CONFIRMATIONS = "2"
 PAYMENT_MAX_AGE_SECONDS = "900"
 PAYMENT_MAX_FUTURE_SKEW_SECONDS = "120"
+PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS = "7200"
 
 [[migrations]]
 tag = "v1"

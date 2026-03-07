@@ -34,6 +34,7 @@
 - 402 challenge 和成功响应已输出结构化 settlement 上下文（txHash、receiptBlock、latestBlock、confirmations）
 - 支付签名已加入时间窗约束（`issuedAt` 最大年龄与未来时钟偏差限制），降低延迟重放风险
 - Base 结算校验已支持 `BASE_RPC_URLS` 主备 RPC 自动回退（含请求超时控制）
+- Base 结算证明已加入最大区块年龄限制（默认 7200 blocks），可拦截历史交易延迟重放
 - 已将 `whale-positions` 接入 HyperLiquid 实时成交聚合（BTC/ETH）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 
@@ -115,7 +116,7 @@
 
 1. 在 catalog 中增加更明确的延迟/可用性字段
 2. 为关键上游接口补统一超时、熔断与降级策略（含错误码分层）
-3. 将 settlement 可观测字段同步暴露到 catalog schema，方便 SDK 静态建模
+3. 继续扩展 settlement policy 字段（例如确认目标时间、推荐重试间隔），方便 SDK 自动重试建模
 4. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
 
 ## Operations
