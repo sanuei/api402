@@ -284,3 +284,42 @@
 1. 把 `/en` 和 `/zh` 做成明确的静态入口路由
 2. 给 catalog 增加延迟、可用性和更新时间字段
 3. 把 `whale-positions` 接成真实上游代理
+
+## 2026-03-08
+
+### 本轮目标
+
+- 完善“收款地址”模块，让调用方明确知道应该向哪个地址支付
+- 把页面展示、catalog 类型和测试一起补齐
+
+### 已完成
+
+- 首页新增收款地址与支付参数模块
+- 页面支持直接复制当前网关收款地址，并跳转 Base 区块浏览器
+- 前端现在直接读取 catalog.payment 的 `payTo`、`currency`、`chain`、`scheme`、`acceptedHeaders`
+- Demo 连接和测试弹窗也会显示当前网关收款地址
+- README 已补 `PAY_TO` 环境变量说明
+- Worker 测试新增对 catalog 收款地址字段的断言
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+
+### 验证结果
+
+- 待本轮命令验证并部署
+
+### 遗留问题
+
+- 当前只是把收款地址展示清楚了，还没有真实链上收款确认与结算状态回查
+- `PAY_TO` 仍然是单地址模型，后续如果要支持多商户，需要做按 endpoint 或按商户路由
+
+### 下一步建议
+
+1. 做真实支付确认和链上状态回查
+2. 支持不同 API 或不同商户配置不同收款地址
+3. 把 `whale-positions` 接成真实上游代理

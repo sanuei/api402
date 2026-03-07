@@ -241,6 +241,55 @@
             </div>
         </section>
 
+        <section id="payment" class="py-16 md:py-24">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="grid lg:grid-cols-[0.95fr_1.05fr] gap-8 items-start">
+                    <div class="soft-card rounded-[32px] p-7 md:p-8">
+                        <p class="kicker mb-3" data-i18n="payment.kicker">Settlement Config</p>
+                        <h2 class="text-4xl md:text-5xl font-bold tracking-tight" data-i18n="payment.title">收款地址与支付参数</h2>
+                        <p class="mt-4 text-slate-400 text-lg leading-8" data-i18n="payment.description">
+                            如果别人调用你的付费 API，网关必须明确告诉对方把钱打到哪个地址。这里展示当前 Worker 对外暴露的收款地址和支付参数。
+                        </p>
+                        <div class="mt-8 flex flex-col sm:flex-row gap-3">
+                            <button id="copyReceiverButton"
+                                class="primary-btn rounded-full px-5 py-3 text-sm font-semibold transition text-white"
+                                data-i18n="payment.copy">
+                                Copy Address
+                            </button>
+                            <a id="openReceiverButton" href="#"
+                                target="_blank" rel="noreferrer"
+                                class="secondary-btn rounded-full px-5 py-3 text-sm font-semibold transition text-center">
+                                <span data-i18n="payment.openExplorer">Open In Explorer</span>
+                            </a>
+                        </div>
+                    </div>
+
+                    <div class="grid md:grid-cols-2 gap-5">
+                        <div class="log-box rounded-3xl p-5 md:col-span-2">
+                            <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="payment.receiver">Gateway Receiver</div>
+                            <div class="mono text-sm md:text-base text-slate-200 break-all" id="receiverAddress">--</div>
+                        </div>
+                        <div class="log-box rounded-3xl p-5">
+                            <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="payment.asset">Asset</div>
+                            <div class="text-slate-200" id="receiverAsset">USDC</div>
+                        </div>
+                        <div class="log-box rounded-3xl p-5">
+                            <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="payment.network">Network</div>
+                            <div class="text-slate-200" id="receiverNetwork">Base</div>
+                        </div>
+                        <div class="log-box rounded-3xl p-5">
+                            <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="payment.scheme">Scheme</div>
+                            <div class="text-slate-200" id="receiverScheme">exact</div>
+                        </div>
+                        <div class="log-box rounded-3xl p-5">
+                            <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="payment.headers">Accepted Headers</div>
+                            <div class="text-slate-200 break-all" id="receiverHeaders">Authorization, PAYMENT-SIGNATURE</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section id="examples" class="py-16 md:py-24">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">

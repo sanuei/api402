@@ -4,6 +4,7 @@ import type { CatalogEndpoint, CatalogResponse, HealthResponse } from './types';
 
 const REMOTE_API_BASE = 'https://api-market-x402.sonic980828.workers.dev';
 const SITE_URL = 'https://api-402.com/';
+const DEFAULT_GATEWAY_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
 const SAME_ORIGIN_HOST_PATTERNS = [/api-402\.com$/, /workers\.dev$/];
 type Language = 'zh' | 'en';
 const LANGUAGE_STORAGE_KEY = 'api-market-language';
@@ -77,6 +78,18 @@ const translations: Record<Language, Record<string, string>> = {
     'flow.step3.title': '拿回数据',
     'flow.step3.body':
       '网关验证通过后返回真实上游数据或 demo 数据，并附带 `_meta` 方便前端与 SDK 做调试。',
+    'payment.kicker': '结算配置',
+    'payment.title': '收款地址与支付参数',
+    'payment.description':
+      '如果别人调用你的付费 API，网关必须明确告诉对方把钱打到哪个地址。这里展示当前 Worker 对外暴露的收款地址和支付参数。',
+    'payment.receiver': '网关收款地址',
+    'payment.asset': '资产',
+    'payment.network': '网络',
+    'payment.scheme': '方案',
+    'payment.headers': '接受的支付头',
+    'payment.copy': '复制地址',
+    'payment.copied': '已复制',
+    'payment.openExplorer': '在区块浏览器打开',
     'examples.selected': '当前选中接口',
     'examples.loading': '正在加载 catalog...',
     'examples.path': '路径',
@@ -130,6 +143,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.walletConnectedAlert': '已连接地址: {address}\n连接类型: {walletType}\n\n当前仍以 demo 支付流为主。',
     'dynamic.walletLabel': '钱包',
     'dynamic.walletNotConnected': '未连接',
+    'dynamic.gatewayReceiver': '收款地址',
     'dynamic.replayMode': '重放模式',
     'dynamic.replayDemo': 'Authorization: Bearer demo',
     'dynamic.replayManual': '需要手动签名',
@@ -153,6 +167,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.executeRequest': '执行请求',
     'dynamic.selectedUnknown': '未知',
     'dynamic.exampleResponse': '// 示例响应',
+    'dynamic.copyFailed': '复制失败，请手动复制地址。',
   },
   en: {
     'meta.title': 'API Market | x402 API Payment Gateway on Base',
@@ -197,6 +212,18 @@ const translations: Record<Language, Record<string, string>> = {
     'flow.step3.title': 'Receive data',
     'flow.step3.body':
       'After verification, the gateway returns live upstream data or demo data with `_meta` fields for debugging and SDK work.',
+    'payment.kicker': 'Settlement Config',
+    'payment.title': 'Receiver address and payment parameters',
+    'payment.description':
+      'If someone calls your paid API, the gateway has to tell them exactly where to send funds. This section exposes the current receiver address and payment parameters from the Worker.',
+    'payment.receiver': 'Gateway Receiver',
+    'payment.asset': 'Asset',
+    'payment.network': 'Network',
+    'payment.scheme': 'Scheme',
+    'payment.headers': 'Accepted Headers',
+    'payment.copy': 'Copy Address',
+    'payment.copied': 'Copied',
+    'payment.openExplorer': 'Open In Explorer',
     'examples.selected': 'Selected Endpoint',
     'examples.loading': 'Loading catalog...',
     'examples.path': 'Path',
@@ -252,6 +279,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Connected address: {address}\nWallet type: {walletType}\n\nThe current browser flow still defaults to demo replay.',
     'dynamic.walletLabel': 'Wallet',
     'dynamic.walletNotConnected': 'Not connected',
+    'dynamic.gatewayReceiver': 'Gateway receiver',
     'dynamic.replayMode': 'Replay mode',
     'dynamic.replayDemo': 'Authorization: Bearer demo',
     'dynamic.replayManual': 'Manual signature required',
@@ -275,6 +303,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.executeRequest': 'Execute Request',
     'dynamic.selectedUnknown': 'unknown',
     'dynamic.exampleResponse': '// example response',
+    'dynamic.copyFailed': 'Copy failed. Please copy the address manually.',
   },
 };
 
@@ -341,6 +370,14 @@ function t(key: string, variables: Record<string, string | number> = {}): string
 
 function shortenAddress(value: string): string {
   return value.length <= 14 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function getGatewayPayTo(): string {
+  return catalog?.payment.payTo || DEFAULT_GATEWAY_PAY_TO;
+}
+
+function getGatewayExplorerUrl(address: string): string {
+  return `https://basescan.org/address/${address}`;
 }
 
 function getLocalizedFields(endpoint: CatalogEndpoint) {
@@ -462,10 +499,11 @@ function setHeroTerminal(endpoint: CatalogEndpoint | null) {
   const terminal = getElement<HTMLDivElement>('heroTerminal');
   const path = endpoint ? endpoint.path : '/api/btc-price';
   const price = endpoint ? endpoint.price : '0.00001';
+  const payTo = `${getGatewayPayTo().slice(0, 8)}...`;
   const lines = [
     `$ curl -i ${API_BASE}${path}`,
     'HTTP/1.1 402 Payment Required',
-    `{ "payTo": "0x742d...", "price": "${price}", "currency": "USDC" }`,
+    `{ "payTo": "${payTo}", "price": "${price}", "currency": "USDC" }`,
     `$ curl -H "Authorization: Bearer demo" ${API_BASE}${path}`,
     `{ "data": "...", "_meta": { "paid": true } }`,
   ];
@@ -560,6 +598,19 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
     .join('');
 }
 
+function updatePaymentModule() {
+  const payTo = getGatewayPayTo();
+  const payment = catalog?.payment;
+
+  getElement<HTMLDivElement>('receiverAddress').textContent = payTo;
+  getElement<HTMLDivElement>('receiverAsset').textContent = payment?.currency || 'USDC';
+  getElement<HTMLDivElement>('receiverNetwork').textContent = payment?.chain || 'base';
+  getElement<HTMLDivElement>('receiverScheme').textContent = payment?.scheme || 'exact';
+  getElement<HTMLDivElement>('receiverHeaders').textContent =
+    payment?.acceptedHeaders?.join(', ') || 'Authorization, PAYMENT-SIGNATURE';
+  getElement<HTMLAnchorElement>('openReceiverButton').href = getGatewayExplorerUrl(payTo);
+}
+
 async function loadHealth() {
   try {
     const response = await fetch(`${API_BASE}/api/v1/health`);
@@ -584,6 +635,7 @@ async function loadCatalog() {
     getElement<HTMLAnchorElement>('healthLink').href = `${API_BASE}/api/v1/health`;
     getElement<HTMLAnchorElement>('catalogLink').href = `${API_BASE}/api/v1/catalog`;
 
+    updatePaymentModule();
     renderCatalog(catalog.endpoints);
     setSelectedEndpoint(catalog.endpoints[0] || null);
   } catch {
@@ -596,6 +648,7 @@ async function loadCatalog() {
         </p>
       </div>
     `;
+    updatePaymentModule();
     setHeroTerminal(null);
   }
 }
@@ -639,7 +692,7 @@ async function connectWallet(type: 'coinbase' | 'metamask' | 'rabby') {
 function connectDemo() {
   walletConnected = true;
   walletType = 'Demo';
-  walletAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
+  walletAddress = getGatewayPayTo();
   closeWalletModal();
   updateWalletUI();
 }
@@ -649,6 +702,7 @@ function updateWalletUI() {
   button.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${escapeHtml(shortenAddress(walletAddress))}`;
   getElement<HTMLDivElement>('paymentDetails').innerHTML = `
     <div>${t('dynamic.walletLabel')}: <span class="text-white">${escapeHtml(walletType || t('dynamic.walletNotConnected'))}</span></div>
+    <div>${t('dynamic.gatewayReceiver')}: <span class="text-white">${escapeHtml(shortenAddress(getGatewayPayTo()))}</span></div>
     <div>${t('dynamic.replayMode')}: <span class="text-[#33f0b2]">${walletType === 'Demo' ? t('dynamic.replayDemo') : t('dynamic.replayManual')}</span></div>
   `;
 }
@@ -660,6 +714,7 @@ function testAPI(endpointPath: string) {
   getElement<HTMLHeadingElement>('modalTitle').textContent = endpoint ? endpoint.path : 'API Test';
   getElement<HTMLDivElement>('paymentDetails').innerHTML = `
     <div>${t('dynamic.endpoint')}: <span class="text-white">${escapeHtml(endpointPath)}</span></div>
+    <div>${t('dynamic.gatewayReceiver')}: <span class="text-white">${escapeHtml(shortenAddress(getGatewayPayTo()))}</span></div>
     <div>${t('dynamic.price')}: <span class="text-[#33f0b2]">${escapeHtml(endpoint?.price || '--')} USDC</span></div>
     <div>${t('dynamic.flow')}: ${t('dynamic.flowValue')}</div>
   `;
@@ -726,6 +781,18 @@ async function executeRequest() {
   }
 }
 
+async function copyGatewayAddress() {
+  try {
+    await navigator.clipboard.writeText(getGatewayPayTo());
+    getElement<HTMLButtonElement>('copyReceiverButton').textContent = t('payment.copied');
+    window.setTimeout(() => {
+      getElement<HTMLButtonElement>('copyReceiverButton').textContent = t('payment.copy');
+    }, 1200);
+  } catch {
+    window.alert(t('dynamic.copyFailed'));
+  }
+}
+
 function closeModal() {
   getElement<HTMLDivElement>('apiModal').classList.add('hidden');
   getElement<HTMLDivElement>('apiModal').classList.remove('flex');
@@ -737,6 +804,7 @@ function setLanguage(language: Language) {
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   syncLanguageUrl(language);
   applyStaticTranslations();
+  updatePaymentModule();
   if (catalog) {
     renderCatalog(catalog.endpoints);
     setSelectedEndpoint(selectedEndpoint || catalog.endpoints[0] || null);
@@ -749,6 +817,10 @@ function setLanguage(language: Language) {
 function bindEvents() {
   getElement<HTMLButtonElement>('languageToggle').addEventListener('click', () => {
     setLanguage(currentLanguage === 'zh' ? 'en' : 'zh');
+  });
+
+  getElement<HTMLButtonElement>('copyReceiverButton').addEventListener('click', () => {
+    void copyGatewayAddress();
   });
 
   getElement<HTMLButtonElement>('connectWallet').addEventListener('click', () => {
@@ -810,6 +882,7 @@ function bindEvents() {
 }
 
 applyStaticTranslations();
+updatePaymentModule();
 setHeroTerminal(null);
 bindEvents();
 void loadHealth();

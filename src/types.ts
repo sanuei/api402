@@ -4,6 +4,15 @@ export interface CatalogEndpointLocale {
   description: string;
 }
 
+export interface CatalogPaymentConfig {
+  payTo: string;
+  currency: string;
+  chain: string;
+  scheme: string;
+  demoToken: string;
+  acceptedHeaders?: string[];
+}
+
 export interface CatalogEndpoint {
   path: string;
   url: string;
@@ -29,9 +38,7 @@ export interface CatalogEndpoint {
 }
 
 export interface CatalogResponse {
-  payment: {
-    demoToken: string;
-  };
+  payment: CatalogPaymentConfig;
   endpoints: CatalogEndpoint[];
 }
 

@@ -22,6 +22,7 @@
 - catalog 已输出中英文字段，前端直接消费 Worker 返回的多语言文案
 - 提供基础 SEO 资源，包括 favicon、OG 图、robots 和 sitemap
 - 已补 `hreflang`、多语言 canonical 和双语 sitemap
+- 收款地址由 Worker 的 `PAY_TO` 环境变量决定，catalog 和 402 challenge 会对外暴露这个地址
 
 ## Core Routes
 
@@ -46,6 +47,8 @@ npm run dev
 ```bash
 npm run deploy
 ```
+
+生产环境需要在 Cloudflare Worker 中配置 `PAY_TO`，它就是用户调用付费 API 后应该支付到的钱包地址。
 
 `deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。
 
