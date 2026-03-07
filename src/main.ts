@@ -4,6 +4,259 @@ import type { CatalogEndpoint, CatalogResponse, HealthResponse } from './types';
 
 const REMOTE_API_BASE = 'https://api-market-x402.sonic980828.workers.dev';
 const SAME_ORIGIN_HOST_PATTERNS = [/api-402\.com$/, /workers\.dev$/];
+type Language = 'zh' | 'en';
+const LANGUAGE_STORAGE_KEY = 'api-market-language';
+
+const DEFAULT_LANGUAGE: Language =
+  typeof window !== 'undefined'
+    ? ((window.localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null) ||
+        (navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en'))
+    : 'en';
+
+const translations: Record<Language, Record<string, string>> = {
+  zh: {
+    'meta.title': 'API Market | Base 上的 x402 API 支付网关',
+    'meta.description':
+      'API Market 是一个基于 Base 和 USDC 的 x402 API Payment Gateway，支持开发者与 AI Agent 按次付费调用 API，无需注册，无需 API Key。',
+    'nav.catalog': '目录',
+    'nav.flow': '流程',
+    'nav.examples': '示例',
+    'nav.faq': '问答',
+    'nav.openCatalog': '打开目录',
+    'nav.connectWallet': '连接钱包',
+    'hero.kicker': '面向 Agent 与开发者的微支付',
+    'hero.title.prefix': '按次付费调用 API，',
+    'hero.title.mid': '不注册',
+    'hero.title.end': '不发 Key',
+    'hero.description':
+      '面向 AI Agent、自动化工作流和开发者的 API 支付网关。先请求，收到 402 挑战，再用钱包授权完成单次调用。',
+    'hero.browse': '浏览付费 API',
+    'hero.examples': '查看接入示例',
+    'hero.badge1': '无需注册',
+    'hero.badge2': '钱包即身份',
+    'hero.badge3': '按调用付费',
+    'hero.terminalTitle': '支付流程',
+    'metrics.endpointCount': '接口数量',
+    'metrics.paymentAsset': '支付资产',
+    'metrics.chain': '链',
+    'metrics.gatewayStatus': '网关状态',
+    'catalog.kicker': '机器可读目录',
+    'catalog.title': '可直接给 Agent 调用的 API 目录',
+    'catalog.description':
+      '前端和 SDK 都从同一份 catalog 读取价格、说明和支付要求。避免页面说一套、网关跑一套。',
+    'catalog.openCatalog': '打开 /api/v1/catalog',
+    'catalog.openHealth': '打开 /api/v1/health',
+    'flow.kicker': '开发者工作流',
+    'flow.title': '支付流程保持简单，接入模型尽量稳定',
+    'flow.step1.title': '请求 API',
+    'flow.step1.body':
+      '客户端先正常调用 API。如果还没支付，网关返回 402，并附带 `payTo`、价格和支付头要求。',
+    'flow.step2.title': '签名或演示授权',
+    'flow.step2.body':
+      '现在支持 demo token，也预留了 `PAYMENT-SIGNATURE` / `Authorization` 的签名承载方式。',
+    'flow.step3.title': '拿回数据',
+    'flow.step3.body':
+      '网关验证通过后返回真实上游数据或 demo 数据，并附带 `_meta` 方便前端与 SDK 做调试。',
+    'examples.selected': '当前选中接口',
+    'examples.loading': '正在加载 catalog...',
+    'examples.path': '路径',
+    'examples.category': '分类',
+    'examples.mode': '模式',
+    'examples.testSelected': '测试当前接口',
+    'examples.openEndpoint': '打开接口',
+    'examples.curlHint': '先 402 挑战，再重放请求',
+    'examples.jsHint': '前端 / Agent 接入示例',
+    'cards.whyBadge': '为什么这样设计',
+    'cards.whyTitle': '面向 Agent 的接口边界',
+    'cards.whyBody':
+      '免费 catalog 提供 discovery，付费接口返回结构化挑战。Agent 不需要看营销文案，也能知道怎么完成一次请求。',
+    'cards.stackBadge': '当前架构',
+    'cards.stackTitle': 'Cloudflare Worker 一体部署',
+    'cards.stackBody':
+      '静态页面、catalog、健康检查和付费 API 统一由同一 Worker 提供，减少配置漂移和部署分裂。',
+    'cards.nextBadge': '下一步',
+    'cards.nextTitle': '真实支付和 SDK',
+    'cards.nextBody':
+      '下一阶段重点是链上支付验证、SDK 自动重放请求、更多真实上游代理，以及钱包级限流。',
+    'faq.kicker': '问答',
+    'faq.title': '开发时最容易问的几个问题',
+    'faq.q1': '现在是真实链上扣款吗？',
+    'faq.a1':
+      '还不是。这一版保留 demo 授权路径，同时把 catalog、挑战格式和前后端模型统一，为接入真实 EIP-3009 / x402 验证做准备。',
+    'faq.q2': '为什么还保留 demo token？',
+    'faq.a2':
+      '因为它能保证产品页、联调页和 SDK 示例在没有真实钱包支付的情况下也能完整演示 402 -> replay -> data 的工作流。',
+    'faq.q3': '本地调试时怎么连 API？',
+    'faq.a3':
+      '页面会优先使用线上 Worker 作为 API 基地址。部署到 `api-402.com` 或 `workers.dev` 后，会自动切换成同源调用。',
+    'footer.tagline': '基于 Cloudflare Worker 的 x402 API 支付网关演示',
+    'wallet.title': '连接钱包',
+    'wallet.subtitle': '当前仍然以 demo 联调为主，真实钱包接入仅做地址读取。',
+    'wallet.coinbase': 'Coinbase 钱包',
+    'wallet.metamask': 'MetaMask',
+    'wallet.rabby': 'Rabby 钱包',
+    'wallet.demo': '演示模式',
+    'common.cancel': '取消',
+    'common.close': '关闭',
+    'modal.liveTest': '实时测试',
+    'modal.challenge': '支付挑战',
+    'modal.ready': '准备就绪。',
+    'modal.execute': '执行请求',
+    'dynamic.catalogLoadFailed': '目录加载失败',
+    'dynamic.catalogLoadFailedBody':
+      '无法从 {apiBase} 读取 catalog。请确认 Worker 已部署，或继续使用远端联调环境。',
+    'dynamic.gatewayLive': '在线 / {count} 个接口',
+    'dynamic.gatewayRemote': '远程',
+    'dynamic.walletConnectedAlert': '已连接地址: {address}\n连接类型: {walletType}\n\n当前仍以 demo 支付流为主。',
+    'dynamic.walletLabel': '钱包',
+    'dynamic.walletNotConnected': '未连接',
+    'dynamic.replayMode': '重放模式',
+    'dynamic.replayDemo': 'Authorization: Bearer demo',
+    'dynamic.replayManual': '需要手动签名',
+    'dynamic.endpoint': '接口',
+    'dynamic.price': '价格',
+    'dynamic.flow': '流程',
+    'dynamic.flowValue': '先请求挑战，再重放请求',
+    'dynamic.readyToCall': '准备请求 {path}',
+    'dynamic.execute': '执行中...',
+    'dynamic.initialRequest': '发送未携带支付头的首次请求...',
+    'dynamic.received402': '收到 402 Payment Required',
+    'dynamic.payTo': 'payTo => {value}',
+    'dynamic.priceValue': 'price => {value} {currency}',
+    'dynamic.replaying': '使用 demo 授权重放请求...',
+    'dynamic.replayFailed': '重放失败，状态 {status}',
+    'dynamic.replaySucceeded': '重放成功，响应如下：',
+    'dynamic.connectDemo': '连接 Demo Mode 可在浏览器内完成完整请求闭环。',
+    'dynamic.requestSucceeded': '请求成功，无需重放。',
+    'dynamic.unexpectedStatus': '异常状态 {status}',
+    'dynamic.networkError': '网络错误: {message}',
+    'dynamic.executeRequest': '执行请求',
+    'dynamic.selectedUnknown': '未知',
+    'dynamic.exampleResponse': '// 示例响应',
+  },
+  en: {
+    'meta.title': 'API Market | x402 API Payment Gateway on Base',
+    'meta.description':
+      'API Market is an x402 API payment gateway on Base with USDC for developers and AI agents. Pay per API call with no signup and no API keys.',
+    'nav.catalog': 'Catalog',
+    'nav.flow': 'Flow',
+    'nav.examples': 'Examples',
+    'nav.faq': 'FAQ',
+    'nav.openCatalog': 'Open Catalog',
+    'nav.connectWallet': 'Connect Wallet',
+    'hero.kicker': 'Micropayments For Agents And Developers',
+    'hero.title.prefix': 'Pay per API call,',
+    'hero.title.mid': 'No signup',
+    'hero.title.end': 'No API keys',
+    'hero.description':
+      'An API payment gateway for AI agents, automation workflows, and developers. Request first, receive a 402 challenge, then authorize a single paid call from your wallet.',
+    'hero.browse': 'Browse Paid APIs',
+    'hero.examples': 'See Integration Examples',
+    'hero.badge1': 'No signup',
+    'hero.badge2': 'Wallet as identity',
+    'hero.badge3': 'Pay only when called',
+    'hero.terminalTitle': 'Payment Flow',
+    'metrics.endpointCount': 'Endpoint Count',
+    'metrics.paymentAsset': 'Payment Asset',
+    'metrics.chain': 'Chain',
+    'metrics.gatewayStatus': 'Gateway Status',
+    'catalog.kicker': 'Machine-Readable Catalog',
+    'catalog.title': 'API catalog built for agents and direct integrations',
+    'catalog.description':
+      'The frontend and future SDKs read the same catalog for price, descriptions, and payment requirements so the product page and gateway stay aligned.',
+    'catalog.openCatalog': 'Open /api/v1/catalog',
+    'catalog.openHealth': 'Open /api/v1/health',
+    'flow.kicker': 'Builder Workflow',
+    'flow.title': 'Keep the payment flow simple and the integration model stable',
+    'flow.step1.title': 'Request the API',
+    'flow.step1.body':
+      'Clients call the API normally. If the request is unpaid, the gateway returns a 402 with payTo, price, and required payment headers.',
+    'flow.step2.title': 'Sign or use demo auth',
+    'flow.step2.body':
+      'The gateway supports a demo token today and also accepts signed payloads over PAYMENT-SIGNATURE or Authorization.',
+    'flow.step3.title': 'Receive data',
+    'flow.step3.body':
+      'After verification, the gateway returns live upstream data or demo data with `_meta` fields for debugging and SDK work.',
+    'examples.selected': 'Selected Endpoint',
+    'examples.loading': 'Loading catalog...',
+    'examples.path': 'Path',
+    'examples.category': 'Category',
+    'examples.mode': 'Mode',
+    'examples.testSelected': 'Test Selected API',
+    'examples.openEndpoint': 'Open Endpoint',
+    'examples.curlHint': '402 challenge then replay',
+    'examples.jsHint': 'frontend / agent integration',
+    'cards.whyBadge': 'Why This Shape',
+    'cards.whyTitle': 'Boundaries designed for agents',
+    'cards.whyBody':
+      'A free catalog handles discovery while paid endpoints return structured challenges. Agents do not need to parse marketing copy to complete a request.',
+    'cards.stackBadge': 'Current Stack',
+    'cards.stackTitle': 'Single Cloudflare Worker deployment',
+    'cards.stackBody':
+      'Static pages, catalog, health checks, and paid APIs all ship from the same Worker to reduce drift in deployment and configuration.',
+    'cards.nextBadge': 'Next Up',
+    'cards.nextTitle': 'Real payments and SDKs',
+    'cards.nextBody':
+      'The next stage focuses on on-chain verification, SDK-driven request replay, more live upstreams, and wallet-level rate limiting.',
+    'faq.kicker': 'FAQ',
+    'faq.title': 'Common questions during development',
+    'faq.q1': 'Is this doing real on-chain settlement now?',
+    'faq.a1':
+      'Not yet. The current version keeps the demo authorization path while aligning catalog, challenge format, and frontend/backend models for real x402-style verification.',
+    'faq.q2': 'Why keep the demo token?',
+    'faq.a2':
+      'It guarantees that the product page, integration demo, and future SDK examples can still show the full 402 -> replay -> data loop without requiring live payment.',
+    'faq.q3': 'How should I connect APIs in local development?',
+    'faq.a3':
+      'The page prefers the remote Worker by default. Once deployed to `api-402.com` or `workers.dev`, it automatically uses same-origin requests.',
+    'footer.tagline': 'Cloudflare Worker based x402 API payment gateway demo',
+    'wallet.title': 'Connect Wallet',
+    'wallet.subtitle':
+      'The current flow is still optimized for demo integration. Real wallet access is only used for reading addresses.',
+    'wallet.coinbase': 'Coinbase Wallet',
+    'wallet.metamask': 'MetaMask',
+    'wallet.rabby': 'Rabby Wallet',
+    'wallet.demo': 'Demo Mode',
+    'common.cancel': 'Cancel',
+    'common.close': 'Close',
+    'modal.liveTest': 'Live Test',
+    'modal.challenge': 'Payment Challenge',
+    'modal.ready': 'Ready.',
+    'modal.execute': 'Execute Request',
+    'dynamic.catalogLoadFailed': 'Catalog load failed',
+    'dynamic.catalogLoadFailedBody':
+      'Unable to load the catalog from {apiBase}. Confirm the Worker is deployed or continue using the remote environment.',
+    'dynamic.gatewayLive': 'LIVE / {count} endpoints',
+    'dynamic.gatewayRemote': 'REMOTE',
+    'dynamic.walletConnectedAlert':
+      'Connected address: {address}\nWallet type: {walletType}\n\nThe current browser flow still defaults to demo replay.',
+    'dynamic.walletLabel': 'Wallet',
+    'dynamic.walletNotConnected': 'Not connected',
+    'dynamic.replayMode': 'Replay mode',
+    'dynamic.replayDemo': 'Authorization: Bearer demo',
+    'dynamic.replayManual': 'Manual signature required',
+    'dynamic.endpoint': 'Endpoint',
+    'dynamic.price': 'Price',
+    'dynamic.flow': 'Flow',
+    'dynamic.flowValue': 'first request challenge, second request replay',
+    'dynamic.readyToCall': 'Ready to call {path}',
+    'dynamic.execute': 'Executing...',
+    'dynamic.initialRequest': 'Sending initial request without payment header...',
+    'dynamic.received402': 'Received 402 Payment Required',
+    'dynamic.payTo': 'payTo => {value}',
+    'dynamic.priceValue': 'price => {value} {currency}',
+    'dynamic.replaying': 'Replaying request with demo authorization...',
+    'dynamic.replayFailed': 'Replay failed with status {status}',
+    'dynamic.replaySucceeded': 'Replay succeeded. Response body:',
+    'dynamic.connectDemo': 'Connect Demo Mode to complete the full request loop inside the browser.',
+    'dynamic.requestSucceeded': 'Request succeeded without replay.',
+    'dynamic.unexpectedStatus': 'Unexpected status {status}',
+    'dynamic.networkError': 'Network error: {message}',
+    'dynamic.executeRequest': 'Execute Request',
+    'dynamic.selectedUnknown': 'unknown',
+    'dynamic.exampleResponse': '// example response',
+  },
+};
 
 let walletConnected = false;
 let walletAddress = '';
@@ -11,6 +264,7 @@ let walletType = '';
 let currentAPI = '';
 let catalog: CatalogResponse | null = null;
 let selectedEndpoint: CatalogEndpoint | null = null;
+let currentLanguage: Language = DEFAULT_LANGUAGE;
 
 function getElement<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
@@ -57,8 +311,85 @@ function escapeHtml(value: unknown): string {
     .replaceAll("'", '&#39;');
 }
 
+function t(key: string, variables: Record<string, string | number> = {}): string {
+  const template = translations[currentLanguage][key] || translations.en[key] || key;
+  return Object.entries(variables).reduce(
+    (result, [variableKey, value]) => result.replaceAll(`{${variableKey}}`, String(value)),
+    template,
+  );
+}
+
 function shortenAddress(value: string): string {
   return value.length <= 14 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function getLocalizedEndpointLabel(endpoint: CatalogEndpoint): string {
+  const zhMap: Record<string, string> = {
+    '/api/btc-price': 'BTC 价格',
+    '/api/eth-price': 'ETH 价格',
+    '/api/deepseek': 'DeepSeek 对话',
+    '/api/qwen': 'Qwen 对话',
+    '/api/whale-positions': '巨鲸仓位',
+    '/api/kline': 'K 线数据',
+  };
+
+  return currentLanguage === 'zh'
+    ? zhMap[endpoint.path] || endpoint.path.replace('/api/', '').replaceAll('-', ' ')
+    : endpoint.path.replace('/api/', '').replaceAll('-', ' ');
+}
+
+function getLocalizedCategory(category: string): string {
+  if (currentLanguage === 'en') return category;
+
+  const categoryMap: Record<string, string> = {
+    'Market Data': '市场数据',
+    AI: '人工智能',
+    'Onchain Intelligence': '链上情报',
+    Trading: '交易',
+  };
+
+  return categoryMap[category] || category;
+}
+
+function getLocalizedDescription(endpoint: CatalogEndpoint): string {
+  if (currentLanguage === 'en') {
+    return endpoint.description;
+  }
+
+  const descriptionMap: Record<string, string> = {
+    '/api/btc-price': '聚合自 Binance 的 BTC 实时价格。',
+    '/api/eth-price': '聚合自 Binance 的 ETH 实时价格。',
+    '/api/deepseek': 'DeepSeek 对话响应示例。',
+    '/api/qwen': 'Qwen Max 对话响应示例。',
+    '/api/whale-positions': 'HyperLiquid 巨鲸仓位快照示例。',
+    '/api/kline': '来自 Binance 的 BTC/USDT K 线快照。',
+  };
+
+  return descriptionMap[endpoint.path] || endpoint.description;
+}
+
+function applyStaticTranslations() {
+  document.documentElement.lang = currentLanguage === 'zh' ? 'zh-CN' : 'en';
+  document.title = t('meta.title');
+
+  const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+  if (description) description.content = t('meta.description');
+
+  const ogDescription = document.querySelector<HTMLMetaElement>('meta[property="og:description"]');
+  if (ogDescription) ogDescription.content = currentLanguage === 'zh' ? translations.zh['meta.description'] : translations.en['meta.description'];
+  const twitterDescription = document.querySelector<HTMLMetaElement>('meta[name="twitter:description"]');
+  if (twitterDescription) {
+    twitterDescription.content =
+      currentLanguage === 'zh' ? translations.zh['meta.description'] : translations.en['meta.description'];
+  }
+
+  document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
+    const key = element.dataset.i18n;
+    if (!key) return;
+    element.textContent = t(key);
+  });
+
+  getElement<HTMLButtonElement>('languageToggle').textContent = currentLanguage === 'zh' ? 'EN' : '中文';
 }
 
 function logLine(message: string, tone: 'default' | 'info' | 'success' | 'warning' | 'danger' = 'default') {
@@ -82,7 +413,7 @@ function setHeroTerminal(endpoint: CatalogEndpoint | null) {
     'HTTP/1.1 402 Payment Required',
     `{ "payTo": "0x742d...", "price": "${price}", "currency": "USDC" }`,
     `$ curl -H "Authorization: Bearer demo" ${API_BASE}${path}`,
-    '{ "data": "...", "_meta": { "paid": true } }',
+    `{ "data": "...", "_meta": { "paid": true } }`,
   ];
 
   terminal.innerHTML = lines
@@ -97,18 +428,15 @@ function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
   selectedEndpoint = endpoint;
   if (!endpoint) return;
 
-  getElement<HTMLHeadingElement>('selectedName').textContent = endpoint.path
-    .replace('/api/', '')
-    .replaceAll('-', ' ');
+  getElement<HTMLHeadingElement>('selectedName').textContent = getLocalizedEndpointLabel(endpoint);
   getElement<HTMLSpanElement>('selectedPrice').textContent = `${endpoint.price} USDC`;
-  getElement<HTMLParagraphElement>('selectedDescription').textContent = endpoint.description;
+  getElement<HTMLParagraphElement>('selectedDescription').textContent = getLocalizedDescription(endpoint);
   getElement<HTMLDivElement>('selectedPath').textContent = endpoint.url;
-  getElement<HTMLDivElement>('selectedCategory').textContent = endpoint.category;
-  getElement<HTMLDivElement>('selectedAccess').textContent = `${endpoint.access} / ${endpoint.status || 'unknown'}`;
+  getElement<HTMLDivElement>('selectedCategory').textContent = getLocalizedCategory(endpoint.category);
+  getElement<HTMLDivElement>('selectedAccess').textContent = `${endpoint.access} / ${endpoint.status || t('dynamic.selectedUnknown')}`;
   getElement<HTMLAnchorElement>('openSelectedApi').href = endpoint.url;
 
-  const trySelected = getElement<HTMLButtonElement>('trySelected');
-  trySelected.onclick = () => testAPI(endpoint.path);
+  getElement<HTMLButtonElement>('trySelected').onclick = () => testAPI(endpoint.path);
 
   const curlExample =
     endpoint.exampleRequest?.curl ||
@@ -131,7 +459,7 @@ function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
     '  console.log(data);',
     '}',
     '',
-    '// example response',
+    t('dynamic.exampleResponse'),
     JSON.stringify(endpoint.exampleResponse || {}, null, 2),
   ].join('\n');
 
@@ -155,12 +483,12 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
           data-endpoint-path="${escapeHtml(endpoint.path)}"
         >
           <div class="flex items-start justify-between gap-4">
-            <div class="badge-blue rounded-full px-3 py-1 text-xs mono">${escapeHtml(endpoint.category)}</div>
+            <div class="badge-blue rounded-full px-3 py-1 text-xs mono">${escapeHtml(getLocalizedCategory(endpoint.category))}</div>
             <div class="badge-green rounded-full px-3 py-1 text-xs mono">${escapeHtml(endpoint.price)} USDC</div>
           </div>
           <div class="mt-5">
-            <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(endpoint.path.replace('/api/', ''))}</h3>
-            <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(endpoint.description)}</p>
+            <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(getLocalizedEndpointLabel(endpoint))}</h3>
+            <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(getLocalizedDescription(endpoint))}</p>
           </div>
           <div class="mt-6 flex items-center justify-between text-sm">
             <span class="${endpoint.access === 'mock_demo' ? 'badge-amber' : 'badge-green'} rounded-full px-3 py-1 text-xs mono">
@@ -174,22 +502,16 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
     .join('');
 }
 
-function selectEndpointByPath(path: string) {
-  if (!catalog) return;
-  const endpoint = catalog.endpoints.find((item) => item.path === path);
-  setSelectedEndpoint(endpoint || catalog.endpoints[0] || null);
-}
-
 async function loadHealth() {
   try {
     const response = await fetch(`${API_BASE}/api/v1/health`);
     if (!response.ok) throw new Error(`health ${response.status}`);
     const data = (await response.json()) as HealthResponse;
-    getElement<HTMLSpanElement>('healthStatus').textContent = `${data.status.toUpperCase()} / ${data.endpoints} endpoints`;
+    getElement<HTMLSpanElement>('healthStatus').textContent = t('dynamic.gatewayLive', { count: data.endpoints });
     getElement<HTMLDivElement>('heroStatus').textContent = 'LIVE';
   } catch {
-    getElement<HTMLSpanElement>('healthStatus').textContent = 'Degraded';
-    getElement<HTMLDivElement>('heroStatus').textContent = 'REMOTE';
+    getElement<HTMLSpanElement>('healthStatus').textContent = t('dynamic.gatewayRemote');
+    getElement<HTMLDivElement>('heroStatus').textContent = t('dynamic.gatewayRemote');
   }
 }
 
@@ -210,9 +532,9 @@ async function loadCatalog() {
     getElement<HTMLDivElement>('metricCount').textContent = '00';
     getElement<HTMLDivElement>('catalogGrid').innerHTML = `
       <div class="soft-card rounded-[28px] p-8 md:col-span-2 xl:col-span-3">
-        <div class="text-[#ffcf66] font-semibold">Catalog load failed</div>
+        <div class="text-[#ffcf66] font-semibold">${t('dynamic.catalogLoadFailed')}</div>
         <p class="mt-3 text-slate-400 leading-7">
-          无法从 ${escapeHtml(API_BASE)} 读取 catalog。请确认 Worker 已部署，或继续使用远端联调环境。
+          ${escapeHtml(t('dynamic.catalogLoadFailedBody', { apiBase: API_BASE }))}
         </p>
       </div>
     `;
@@ -268,8 +590,8 @@ function updateWalletUI() {
   const button = getElement<HTMLButtonElement>('connectWallet');
   button.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${escapeHtml(shortenAddress(walletAddress))}`;
   getElement<HTMLDivElement>('paymentDetails').innerHTML = `
-    <div>Wallet: <span class="text-white">${escapeHtml(walletType || 'Not connected')}</span></div>
-    <div>Replay mode: <span class="text-[#33f0b2]">${walletType === 'Demo' ? 'Authorization: Bearer demo' : 'Manual signature required'}</span></div>
+    <div>${t('dynamic.walletLabel')}: <span class="text-white">${escapeHtml(walletType || t('dynamic.walletNotConnected'))}</span></div>
+    <div>${t('dynamic.replayMode')}: <span class="text-[#33f0b2]">${walletType === 'Demo' ? t('dynamic.replayDemo') : t('dynamic.replayManual')}</span></div>
   `;
 }
 
@@ -279,11 +601,11 @@ function testAPI(endpointPath: string) {
 
   getElement<HTMLHeadingElement>('modalTitle').textContent = endpoint ? endpoint.path : 'API Test';
   getElement<HTMLDivElement>('paymentDetails').innerHTML = `
-    <div>Endpoint: <span class="text-white">${escapeHtml(endpointPath)}</span></div>
-    <div>Price: <span class="text-[#33f0b2]">${escapeHtml(endpoint?.price || '--')} USDC</span></div>
-    <div>Flow: first request challenge, second request replay</div>
+    <div>${t('dynamic.endpoint')}: <span class="text-white">${escapeHtml(endpointPath)}</span></div>
+    <div>${t('dynamic.price')}: <span class="text-[#33f0b2]">${escapeHtml(endpoint?.price || '--')} USDC</span></div>
+    <div>${t('dynamic.flow')}: ${t('dynamic.flowValue')}</div>
   `;
-  getElement<HTMLDivElement>('apiResult').innerHTML = logLine(`Ready to call ${endpointPath}`, 'info');
+  getElement<HTMLDivElement>('apiResult').innerHTML = logLine(t('dynamic.readyToCall', { path: endpointPath }), 'info');
   getElement<HTMLDivElement>('apiModal').classList.remove('hidden');
   getElement<HTMLDivElement>('apiModal').classList.add('flex');
 }
@@ -294,11 +616,11 @@ async function executeRequest() {
   const requestUrl = `${API_BASE}${currentAPI}`;
 
   button.disabled = true;
-  button.textContent = 'Executing...';
+  button.textContent = t('dynamic.execute');
 
   resultEl.innerHTML = [
     logLine(`GET ${requestUrl}`, 'info'),
-    logLine('Sending initial request without payment header...', 'default'),
+    logLine(t('dynamic.initialRequest'), 'default'),
   ].join('');
 
   try {
@@ -309,43 +631,40 @@ async function executeRequest() {
     if (response.status === 402) {
       const challenge = (await response.json()) as { payTo?: string; price?: string; currency?: string };
       resultEl.innerHTML += [
-        logLine('Received 402 Payment Required', 'warning'),
-        logLine(`payTo => ${challenge.payTo}`, 'default'),
-        logLine(`price => ${challenge.price} ${challenge.currency}`, 'success'),
+        logLine(t('dynamic.received402'), 'warning'),
+        logLine(t('dynamic.payTo', { value: challenge.payTo || '' }), 'default'),
+        logLine(t('dynamic.priceValue', { value: challenge.price || '', currency: challenge.currency || '' }), 'success'),
       ].join('');
 
       if (walletType === 'Demo') {
-        resultEl.innerHTML += logLine('Replaying request with demo authorization...', 'success');
+        resultEl.innerHTML += logLine(t('dynamic.replaying'), 'success');
         const paid = await fetch(requestUrl, {
           headers: { Authorization: 'Bearer demo' },
         });
 
         if (!paid.ok) {
-          resultEl.innerHTML += logLine(`Replay failed with status ${paid.status}`, 'danger');
+          resultEl.innerHTML += logLine(t('dynamic.replayFailed', { status: paid.status }), 'danger');
         } else {
           const data = await paid.json();
-          resultEl.innerHTML += logLine('Replay succeeded. Response body:', 'success');
+          resultEl.innerHTML += logLine(t('dynamic.replaySucceeded'), 'success');
           resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
         }
       } else {
-        resultEl.innerHTML += logLine(
-        'Connect Demo Mode to complete the full request loop inside the browser.',
-        'warning',
-      );
+        resultEl.innerHTML += logLine(t('dynamic.connectDemo'), 'warning');
       }
     } else if (response.ok) {
       const data = await response.json();
-      resultEl.innerHTML += logLine('Request succeeded without replay.', 'success');
+      resultEl.innerHTML += logLine(t('dynamic.requestSucceeded'), 'success');
       resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
     } else {
-      resultEl.innerHTML += logLine(`Unexpected status ${response.status}`, 'danger');
+      resultEl.innerHTML += logLine(t('dynamic.unexpectedStatus', { status: response.status }), 'danger');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown network error';
-    resultEl.innerHTML += logLine(`Network error: ${message}`, 'danger');
+    resultEl.innerHTML += logLine(t('dynamic.networkError', { message }), 'danger');
   } finally {
     button.disabled = false;
-    button.textContent = 'Execute Request';
+    button.textContent = t('dynamic.executeRequest');
   }
 }
 
@@ -355,10 +674,27 @@ function closeModal() {
   currentAPI = '';
 }
 
+function setLanguage(language: Language) {
+  currentLanguage = language;
+  window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  applyStaticTranslations();
+  if (catalog) {
+    renderCatalog(catalog.endpoints);
+    setSelectedEndpoint(selectedEndpoint || catalog.endpoints[0] || null);
+  }
+  if (walletConnected) {
+    updateWalletUI();
+  }
+}
+
 function bindEvents() {
+  getElement<HTMLButtonElement>('languageToggle').addEventListener('click', () => {
+    setLanguage(currentLanguage === 'zh' ? 'en' : 'zh');
+  });
+
   getElement<HTMLButtonElement>('connectWallet').addEventListener('click', () => {
     if (walletConnected) {
-      window.alert(`已连接地址: ${walletAddress}\n连接类型: ${walletType}\n\n当前仍以 demo 支付流为主。`);
+      window.alert(t('dynamic.walletConnectedAlert', { address: walletAddress, walletType }));
       return;
     }
 
@@ -405,14 +741,16 @@ function bindEvents() {
   getElement<HTMLDivElement>('catalogGrid').addEventListener('click', (event) => {
     const target = event.target as HTMLElement | null;
     const card = target?.closest<HTMLElement>('[data-endpoint-path]');
-    if (!card?.dataset.endpointPath) {
+    if (!card?.dataset.endpointPath || !catalog) {
       return;
     }
 
-    selectEndpointByPath(card.dataset.endpointPath);
+    const endpoint = catalog.endpoints.find((item) => item.path === card.dataset.endpointPath);
+    setSelectedEndpoint(endpoint || catalog.endpoints[0] || null);
   });
 }
 
+applyStaticTranslations();
 setHeroTerminal(null);
 bindEvents();
 void loadHealth();

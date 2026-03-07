@@ -202,3 +202,41 @@
 1. 用 Durable Objects 或 KV 做 nonce 持久化
 2. 把 `whale-positions` 接成真实上游
 3. 把前端继续拆成更细的模块
+
+## 2026-03-08
+
+### 本轮目标
+
+- 为首页增加中英文切换
+- 保持 catalog、钱包弹窗和测试弹窗的动态文案可双语切换
+- 记住用户语言选择，避免刷新后丢失
+
+### 已完成
+
+- 首页导航新增中英文切换按钮
+- 页面静态文案已接入 `data-i18n` 和前端翻译表
+- catalog 卡片、接口详情、示例代码提示、钱包弹窗和 API 测试弹窗都已随语言切换
+- 语言选择会写入 `localStorage`，刷新后继续沿用
+- README 和 ROADMAP 已同步记录双语能力
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+
+### 遗留问题
+
+- 当前 SEO 元信息只做了标题和描述的运行时切换，尚未加入多语言 `hreflang` 策略
+- Worker 返回的 catalog 仍然是单语描述，前端当前使用本地映射补足中文展示
+
+### 下一步建议
+
+1. 把双语字段下沉到 catalog，减少前端本地文案映射
+2. 补 `hreflang` 与多语言 sitemap 策略
+3. 继续把前端拆成 `i18n`、`wallet`、`catalog` 等模块

@@ -24,6 +24,7 @@
 - 已补最小集成测试，覆盖 catalog、health、402、demo replay、签名验证
 - 已加入 nonce 防重放逻辑
 - 已支持 Rabby Wallet 地址连接
+- 已支持首页中英文切换与语言记忆
 - 已补 logo、favicon、Open Graph、robots 和 sitemap
 
 ## Phase 1
