@@ -28,6 +28,7 @@
 - `npm run typecheck` 通过
 - `npm test` 通过，当前 13 个测试全部通过
 - `npm run build:frontend` 通过
+- `npx wrangler deploy` 通过（Worker Version: `e9fd78b5-075d-4358-bd8b-247cc2d2b2a4`）
 
 ### 下一步建议
 
