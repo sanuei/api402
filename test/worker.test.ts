@@ -198,6 +198,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
       maxSettlementAgeBlocks: number;
       maxPaymentAgeSeconds: number;
       maxFutureSkewSeconds: number;
+      remediationSchemaVersion?: string;
+      remediationCompatibility?: string;
       payloadSchema: { requiredFields: string[] };
       settlementPolicy?: {
         settlementMethod: string;
@@ -230,6 +232,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.maxSettlementAgeBlocks, 7200);
   assert.equal(body.payment.maxPaymentAgeSeconds, 900);
   assert.equal(body.payment.maxFutureSkewSeconds, 120);
+  assert.equal(body.payment.remediationSchemaVersion, '1.0.0');
+  assert.equal(body.payment.remediationCompatibility, 'semver-minor-backward-compatible');
   assert.equal(body.payment.settlementPolicy?.settlementMethod, 'base-usdc-transfer-receipt');
   assert.equal(body.payment.settlementPolicy?.requiredConfirmations, 2);
   assert.equal(body.payment.settlementPolicy?.maxSettlementAgeBlocks, 7200);
@@ -262,11 +266,18 @@ test('health endpoint returns status information', async () => {
 
 test('unpaid request returns a 402 challenge with reason code', async () => {
   const response = await worker.fetch(new Request('https://api-402.com/api/deepseek'), createEnv());
-  const body = (await response.json()) as { code: string; reason: string };
+  const body = (await response.json()) as {
+    code: string;
+    reason: string;
+    remediationSchemaVersion?: string;
+    remediationCompatibility?: string;
+  };
 
   assert.equal(response.status, 402);
   assert.equal(body.code, 'PAYMENT_REQUIRED');
   assert.equal(body.reason, 'PAYMENT_MISSING');
+  assert.equal(body.remediationSchemaVersion, '1.0.0');
+  assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
   assert.equal(response.headers.get('X-Payment-Reason'), 'PAYMENT_MISSING');
 });
 
@@ -614,6 +625,8 @@ test('settlement status endpoint returns pending with retry guidance', async () 
         code: string;
         settlementPolicy?: { recommendedRetryAfterSeconds: number };
         remediation?: { retryable: boolean; retryAfterSeconds?: number };
+        remediationSchemaVersion?: string;
+        remediationCompatibility?: string;
         settlement?: { confirmations: number; requiredConfirmations: number };
       };
 
@@ -624,6 +637,8 @@ test('settlement status endpoint returns pending with retry guidance', async () 
       assert.equal(body.settlementPolicy?.recommendedRetryAfterSeconds, 2);
       assert.equal(body.remediation?.retryable, true);
       assert.equal(body.remediation?.retryAfterSeconds, 2);
+      assert.equal(body.remediationSchemaVersion, '1.0.0');
+      assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
       assert.equal(response.headers.get('Retry-After'), '2');
       assert.equal(response.headers.get('X-Settlement-Status'), 'SETTLEMENT_PENDING');
     },

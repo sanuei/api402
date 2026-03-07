@@ -151,6 +151,9 @@ const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const SETTLEMENT_PATH_PREFIX = '/api/v1/settlement/';
 
+const REMEDIATION_SCHEMA_VERSION = '1.0.0';
+const REMEDIATION_COMPATIBILITY = 'semver-minor-backward-compatible';
+
 const SETTLEMENT_REMEDIATION_MAP: Record<SettlementStatusResult['code'], RemediationHint> = {
   SETTLEMENT_READY: {
     retryable: false,
@@ -1126,6 +1129,8 @@ export function createCatalog(
       settlementConfirmationsRequired: minConfirmations,
       maxSettlementAgeBlocks,
       settlementPolicy: buildSettlementPolicy(minConfirmations, maxSettlementAgeBlocks),
+      remediationSchemaVersion: REMEDIATION_SCHEMA_VERSION,
+      remediationCompatibility: REMEDIATION_COMPATIBILITY,
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       payloadSchema: {
@@ -1212,6 +1217,8 @@ function createPaymentRequired(
       maxFutureSkewSeconds: futureSkewSeconds,
       settlement: verification.settlement || null,
       remediation,
+      remediationSchemaVersion: REMEDIATION_SCHEMA_VERSION,
+      remediationCompatibility: REMEDIATION_COMPATIBILITY,
       paymentSchema: {
         version: '1',
         scheme: 'exact',
@@ -1475,6 +1482,8 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
       settlement: statusResult.settlement,
       settlementPolicy,
       remediation,
+      remediationSchemaVersion: REMEDIATION_SCHEMA_VERSION,
+      remediationCompatibility: REMEDIATION_COMPATIBILITY,
       settlementProof,
       settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
     },
@@ -1999,6 +2008,8 @@ const worker = {
       catalog.payment.settlementStatusFilters = ['payer', 'resource', 'payTo', 'minAmount'];
       catalog.payment.settlementStatusRemediation = SETTLEMENT_REMEDIATION_MAP;
       catalog.payment.paymentReasonRemediation = PAYMENT_REMEDIATION_MAP;
+      catalog.payment.remediationSchemaVersion = REMEDIATION_SCHEMA_VERSION;
+      catalog.payment.remediationCompatibility = REMEDIATION_COMPATIBILITY;
 
       return apiResponse(catalog);
     }

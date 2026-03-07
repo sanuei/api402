@@ -36,6 +36,7 @@
 - 已新增 `GET /api/v1/settlement/{txHash}` 结算状态查询接口，支持 machine-readable 状态和 Retry-After 建议
 - settlement 查询已支持可选 `PAYMENT-SIGNATURE` 证明绑定校验，并支持 `payer` / `resource` / `payTo` / `minAmount` 过滤归因
 - catalog 已输出 `settlementStatusRemediation` / `paymentReasonRemediation`，402 challenge 与 settlement 查询响应会返回 `remediation`，方便 SDK 按错误码执行自动补救
+- remediation 字段已增加稳定版本元信息（`remediationSchemaVersion=1.0.0`、`remediationCompatibility=semver-minor-backward-compatible`），降低 SDK 解析漂移风险
 - 支付签名已加入时间窗约束（`issuedAt` 最大年龄与未来时钟偏差限制），降低延迟重放风险
 - Base 结算校验已支持 `BASE_RPC_URLS` 主备 RPC 自动回退（含请求超时控制）
 - Base 结算证明已加入最大区块年龄限制（默认 7200 blocks），可拦截历史交易延迟重放
@@ -121,7 +122,7 @@
 1. 在 catalog 中增加更明确的延迟/可用性字段
 2. 为关键上游接口补统一超时、熔断与降级策略（含错误码分层）
 3. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
-4. 为 remediation 字段增加稳定版本号与兼容策略，避免 SDK 解析漂移
+4. 为 remediation 字段补 changelog / deprecation 公告地址，完善 SDK 自动兼容升级路径
 
 ## Operations
 
