@@ -4,6 +4,39 @@
 
 ### 本轮目标
 
+- 为 settlement / 402 错误码补 machine-readable 补救动作映射，提升 SDK 自动恢复成功率
+
+### 已完成
+
+- 新增 `settlementStatusRemediation` 映射并在 catalog 对外暴露
+- 新增 `paymentReasonRemediation` 映射并在 catalog 对外暴露
+- `GET /api/v1/settlement/{txHash}` 响应新增 `remediation` 字段（含 `retryable` 与建议 `retryAfterSeconds`）
+- 402 challenge 响应新增 `remediation` 字段，`PAYMENT_TX_NOT_CONFIRMED` 会携带动态重试秒数
+- 测试新增断言，覆盖 catalog remediation 字段与 settlement pending 场景 remediation 输出
+- README 与 ROADMAP 已同步 remediation 能力说明
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 19 个测试全部通过
+
+### 下一步建议
+
+1. 在 catalog 增加 latency / availability 指标字段
+2. 给关键上游代理补统一熔断 / fallback 策略与 machine-readable 错误码
+3. 推进 AI 类接口真实上游替换，继续降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为 settlement 状态查询补齐 `payTo` / `minAmount` 过滤，提升多商户归因与支付核验可靠性
 
 ### 已完成

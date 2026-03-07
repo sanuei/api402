@@ -94,6 +94,12 @@ type SettlementStatusResult = {
   receipt: JsonRpcTransactionReceipt | null;
 };
 
+type RemediationHint = {
+  retryable: boolean;
+  action: string;
+  retryAfterSeconds?: number;
+};
+
 export interface PaymentVerificationResult {
   ok: boolean;
   code:
@@ -144,6 +150,56 @@ const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const SETTLEMENT_PATH_PREFIX = '/api/v1/settlement/';
+
+const SETTLEMENT_REMEDIATION_MAP: Record<SettlementStatusResult['code'], RemediationHint> = {
+  SETTLEMENT_READY: {
+    retryable: false,
+    action: 'Settlement is confirmed. Replay the paid request now.',
+  },
+  SETTLEMENT_PENDING: {
+    retryable: true,
+    action: 'Wait for more Base confirmations, then retry settlement status or replay request.',
+  },
+  SETTLEMENT_TOO_OLD: {
+    retryable: false,
+    action: 'Create and submit a new payment transaction; this proof is too old.',
+  },
+  SETTLEMENT_NOT_FOUND: {
+    retryable: true,
+    action: 'Check tx hash and chain, wait for indexing, then retry.',
+  },
+  SETTLEMENT_RPC_FAILED: {
+    retryable: true,
+    action: 'Retry against settlement endpoint after a short delay or switch RPC providers.',
+  },
+};
+
+const PAYMENT_REMEDIATION_MAP: Partial<Record<PaymentVerificationResult['code'], RemediationHint>> = {
+  PAYMENT_TX_NOT_CONFIRMED: {
+    retryable: true,
+    action: 'Wait for required Base confirmations, then replay the same signed payload and tx hash.',
+  },
+  PAYMENT_TX_TOO_OLD: {
+    retryable: false,
+    action: 'Pay again with a fresh transaction hash and replay within allowed settlement age.',
+  },
+  PAYMENT_TX_NOT_FOUND: {
+    retryable: true,
+    action: 'Confirm the tx hash on Base mainnet and retry when it is indexed.',
+  },
+  PAYMENT_SETTLEMENT_RPC_FAILED: {
+    retryable: true,
+    action: 'Retry shortly; gateway could not reach Base RPC.',
+  },
+  PAYMENT_TX_REPLAYED: {
+    retryable: false,
+    action: 'Use a new payment transaction hash for a new paid request.',
+  },
+  PAYMENT_NONCE_REPLAYED: {
+    retryable: false,
+    action: 'Regenerate payload with a new nonce and signature before replay.',
+  },
+};
 
 type ReplayConsumeResult = {
   consumed: boolean;
@@ -921,6 +977,20 @@ function buildSettlementPolicy(
   };
 }
 
+function buildRemediation(
+  hint: RemediationHint,
+  settlementPolicy?: SettlementPolicy,
+): RemediationHint {
+  if (!hint.retryable || !settlementPolicy) {
+    return hint;
+  }
+
+  return {
+    ...hint,
+    retryAfterSeconds: settlementPolicy.recommendedRetryAfterSeconds,
+  };
+}
+
 async function getSettlementStatus(
   env: Env,
   txHash: string,
@@ -1113,6 +1183,11 @@ function createPaymentRequired(
     responseHeaders['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
   }
 
+  const remediationHint = PAYMENT_REMEDIATION_MAP[verification.code];
+  const remediation = remediationHint
+    ? buildRemediation(remediationHint, verification.code === 'PAYMENT_TX_NOT_CONFIRMED' ? settlementPolicy : undefined)
+    : null;
+
   return apiResponse(
     {
       code: 'PAYMENT_REQUIRED',
@@ -1136,6 +1211,7 @@ function createPaymentRequired(
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       settlement: verification.settlement || null,
+      remediation,
       paymentSchema: {
         version: '1',
         scheme: 'exact',
@@ -1223,6 +1299,8 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
   if (statusResult.code === 'SETTLEMENT_PENDING') {
     headers['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
   }
+
+  const remediation = buildRemediation(SETTLEMENT_REMEDIATION_MAP[statusResult.code], settlementPolicy);
 
   const proofHeader = request.headers.get('PAYMENT-SIGNATURE');
   const payerFilter = url.searchParams.get('payer')?.toLowerCase() || null;
@@ -1351,6 +1429,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
           txHash,
           settlement: statusResult.settlement,
           settlementPolicy,
+          remediation,
           settlementProof,
           settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
         },
@@ -1379,6 +1458,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
           txHash,
           settlement: statusResult.settlement,
           settlementPolicy,
+          remediation,
           settlementProof,
           settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
         },
@@ -1394,6 +1474,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
       txHash,
       settlement: statusResult.settlement,
       settlementPolicy,
+      remediation,
       settlementProof,
       settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
     },
@@ -1916,6 +1997,8 @@ const worker = {
       catalog.payment.settlementStatusEndpointTemplate = `${origin}${SETTLEMENT_PATH_PREFIX}{txHash}`;
       catalog.payment.settlementStatusProofHeaders = ['PAYMENT-SIGNATURE'];
       catalog.payment.settlementStatusFilters = ['payer', 'resource', 'payTo', 'minAmount'];
+      catalog.payment.settlementStatusRemediation = SETTLEMENT_REMEDIATION_MAP;
+      catalog.payment.paymentReasonRemediation = PAYMENT_REMEDIATION_MAP;
 
       return apiResponse(catalog);
     }

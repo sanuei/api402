@@ -207,6 +207,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
         recommendedRetryAfterSeconds: number;
       };
       settlementStatusFilters?: string[];
+      settlementStatusRemediation?: Record<string, { retryable: boolean; action: string }>;
+      paymentReasonRemediation?: Record<string, { retryable: boolean; action: string }>;
     };
     endpoints: Array<{
       exampleRequest: unknown;
@@ -234,6 +236,11 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.settlementPolicy?.averageBlockSeconds, 2);
   assert.equal(body.payment.settlementPolicy?.recommendedRetryAfterSeconds, 4);
   assert.deepEqual(body.payment.settlementStatusFilters, ['payer', 'resource', 'payTo', 'minAmount']);
+  assert.equal(body.payment.settlementStatusRemediation?.SETTLEMENT_PENDING?.retryable, true);
+  assert.equal(
+    body.payment.paymentReasonRemediation?.PAYMENT_TX_NOT_CONFIRMED?.retryable,
+    true,
+  );
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
@@ -606,6 +613,7 @@ test('settlement status endpoint returns pending with retry guidance', async () 
       const body = (await response.json()) as {
         code: string;
         settlementPolicy?: { recommendedRetryAfterSeconds: number };
+        remediation?: { retryable: boolean; retryAfterSeconds?: number };
         settlement?: { confirmations: number; requiredConfirmations: number };
       };
 
@@ -614,6 +622,8 @@ test('settlement status endpoint returns pending with retry guidance', async () 
       assert.equal(body.settlement?.confirmations, 1);
       assert.equal(body.settlement?.requiredConfirmations, 2);
       assert.equal(body.settlementPolicy?.recommendedRetryAfterSeconds, 2);
+      assert.equal(body.remediation?.retryable, true);
+      assert.equal(body.remediation?.retryAfterSeconds, 2);
       assert.equal(response.headers.get('Retry-After'), '2');
       assert.equal(response.headers.get('X-Settlement-Status'), 'SETTLEMENT_PENDING');
     },
