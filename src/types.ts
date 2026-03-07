@@ -50,6 +50,22 @@ export interface CatalogEndpoint {
     maxAgeSeconds: number;
     signal: 'upstream_telemetry' | 'request_metrics' | 'none';
   };
+  requestMetrics?: {
+    windowMs: number;
+    totalRequests: number;
+    successRate: number;
+    paymentRequiredRate: number;
+    rateLimitedRate: number;
+    upstreamFallbackRate: number;
+    errorsByCode: Array<{ code: string; count: number }>;
+    requestTrend: Array<{ bucketStart: string; totalRequests: number; errorRequests: number }>;
+    paymentFunnel?: {
+      challenged402: number;
+      settled: number;
+      replayed: number;
+      challengeToReplayConversionRate: number;
+    };
+  };
   locales?: {
     zh: CatalogEndpointLocale;
     en: CatalogEndpointLocale;

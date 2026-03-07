@@ -183,6 +183,9 @@ const translations: Record<Language, Record<string, string>> = {
     'freshness.secondsAgo': '{value}s 前',
     'freshness.minutesAgo': '{value}m 前',
     'freshness.hoursAgo': '{value}h 前',
+    'requestMetrics.recentRequests': '近 60 分钟请求',
+    'requestMetrics.payment402Rate': '402 比率',
+    'requestMetrics.replayConversion': '重放转化率',
   },
   en: {
     'meta.title': 'API Market | x402 API Payment Gateway on Base',
@@ -333,6 +336,9 @@ const translations: Record<Language, Record<string, string>> = {
     'freshness.secondsAgo': '{value}s ago',
     'freshness.minutesAgo': '{value}m ago',
     'freshness.hoursAgo': '{value}h ago',
+    'requestMetrics.recentRequests': 'Requests (60m)',
+    'requestMetrics.payment402Rate': '402 Rate',
+    'requestMetrics.replayConversion': 'Replay Conversion',
   },
 };
 
@@ -422,6 +428,14 @@ function formatFreshnessStatus(endpoint: CatalogEndpoint): string {
   const signal = endpoint.freshness?.signal || 'none';
   const ageLabel = formatRelativeAge(endpoint.freshness?.ageSeconds);
   return `${t(`freshness.${status}`)} · ${ageLabel} · ${t(`freshness.signal.${signal}`)}`;
+}
+
+function formatPercent(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '0%';
+  }
+
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 function getGatewayPayTo(): string {
@@ -583,6 +597,11 @@ function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
   getElement<HTMLDivElement>('selectedUpdatedAt').textContent = endpoint.lastUpdatedAt
     ? new Date(endpoint.lastUpdatedAt).toLocaleString(currentLanguage === 'zh' ? 'zh-CN' : 'en-US')
     : '-';
+  getElement<HTMLDivElement>('selectedRecentRequests').textContent = String(endpoint.requestMetrics?.totalRequests || 0);
+  getElement<HTMLDivElement>('selectedPayment402Rate').textContent = formatPercent(endpoint.requestMetrics?.paymentRequiredRate);
+  getElement<HTMLDivElement>('selectedReplayConversion').textContent = formatPercent(
+    endpoint.requestMetrics?.paymentFunnel?.challengeToReplayConversionRate,
+  );
   getElement<HTMLAnchorElement>('openSelectedApi').href = endpoint.url;
 
   getElement<HTMLButtonElement>('trySelected').onclick = () => testAPI(endpoint.path);
@@ -650,6 +669,22 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
           <div class="mt-5 flex items-center gap-2 text-xs">
             <span class="${freshnessClass} rounded-full px-3 py-1 mono">${escapeHtml(t(`freshness.${endpoint.freshness?.status || 'unknown'}`))}</span>
             <span class="text-slate-500 mono">${escapeHtml(formatRelativeAge(endpoint.freshness?.ageSeconds))}</span>
+          </div>
+          <div class="mt-5 grid grid-cols-3 gap-2">
+            <div class="log-box rounded-xl p-2.5">
+              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.recentRequests'))}</div>
+              <div class="mt-1 text-sm font-semibold text-slate-200 mono">${escapeHtml(String(endpoint.requestMetrics?.totalRequests || 0))}</div>
+            </div>
+            <div class="log-box rounded-xl p-2.5">
+              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.payment402Rate'))}</div>
+              <div class="mt-1 text-sm font-semibold text-[#ffcf66] mono">${escapeHtml(formatPercent(endpoint.requestMetrics?.paymentRequiredRate))}</div>
+            </div>
+            <div class="log-box rounded-xl p-2.5">
+              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.replayConversion'))}</div>
+              <div class="mt-1 text-sm font-semibold text-[#33f0b2] mono">${escapeHtml(
+                formatPercent(endpoint.requestMetrics?.paymentFunnel?.challengeToReplayConversionRate),
+              )}</div>
+            </div>
           </div>
           <div class="mt-6 flex items-center justify-between text-sm">
             <span class="${endpoint.access === 'mock_demo' ? 'badge-amber' : 'badge-green'} rounded-full px-3 py-1 text-xs mono">

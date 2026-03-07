@@ -332,6 +332,20 @@
                                 <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="freshness.updatedAt">Updated At</div>
                                 <div class="mono text-sm text-slate-200 break-all" id="selectedUpdatedAt">--</div>
                             </div>
+                            <div class="grid grid-cols-3 gap-3">
+                                <div class="log-box rounded-2xl p-4">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="requestMetrics.recentRequests">Requests (60m)</div>
+                                    <div class="mono text-sm text-slate-200" id="selectedRecentRequests">0</div>
+                                </div>
+                                <div class="log-box rounded-2xl p-4">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="requestMetrics.payment402Rate">402 Rate</div>
+                                    <div class="mono text-sm text-[#ffcf66]" id="selectedPayment402Rate">0%</div>
+                                </div>
+                                <div class="log-box rounded-2xl p-4">
+                                    <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="requestMetrics.replayConversion">Replay Conversion</div>
+                                    <div class="mono text-sm text-[#33f0b2]" id="selectedReplayConversion">0%</div>
+                                </div>
+                            </div>
                         </div>
 
                         <div class="mt-8 flex flex-col sm:flex-row gap-3">

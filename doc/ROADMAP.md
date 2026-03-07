@@ -47,6 +47,7 @@
 - catalog `requestMetrics` 已补 endpoint 级请求量、错误码分布、最近 60 分钟错误趋势分桶，以及支付阶段漏斗统计（`challenged402` / `settled` / `replayed` 与 challenge→replay 转化率）
 - catalog endpoint 已补 `lastUpdatedAt` 与 `freshness`（`status` / `ageSeconds` / `maxAgeSeconds` / `signal`），用于数据新鲜度判断
 - 前端 API 卡片与接口详情已展示 freshness 状态和更新时间，提升接入前的数据可用性判断效率
+- 前端 API 卡片与接口详情已新增 `requestMetrics` 核心字段展示（近 60 分钟请求量 / 402 比率 / replay 转化率），可直接用于转化诊断
 - 402 challenge、成功响应与 settlement 查询均支持 `requestId` 回传（`X-Request-Id`），payment funnel 现基于 requestId 做 challenge→replay 精确归因
 - upstream telemetry 与 endpoint requestMetrics 已持久化到 Durable Objects，并用于 catalog snapshot 聚合（降低冷启动窗口丢失）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
@@ -131,7 +132,7 @@
 1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
 2. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
 3. 基于持久化 requestId 漏斗补长期归因导出接口（例如 24h / 7d 聚合视图）
-4. 在前端 API 卡片增加 `requestMetrics` 核心字段（recent requests / 402 rate / replay conversion）可视化，直接提升转化优化效率
+4. 在前端继续补 requestMetrics 趋势可视化（如 6 桶 sparkline 与 Top 错误码），支持快速定位转化波动根因
 
 ## Operations
 

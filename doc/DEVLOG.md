@@ -4,6 +4,43 @@
 
 ### 本轮目标
 
+- 在前端 API 卡片与接口详情中直接展示 requestMetrics 核心指标（近 60 分钟请求量 / 402 比率 / replay 转化率），提升转化优化效率（conversion）
+
+### 已完成
+
+- 前端 `CatalogEndpoint` 类型补齐 `requestMetrics` 字段定义（含 payment funnel）
+- API 卡片新增 3 个核心运营指标可视化：
+  - Requests (60m)
+  - 402 Rate
+  - Replay Conversion
+- 接口详情面板新增同一组指标字段，便于对单个 endpoint 做快速诊断
+- 中英文文案已同步国际化词条（`requestMetrics.*`）
+- ROADMAP 已同步“requestMetrics 前端可视化已完成”状态，并更新下一步任务
+
+### 涉及文件
+
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+- `npm run deploy` 通过（Worker Version: `8d9cfe02-8356-44e4-8559-a1e0ae75b6dc`）
+
+### 下一步建议
+
+1. 继续把 AI 类接口从 demo 替换为真实上游（需凭据）
+2. 将 metrics 持久层从单实例 DO 升级为按 endpoint/source 分片
+3. 增加 24h / 7d requestId funnel 聚合导出接口
+
+## 2026-03-08
+
+### 本轮目标
+
 - 将 catalog 的 upstream telemetry + endpoint requestMetrics 持久化到 Durable Objects，避免冷启动窗口丢失（payment reliability + conversion diagnostics）
 
 ### 已完成
