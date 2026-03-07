@@ -14,6 +14,8 @@ export interface Env {
   BASE_RPC_URL?: string;
   BASE_RPC_URLS?: string;
   PAYMENT_MIN_CONFIRMATIONS?: string;
+  PAYMENT_MAX_AGE_SECONDS?: string;
+  PAYMENT_MAX_FUTURE_SKEW_SECONDS?: string;
   REPLAY_GUARD?: DurableObjectNamespace;
   ASSETS?: Fetcher;
 }
@@ -93,6 +95,9 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_TRANSFER_MISSING'
     | 'PAYMENT_TRANSFER_AMOUNT_TOO_LOW'
     | 'PAYMENT_TX_NOT_CONFIRMED'
+    | 'PAYMENT_ISSUED_AT_IN_FUTURE'
+    | 'PAYMENT_STALE'
+    | 'PAYMENT_DEADLINE_TOO_FAR'
     | 'PAYMENT_SIGNATURE_INVALID';
   message: string;
   settlement?: PaymentSettlementContext;
@@ -102,6 +107,8 @@ const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
 const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
 const BASE_RPC_TIMEOUT_MS = 6000;
 const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
+const DEFAULT_PAYMENT_MAX_AGE_SECONDS = 15 * 60;
+const DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS = 2 * 60;
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const PAYMENT_TX_HASH_HEADER = 'X-PAYMENT-TX-HASH';
 const ERC20_TRANSFER_TOPIC =
@@ -412,6 +419,19 @@ function parseHexBlockNumber(value: unknown): bigint | null {
   }
 
   return BigInt(value);
+}
+
+function parsePositiveInt(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return parsed;
 }
 
 function getPaymentTxHash(request: Request): string | null {
@@ -792,7 +812,13 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
   };
 }
 
-export function createCatalog(baseUrl: string, payTo: string, minConfirmations = DEFAULT_PAYMENT_MIN_CONFIRMATIONS) {
+export function createCatalog(
+  baseUrl: string,
+  payTo: string,
+  minConfirmations = DEFAULT_PAYMENT_MIN_CONFIRMATIONS,
+  maxAgeSeconds = DEFAULT_PAYMENT_MAX_AGE_SECONDS,
+  futureSkewSeconds = DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS,
+) {
   return {
     name: 'API Market',
     appName: 'API Market',
@@ -811,6 +837,8 @@ export function createCatalog(baseUrl: string, payTo: string, minConfirmations =
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementMethod: 'base-usdc-transfer-receipt',
       settlementConfirmationsRequired: minConfirmations,
+      maxPaymentAgeSeconds: maxAgeSeconds,
+      maxFutureSkewSeconds: futureSkewSeconds,
       payloadSchema: {
         version: '1',
         scheme: 'exact',
@@ -842,6 +870,8 @@ function createPaymentRequired(
   endpoint: APIEndpoint,
   verification: PaymentVerificationResult,
   minConfirmations: number,
+  maxAgeSeconds: number,
+  futureSkewSeconds: number,
 ): Response {
   return apiResponse(
     {
@@ -861,6 +891,8 @@ function createPaymentRequired(
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementConfirmationsRequired: minConfirmations,
+      maxPaymentAgeSeconds: maxAgeSeconds,
+      maxFutureSkewSeconds: futureSkewSeconds,
       settlement: verification.settlement || null,
       paymentSchema: {
         version: '1',
@@ -904,6 +936,7 @@ function createPaymentRequired(
         'Connect a wallet with Base USDC.',
         'Submit the Base USDC transaction hash in X-PAYMENT-TX-HASH.',
         `Wait for at least ${minConfirmations} Base block confirmations before replaying.`,
+        `Set issuedAt close to current time (<= ${futureSkewSeconds}s future skew, <= ${maxAgeSeconds}s max age).`,
         'Build a payment payload for the requested resource.',
         'Sign the canonical JSON string of the payload without the signature field.',
         'Replay the request with Authorization or PAYMENT-SIGNATURE.',
@@ -965,6 +998,14 @@ export async function verifyPayment(
   env: Env,
   now = Date.now(),
 ): Promise<PaymentVerificationResult> {
+  const maxPaymentAgeSeconds = parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS);
+  const maxFutureSkewSeconds = parsePositiveInt(
+    env.PAYMENT_MAX_FUTURE_SKEW_SECONDS,
+    DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS,
+  );
+  const maxPaymentAgeMs = maxPaymentAgeSeconds * 1000;
+  const maxFutureSkewMs = maxFutureSkewSeconds * 1000;
+
   const rawPayload = extractPaymentPayload(request);
 
   if (rawPayload === 'demo') {
@@ -1042,6 +1083,39 @@ export async function verifyPayment(
       ok: false,
       code: 'PAYMENT_EXPIRED',
       message: 'Payment payload has expired.',
+    };
+  }
+
+  const issuedAt = Date.parse(rawPayload.issuedAt);
+  if (!Number.isFinite(issuedAt)) {
+    return {
+      ok: false,
+      code: 'INVALID_PAYMENT_PAYLOAD',
+      message: 'Payment payload issuedAt is invalid.',
+    };
+  }
+
+  if (issuedAt > now + maxFutureSkewMs) {
+    return {
+      ok: false,
+      code: 'PAYMENT_ISSUED_AT_IN_FUTURE',
+      message: `Payment payload issuedAt is too far in the future. Maximum allowed skew is ${maxFutureSkewSeconds.toString()} seconds.`,
+    };
+  }
+
+  if (now - issuedAt > maxPaymentAgeMs) {
+    return {
+      ok: false,
+      code: 'PAYMENT_STALE',
+      message: `Payment payload is too old. Maximum age is ${maxPaymentAgeSeconds.toString()} seconds.`,
+    };
+  }
+
+  if (deadline - issuedAt > maxPaymentAgeMs) {
+    return {
+      ok: false,
+      code: 'PAYMENT_DEADLINE_TOO_FAR',
+      message: `Payment payload deadline window is too long. Maximum window is ${maxPaymentAgeSeconds.toString()} seconds.`,
     };
   }
 
@@ -1377,7 +1451,15 @@ const worker = {
     }
 
     if (path === CATALOG_PATH) {
-      return apiResponse(createCatalog(origin, payTo, parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS)));
+      return apiResponse(
+        createCatalog(
+          origin,
+          payTo,
+          parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS),
+          parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS),
+          parsePositiveInt(env.PAYMENT_MAX_FUTURE_SKEW_SECONDS, DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS),
+        ),
+      );
     }
 
     if (path === LEGACY_PRICE_PATH) {
@@ -1411,6 +1493,8 @@ const worker = {
           endpoint,
           verification,
           parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS),
+          parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS),
+          parsePositiveInt(env.PAYMENT_MAX_FUTURE_SKEW_SECONDS, DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS),
         );
       }
 

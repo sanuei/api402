@@ -4,6 +4,35 @@
 
 ### 本轮目标
 
+- 继续提升真实支付验证稳健性，收紧签名 payload 时间窗，降低延迟重放和时钟漂移导致的误验风险
+
+### 已完成
+
+- 支付验证新增 `issuedAt` 时间窗校验：默认只接受 15 分钟内创建的签名
+- 新增未来时钟偏差限制：默认最多允许 `issuedAt` 超前当前时间 120 秒
+- 新增机器可读错误码：`PAYMENT_STALE`、`PAYMENT_ISSUED_AT_IN_FUTURE`、`PAYMENT_DEADLINE_TOO_FAR`
+- catalog 与 402 challenge 现对外暴露 `maxPaymentAgeSeconds`、`maxFutureSkewSeconds`
+- `wrangler.toml` 新增 `PAYMENT_MAX_AGE_SECONDS`、`PAYMENT_MAX_FUTURE_SKEW_SECONDS` 默认配置
+- 测试新增陈旧签名拒绝场景，并扩展 catalog 字段断言
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 给关键上游代理补统一熔断 / fallback 策略与 machine-readable 错误码
+2. 在 catalog 增加 latency / availability 指标字段
+3. 继续推进 AI 类接口真实上游替换，进一步降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 提升真实支付结算的可用性，避免单一 Base RPC 波动导致支付验证误判失败
 
 ### 已完成

@@ -26,6 +26,7 @@
 - 当前支付范围固定为 `Base` 主网原生 `USDC`，不接受其他链上的 USDC
 - 非 demo 请求现在要求提供 `PAYMENT-SIGNATURE` 和 `X-PAYMENT-TX-HASH`，Worker 会回查 Base 链上 USDC 转账回执
 - 支付通过或被 402 拒绝时都会返回结构化 `settlement` 上下文（txHash、receiptBlock、confirmations），便于 SDK 自动重试
+- 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
 
 ## Core Routes
@@ -58,6 +59,8 @@ npm run deploy
 默认 Base RPC 为 `https://mainnet.base.org`，可通过 `BASE_RPC_URL` 覆盖。
 生产建议配置 `BASE_RPC_URLS`（逗号分隔）提供主备 RPC，Worker 会按顺序自动回退，提高结算校验可用性。
 `PAYMENT_MIN_CONFIRMATIONS` 用于控制交易回执最少确认块数，默认值为 `2`。
+`PAYMENT_MAX_AGE_SECONDS` 用于限制支付 payload 的最大有效时间窗（默认 `900` 秒）。
+`PAYMENT_MAX_FUTURE_SKEW_SECONDS` 用于限制 `issuedAt` 允许的未来时钟偏差（默认 `120` 秒）。
 `REPLAY_GUARD` Durable Object 负责持久化 nonce / tx hash 防重放状态。
 
 `deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。

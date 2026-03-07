@@ -19,6 +19,8 @@ PAY_TO = "0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18"
 BASE_RPC_URL = "https://mainnet.base.org"
 BASE_RPC_URLS = "https://mainnet.base.org,https://base.llamarpc.com"
 PAYMENT_MIN_CONFIRMATIONS = "2"
+PAYMENT_MAX_AGE_SECONDS = "900"
+PAYMENT_MAX_FUTURE_SKEW_SECONDS = "120"
 
 [[migrations]]
 tag = "v1"

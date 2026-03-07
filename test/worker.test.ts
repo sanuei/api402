@@ -82,7 +82,11 @@ function encodeBase64(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64');
 }
 
-async function createSignedPayload(path: string, amount: string): Promise<PaymentPayload> {
+async function createSignedPayload(
+  path: string,
+  amount: string,
+  overrides: Partial<Omit<PaymentPayload, 'signature'>> = {},
+): Promise<PaymentPayload> {
   const wallet = Wallet.createRandom();
   const message = buildPaymentMessage({
     version: '1',
@@ -96,6 +100,7 @@ async function createSignedPayload(path: string, amount: string): Promise<Paymen
     nonce: 'nonce-123',
     deadline: new Date(Date.now() + 60_000).toISOString(),
     issuedAt: new Date().toISOString(),
+    ...overrides,
   });
 
   const signature = await wallet.signMessage(JSON.stringify(message));
@@ -190,6 +195,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
       acceptance: string;
       settlementProofHeader: string;
       settlementConfirmationsRequired: number;
+      maxPaymentAgeSeconds: number;
+      maxFutureSkewSeconds: number;
       payloadSchema: { requiredFields: string[] };
     };
     endpoints: Array<{
@@ -209,6 +216,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.acceptance, 'base-mainnet-usdc-only');
   assert.equal(body.payment.settlementProofHeader, 'X-PAYMENT-TX-HASH');
   assert.equal(body.payment.settlementConfirmationsRequired, 2);
+  assert.equal(body.payment.maxPaymentAgeSeconds, 900);
+  assert.equal(body.payment.maxFutureSkewSeconds, 120);
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
@@ -308,6 +317,24 @@ test('expired signed payment payload is rejected with machine-readable reason', 
 
   assert.equal(response.status, 402);
   assert.equal(body.reason, 'PAYMENT_EXPIRED');
+});
+
+test('stale signed payment payload is rejected with machine-readable reason', async () => {
+  const issuedAt = new Date(Date.now() - 16 * 60_000).toISOString();
+  const deadline = new Date(Date.now() + 60_000).toISOString();
+  const payload = await createSignedPayload('/api/deepseek', '0.003', { issuedAt, deadline });
+  const request = new Request('https://api-402.com/api/deepseek', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(payload),
+      'X-PAYMENT-TX-HASH': '0x5555555555555555555555555555555555555555555555555555555555555555',
+    },
+  });
+
+  const response = await worker.fetch(request, createEnv());
+  const body = (await response.json()) as { reason: string };
+
+  assert.equal(response.status, 402);
+  assert.equal(body.reason, 'PAYMENT_STALE');
 });
 
 test('signed payment without settlement proof is rejected', async () => {

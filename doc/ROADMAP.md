@@ -32,6 +32,7 @@
 - 已将 nonce / tx hash 防重放迁移到 Durable Objects
 - 已加入 Base 交易确认块数门槛（默认 2 confirmations）以增强结算稳健性
 - 402 challenge 和成功响应已输出结构化 settlement 上下文（txHash、receiptBlock、latestBlock、confirmations）
+- 支付签名已加入时间窗约束（`issuedAt` 最大年龄与未来时钟偏差限制），降低延迟重放风险
 - Base 结算校验已支持 `BASE_RPC_URLS` 主备 RPC 自动回退（含请求超时控制）
 - 已将 `whale-positions` 接入 HyperLiquid 实时成交聚合（BTC/ETH）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
