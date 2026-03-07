@@ -186,6 +186,9 @@ const translations: Record<Language, Record<string, string>> = {
     'requestMetrics.recentRequests': '近 60 分钟请求',
     'requestMetrics.payment402Rate': '402 比率',
     'requestMetrics.replayConversion': '重放转化率',
+    'requestMetrics.trend': '请求趋势（6桶）',
+    'requestMetrics.topError': 'Top 错误码',
+    'requestMetrics.none': '无',
   },
   en: {
     'meta.title': 'API Market | x402 API Payment Gateway on Base',
@@ -339,6 +342,9 @@ const translations: Record<Language, Record<string, string>> = {
     'requestMetrics.recentRequests': 'Requests (60m)',
     'requestMetrics.payment402Rate': '402 Rate',
     'requestMetrics.replayConversion': 'Replay Conversion',
+    'requestMetrics.trend': 'Request Trend (6 buckets)',
+    'requestMetrics.topError': 'Top Error Code',
+    'requestMetrics.none': 'None',
   },
 };
 
@@ -436,6 +442,33 @@ function formatPercent(value: number | null | undefined): string {
   }
 
   return `${(value * 100).toFixed(1)}%`;
+}
+
+function formatTrendSparkline(endpoint: CatalogEndpoint): string {
+  const trend = endpoint.requestMetrics?.requestTrend || [];
+  if (trend.length === 0) {
+    return '-';
+  }
+
+  const values = trend.map((item) => item.requests || 0);
+  const max = Math.max(...values, 1);
+  const blocks = '▁▂▃▄▅▆▇█';
+  return values
+    .map((value) => {
+      const ratio = value / max;
+      const index = Math.min(blocks.length - 1, Math.floor(ratio * (blocks.length - 1)));
+      return blocks[index] || blocks[0];
+    })
+    .join('');
+}
+
+function formatTopError(endpoint: CatalogEndpoint): string {
+  const top = endpoint.requestMetrics?.errorsByCode?.[0];
+  if (!top) {
+    return t('requestMetrics.none');
+  }
+
+  return `${top.code} · ${top.count}`;
 }
 
 function getGatewayPayTo(): string {
@@ -602,6 +635,8 @@ function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
   getElement<HTMLDivElement>('selectedReplayConversion').textContent = formatPercent(
     endpoint.requestMetrics?.paymentFunnel?.challengeToReplayConversionRate,
   );
+  getElement<HTMLDivElement>('selectedTrend').textContent = formatTrendSparkline(endpoint);
+  getElement<HTMLDivElement>('selectedTopError').textContent = formatTopError(endpoint);
   getElement<HTMLAnchorElement>('openSelectedApi').href = endpoint.url;
 
   getElement<HTMLButtonElement>('trySelected').onclick = () => testAPI(endpoint.path);
@@ -684,6 +719,16 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
               <div class="mt-1 text-sm font-semibold text-[#33f0b2] mono">${escapeHtml(
                 formatPercent(endpoint.requestMetrics?.paymentFunnel?.challengeToReplayConversionRate),
               )}</div>
+            </div>
+          </div>
+          <div class="mt-2 grid grid-cols-2 gap-2">
+            <div class="log-box rounded-xl p-2.5">
+              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.trend'))}</div>
+              <div class="mt-1 text-sm font-semibold text-slate-200 mono">${escapeHtml(formatTrendSparkline(endpoint))}</div>
+            </div>
+            <div class="log-box rounded-xl p-2.5">
+              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.topError'))}</div>
+              <div class="mt-1 text-xs font-semibold text-[#ff8f8f] mono truncate" title="${escapeHtml(formatTopError(endpoint))}">${escapeHtml(formatTopError(endpoint))}</div>
             </div>
           </div>
           <div class="mt-6 flex items-center justify-between text-sm">

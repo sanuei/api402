@@ -4,6 +4,41 @@
 
 ### 本轮目标
 
+- 在前端补 requestMetrics 趋势可视化（6 桶 sparkline + Top 错误码），提升转化波动排障效率（conversion + developer adoption）
+
+### 已完成
+
+- API 卡片新增趋势/错误诊断模块：
+  - Request Trend（6 桶 sparkline）
+  - Top Error Code（错误码 + 次数）
+- 接口详情面板新增同一组诊断字段，便于单接口快速定位转化异常
+- 前端 `requestTrend` 类型定义已与 worker 返回结构对齐（`requests` / `errors`）
+- ROADMAP 已同步记录该能力完成，并刷新 Immediate Next Tasks
+
+### 涉及文件
+
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+- `npm run deploy` 通过（Worker Version: `e9207e6b-a5b9-4130-993a-710554584b00`）
+
+### 下一步建议
+
+1. 继续把 AI 类接口从 demo 替换为真实上游（需凭据）
+2. 将 metrics 持久层从单实例 DO 升级为按 endpoint/source 分片
+3. 在 worker 增加 request funnel 聚合导出接口（24h / 7d）
+
+## 2026-03-08
+
+### 本轮目标
+
 - 在前端 API 卡片与接口详情中直接展示 requestMetrics 核心指标（近 60 分钟请求量 / 402 比率 / replay 转化率），提升转化优化效率（conversion）
 
 ### 已完成

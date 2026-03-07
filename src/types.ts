@@ -58,7 +58,7 @@ export interface CatalogEndpoint {
     rateLimitedRate: number;
     upstreamFallbackRate: number;
     errorsByCode: Array<{ code: string; count: number }>;
-    requestTrend: Array<{ bucketStart: string; totalRequests: number; errorRequests: number }>;
+    requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
     paymentFunnel?: {
       challenged402: number;
       settled: number;
