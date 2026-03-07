@@ -44,6 +44,7 @@
 - 已将 `whale-positions` 接入 HyperLiquid 实时成交聚合（BTC/ETH）
 - 已为 live 上游接口补统一错误码、熔断冷却与 machine-readable fallback 元信息（`_meta.upstream` + catalog `upstreamPolicy`）
 - catalog `upstreamPolicy` 已补 15 分钟窗口的可用性/延迟遥测字段（successRate、avg/p95 latency、last error）
+- catalog `requestMetrics` 已补 endpoint 级请求量、错误码分布与最近 60 分钟错误趋势分桶
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 
@@ -124,9 +125,9 @@
 建议下一轮直接做下面 4 项:
 
 1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
-2. 将 upstream 遥测扩展为持久化时间序列（避免冷启动丢失窗口）
-3. 增加 endpoint 级请求量统计与最近错误趋势，支撑转化与可靠性运营
-4. 给 catalog 增加每个 endpoint 的最近更新时间（lastUpdatedAt）与数据新鲜度提示，提升开发者接入判断效率
+2. 将 upstream 遥测与 requestMetrics 扩展为持久化时间序列（避免冷启动丢失窗口）
+3. 给 catalog 增加每个 endpoint 的最近更新时间（lastUpdatedAt）与数据新鲜度提示，提升开发者接入判断效率
+4. 将 requestMetrics 扩展为按支付阶段（402/settled/replayed）的漏斗统计，直接支撑转化优化
 
 ## Operations
 

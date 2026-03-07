@@ -32,6 +32,7 @@ declare global {
   var usedPaymentTransactions: Map<string, number>;
   var upstreamCircuitState: Map<string, { failures: number; openUntil: number; lastErrorCode?: string }>;
   var upstreamTelemetryState: Map<string, UpstreamTelemetryEvent[]>;
+  var endpointRequestMetricsState: Map<string, EndpointRequestMetricEvent[]>;
 }
 
 export interface APIEndpoint {
@@ -167,6 +168,10 @@ const UPSTREAM_FAILURE_THRESHOLD = 3;
 const UPSTREAM_CIRCUIT_COOLDOWN_MS = 30_000;
 const UPSTREAM_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 const UPSTREAM_TELEMETRY_MAX_EVENTS = 120;
+const ENDPOINT_METRICS_WINDOW_MS = 60 * 60 * 1000;
+const ENDPOINT_METRICS_MAX_EVENTS = 600;
+const ENDPOINT_METRICS_BUCKET_MS = 10 * 60 * 1000;
+const ENDPOINT_METRICS_BUCKET_COUNT = 6;
 
 
 const SETTLEMENT_REMEDIATION_MAP: Record<SettlementStatusResult['code'], RemediationHint> = {
@@ -921,9 +926,11 @@ function findLargestTransferAmountTo(
 }
 
 function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoint) {
+  const now = Date.now();
   const upstreamTelemetry = endpoint.upstream
-    ? getUpstreamTelemetrySummary(endpoint.upstream, Date.now())
+    ? getUpstreamTelemetrySummary(endpoint.upstream, now)
     : null;
+  const requestMetrics = getEndpointRequestMetricSummary(endpoint.path, now, Boolean(endpoint.upstream));
   const samplePayload = buildPaymentMessage({
     version: '1',
     scheme: 'exact',
@@ -975,6 +982,7 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
       paymentPayload: samplePayload,
     },
     exampleResponse: endpoint.sample(),
+    requestMetrics,
     upstreamPolicy: endpoint.upstream
       ? {
           timeoutMs: UPSTREAM_TIMEOUT_MS,
@@ -1032,6 +1040,113 @@ function buildRemediationRefs(baseUrl: string): RemediationRefs {
   return {
     changelog: `${baseUrl}${REMEDIATION_CHANGELOG_PATH}`,
     deprecations: `${baseUrl}${REMEDIATION_DEPRECATIONS_PATH}`,
+  };
+}
+
+function getEndpointRequestMetricsState(): Map<string, EndpointRequestMetricEvent[]> {
+  if (!globalThis.endpointRequestMetricsState) {
+    globalThis.endpointRequestMetricsState = new Map();
+  }
+
+  return globalThis.endpointRequestMetricsState;
+}
+
+function pruneEndpointRequestEvents(events: EndpointRequestMetricEvent[], now: number): EndpointRequestMetricEvent[] {
+  const windowStart = now - ENDPOINT_METRICS_WINDOW_MS;
+  const inWindow = events.filter((event) => event.at >= windowStart);
+  return inWindow.slice(-ENDPOINT_METRICS_MAX_EVENTS);
+}
+
+function recordEndpointRequestMetric(path: string, event: EndpointRequestMetricEvent): void {
+  const store = getEndpointRequestMetricsState();
+  const existing = store.get(path) || [];
+  store.set(path, pruneEndpointRequestEvents([...existing, event], event.at));
+}
+
+function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream: boolean): EndpointRequestMetricSummary {
+  const events = pruneEndpointRequestEvents(getEndpointRequestMetricsState().get(path) || [], now);
+  const totalRequests = events.length;
+
+  const recentBuckets = Array.from({ length: ENDPOINT_METRICS_BUCKET_COUNT }, (_, index) => {
+    const bucketStartMs = now - (ENDPOINT_METRICS_BUCKET_COUNT - index) * ENDPOINT_METRICS_BUCKET_MS;
+    return {
+      bucketStartMs,
+      bucketEndMs: bucketStartMs + ENDPOINT_METRICS_BUCKET_MS,
+      requests: 0,
+      errors: 0,
+    };
+  });
+
+  for (const event of events) {
+    const bucket = recentBuckets.find((item) => event.at >= item.bucketStartMs && event.at < item.bucketEndMs);
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.requests += 1;
+    if (event.statusCode >= 400) {
+      bucket.errors += 1;
+    }
+  }
+
+  if (totalRequests === 0) {
+    return {
+      windowMs: ENDPOINT_METRICS_WINDOW_MS,
+      totalRequests: 0,
+      successRate: 1,
+      paymentRequiredRate: 0,
+      rateLimitedRate: 0,
+      upstreamFallbackRate: hasUpstream ? 0 : null,
+      lastRequestAt: null,
+      lastErrorAt: null,
+      errorsByCode: [],
+      requestTrend: recentBuckets.map((item) => ({
+        bucketStart: new Date(item.bucketStartMs).toISOString(),
+        requests: item.requests,
+        errors: item.errors,
+      })),
+    };
+  }
+
+  const successCount = events.filter((event) => event.statusCode < 400).length;
+  const paymentRequiredCount = events.filter((event) => event.statusCode === 402).length;
+  const rateLimitedCount = events.filter((event) => event.statusCode === 429).length;
+  const upstreamFallbackCount = hasUpstream
+    ? events.filter((event) => event.statusCode < 400 && event.upstreamReasonCode && event.upstreamReasonCode !== 'OK').length
+    : 0;
+
+  const errorCodeCount = new Map<string, number>();
+  for (const event of events) {
+    if (event.statusCode < 400) {
+      continue;
+    }
+
+    const code = event.paymentCode || `HTTP_${event.statusCode}`;
+    errorCodeCount.set(code, (errorCodeCount.get(code) || 0) + 1);
+  }
+
+  const errorsByCode = [...errorCodeCount.entries()]
+    .map(([code, count]) => ({ code, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const lastError = [...events].reverse().find((event) => event.statusCode >= 400);
+
+  return {
+    windowMs: ENDPOINT_METRICS_WINDOW_MS,
+    totalRequests,
+    successRate: Number((successCount / totalRequests).toFixed(4)),
+    paymentRequiredRate: Number((paymentRequiredCount / totalRequests).toFixed(4)),
+    rateLimitedRate: Number((rateLimitedCount / totalRequests).toFixed(4)),
+    upstreamFallbackRate: hasUpstream ? Number((upstreamFallbackCount / totalRequests).toFixed(4)) : null,
+    lastRequestAt: new Date(events[events.length - 1].at).toISOString(),
+    lastErrorAt: lastError ? new Date(lastError.at).toISOString() : null,
+    errorsByCode,
+    requestTrend: recentBuckets.map((item) => ({
+      bucketStart: new Date(item.bucketStartMs).toISOString(),
+      requests: item.requests,
+      errors: item.errors,
+    })),
   };
 }
 
@@ -1837,6 +1952,26 @@ type UpstreamResult = {
   meta: UpstreamMeta;
 };
 
+type EndpointRequestMetricEvent = {
+  at: number;
+  statusCode: number;
+  paymentCode: PaymentVerificationResult['code'] | 'RATE_LIMIT' | null;
+  upstreamReasonCode: UpstreamMeta['reasonCode'] | null;
+};
+
+type EndpointRequestMetricSummary = {
+  windowMs: number;
+  totalRequests: number;
+  successRate: number;
+  paymentRequiredRate: number;
+  rateLimitedRate: number;
+  upstreamFallbackRate: number | null;
+  lastRequestAt: string | null;
+  lastErrorAt: string | null;
+  errorsByCode: Array<{ code: string; count: number }>;
+  requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
+};
+
 function getUpstreamCircuitState(): Map<string, { failures: number; openUntil: number; lastErrorCode?: string }> {
   if (!globalThis.upstreamCircuitState) {
     globalThis.upstreamCircuitState = new Map();
@@ -2321,14 +2456,21 @@ const worker = {
 
     const endpoint = API_INDEX[path];
     if (endpoint) {
+      const now = Date.now();
       const rateLimitResponse = enforceRateLimit(request);
       if (rateLimitResponse) {
+        recordEndpointRequestMetric(path, {
+          at: now,
+          statusCode: 429,
+          paymentCode: 'RATE_LIMIT',
+          upstreamReasonCode: null,
+        });
         return rateLimitResponse;
       }
 
       const verification = await verifyPayment(request, endpoint, payTo, env);
       if (!verification.ok) {
-        return createPaymentRequired(
+        const response = createPaymentRequired(
           origin,
           payTo,
           endpoint,
@@ -2341,12 +2483,20 @@ const worker = {
             DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
           ),
         );
+
+        recordEndpointRequestMetric(path, {
+          at: Date.now(),
+          statusCode: response.status,
+          paymentCode: verification.code,
+          upstreamReasonCode: null,
+        });
+        return response;
       }
 
       const upstreamResult = await fetchUpstreamData(path);
       const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
 
-      return apiResponse({
+      const response = apiResponse({
         ...baseData,
         _meta: {
           paid: true,
@@ -2361,6 +2511,14 @@ const worker = {
           settlement: verification.settlement || null,
         },
       });
+
+      recordEndpointRequestMetric(path, {
+        at: Date.now(),
+        statusCode: response.status,
+        paymentCode: verification.code,
+        upstreamReasonCode: upstreamResult.meta.reasonCode,
+      });
+      return response;
     }
 
     if (path.startsWith('/api/')) {

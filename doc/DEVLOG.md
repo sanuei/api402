@@ -2,6 +2,46 @@
 
 ## 2026-03-08
 
+### 本轮目标
+
+- 在不依赖新增外部凭据的前提下，补齐 endpoint 级请求量与错误趋势统计，提升 monetization/可靠性运营可观测性
+
+### 已完成
+
+- 新增 `catalog.endpoints[].requestMetrics` 字段，输出最近 60 分钟窗口统计：
+  - `totalRequests` / `successRate`
+  - `paymentRequiredRate` / `rateLimitedRate`
+  - `upstreamFallbackRate`（仅 live upstream endpoint）
+  - `errorsByCode`（Top 错误码分布）
+  - `requestTrend`（最近 6 个 10 分钟分桶的请求量与错误量）
+- 在 Worker 请求路径中新增实时埋点：
+  - 429 限流
+  - 402 支付挑战（按 payment reason 归因）
+  - 200 成功响应（含 upstream fallback 原因）
+- 新增测试 `catalog requestMetrics expose endpoint request volume and error trend`
+- README / ROADMAP 已同步能力说明
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 优先继续推进 AI 类接口真实上游替换（需要凭据）
+2. 将 upstream telemetry + requestMetrics 持久化到 Durable Objects/KV，避免冷启动丢失
+3. 在 catalog 增加 endpoint `lastUpdatedAt` 与 freshness 提示
+
+## 2026-03-08
+
 ### 本轮状态
 
 - 阻塞（未实施代码变更）

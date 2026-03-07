@@ -183,6 +183,7 @@ test.beforeEach(() => {
   globalThis.usedPaymentTransactions = new Map();
   globalThis.upstreamCircuitState = new Map();
   globalThis.upstreamTelemetryState = new Map();
+  globalThis.endpointRequestMetricsState = new Map();
   replayGuardStore = new Map();
 });
 
@@ -221,6 +222,16 @@ test('catalog exposes enriched endpoint metadata', async () => {
       status: string;
       tags: string[];
       locales?: { zh?: { label?: string }; en?: { label?: string } };
+      requestMetrics?: {
+        windowMs: number;
+        totalRequests: number;
+        successRate: number;
+        paymentRequiredRate: number;
+        rateLimitedRate: number;
+        upstreamFallbackRate: number | null;
+        errorsByCode: Array<{ code: string; count: number }>;
+        requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
+      };
       upstreamPolicy?: {
         timeoutMs: number;
         failureThreshold: number;
@@ -281,6 +292,10 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.ok(body.endpoints[0].exampleResponse);
   assert.equal(typeof body.endpoints[0].locales?.zh?.label, 'string');
   assert.equal(typeof body.endpoints[0].locales?.en?.label, 'string');
+  assert.equal(body.endpoints[0].requestMetrics?.windowMs, 3600000);
+  assert.equal(body.endpoints[0].requestMetrics?.totalRequests, 0);
+  assert.equal(body.endpoints[0].requestMetrics?.successRate, 1);
+  assert.equal(body.endpoints[0].requestMetrics?.requestTrend.length, 6);
   const firstLiveEndpoint = body.endpoints.find((endpoint) => endpoint.upstreamPolicy);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.timeoutMs, 8000);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.failureThreshold, 3);
@@ -338,6 +353,45 @@ test('demo bearer token can access a paid endpoint', async () => {
   assert.equal(response.status, 200);
   assert.equal(body._meta.paid, true);
   assert.equal(body._meta.paymentMode, 'DEMO_PAYMENT');
+});
+
+test('catalog requestMetrics expose endpoint request volume and error trend', async () => {
+  const env = createEnv();
+
+  const unpaidOne = await worker.fetch(new Request('https://api-402.com/api/deepseek'), env);
+  const paid = await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      headers: { Authorization: 'Bearer demo' },
+    }),
+    env,
+  );
+  const unpaidTwo = await worker.fetch(new Request('https://api-402.com/api/deepseek'), env);
+
+  assert.equal(unpaidOne.status, 402);
+  assert.equal(paid.status, 200);
+  assert.equal(unpaidTwo.status, 402);
+
+  const catalogResponse = await worker.fetch(new Request('https://api-402.com/api/v1/catalog'), env);
+  const catalogBody = (await catalogResponse.json()) as {
+    endpoints: Array<{
+      path: string;
+      requestMetrics?: {
+        totalRequests: number;
+        successRate: number;
+        paymentRequiredRate: number;
+        errorsByCode: Array<{ code: string; count: number }>;
+        requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
+      };
+    }>;
+  };
+
+  const deepseek = catalogBody.endpoints.find((endpoint) => endpoint.path === '/api/deepseek');
+  assert.equal(deepseek?.requestMetrics?.totalRequests, 3);
+  assert.equal(deepseek?.requestMetrics?.successRate, 0.3333);
+  assert.equal(deepseek?.requestMetrics?.paymentRequiredRate, 0.6667);
+  assert.equal(deepseek?.requestMetrics?.errorsByCode[0]?.code, 'PAYMENT_MISSING');
+  assert.equal(deepseek?.requestMetrics?.errorsByCode[0]?.count, 2);
+  assert.equal(deepseek?.requestMetrics?.requestTrend.length, 6);
 });
 
 test('valid signed payment payload is accepted', async () => {
