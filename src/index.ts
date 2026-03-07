@@ -10,6 +10,10 @@ export interface Env {
   PAY_TO?: string;  // 收款地址
 }
 
+declare global {
+  var rateLimiter: Map<string, number[]>;
+}
+
 interface APIEndpoint {
   price: string;
   description: string;
@@ -176,6 +180,29 @@ export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
+    const clientIP = getClientIP(request);
+
+    // 简易限流记录器 (基于单个 Worker 实例内存)
+    // 生产环境中推荐用 Cloudflare Rate Limiting 或 Durable Objects 实现分布式限流
+    if (!globalThis.rateLimiter) {
+      globalThis.rateLimiter = new Map<string, number[]>();
+    }
+
+    const now = Date.now();
+    const WINDOW_MS = 60 * 1000; // 1 分钟
+    const MAX_REQUESTS = 30; // 限制每个 IP 每分钟 30 次请求
+
+    let requests = globalThis.rateLimiter.get(clientIP) || [];
+    requests = requests.filter(time => now - time < WINDOW_MS);
+
+    if (requests.length >= MAX_REQUESTS) {
+      return new Response(JSON.stringify({ error: 'Too Many Requests', message: 'Rate limit exceeded. Please try again later.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json', 'Retry-After': '60' }
+      });
+    }
+    requests.push(now);
+    globalThis.rateLimiter.set(clientIP, requests);
 
     // CORS 头
     const corsHeaders = {
