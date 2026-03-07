@@ -172,6 +172,17 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.selectedUnknown': '未知',
     'dynamic.exampleResponse': '// 示例响应',
     'dynamic.copyFailed': '复制失败，请手动复制地址。',
+    'freshness.label': '数据新鲜度',
+    'freshness.updatedAt': '更新时间',
+    'freshness.fresh': '新鲜',
+    'freshness.stale': '已过期',
+    'freshness.unknown': '未知',
+    'freshness.signal.upstream_telemetry': '上游遥测',
+    'freshness.signal.request_metrics': '请求指标',
+    'freshness.signal.none': '无信号',
+    'freshness.secondsAgo': '{value}s 前',
+    'freshness.minutesAgo': '{value}m 前',
+    'freshness.hoursAgo': '{value}h 前',
   },
   en: {
     'meta.title': 'API Market | x402 API Payment Gateway on Base',
@@ -311,6 +322,17 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.selectedUnknown': 'unknown',
     'dynamic.exampleResponse': '// example response',
     'dynamic.copyFailed': 'Copy failed. Please copy the address manually.',
+    'freshness.label': 'Freshness',
+    'freshness.updatedAt': 'Updated At',
+    'freshness.fresh': 'Fresh',
+    'freshness.stale': 'Stale',
+    'freshness.unknown': 'Unknown',
+    'freshness.signal.upstream_telemetry': 'upstream telemetry',
+    'freshness.signal.request_metrics': 'request metrics',
+    'freshness.signal.none': 'no signal',
+    'freshness.secondsAgo': '{value}s ago',
+    'freshness.minutesAgo': '{value}m ago',
+    'freshness.hoursAgo': '{value}h ago',
   },
 };
 
@@ -377,6 +399,29 @@ function t(key: string, variables: Record<string, string | number> = {}): string
 
 function shortenAddress(value: string): string {
   return value.length <= 14 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
+}
+
+function formatRelativeAge(ageSeconds: number | null | undefined): string {
+  if (ageSeconds === null || ageSeconds === undefined || ageSeconds < 0) {
+    return '-';
+  }
+
+  if (ageSeconds < 60) {
+    return t('freshness.secondsAgo', { value: ageSeconds });
+  }
+
+  if (ageSeconds < 3600) {
+    return t('freshness.minutesAgo', { value: Math.floor(ageSeconds / 60) });
+  }
+
+  return t('freshness.hoursAgo', { value: Math.floor(ageSeconds / 3600) });
+}
+
+function formatFreshnessStatus(endpoint: CatalogEndpoint): string {
+  const status = endpoint.freshness?.status || 'unknown';
+  const signal = endpoint.freshness?.signal || 'none';
+  const ageLabel = formatRelativeAge(endpoint.freshness?.ageSeconds);
+  return `${t(`freshness.${status}`)} · ${ageLabel} · ${t(`freshness.signal.${signal}`)}`;
 }
 
 function getGatewayPayTo(): string {
@@ -534,6 +579,10 @@ function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
   getElement<HTMLDivElement>('selectedPath').textContent = endpoint.url;
   getElement<HTMLDivElement>('selectedCategory').textContent = localized.category;
   getElement<HTMLDivElement>('selectedAccess').textContent = `${endpoint.access} / ${endpoint.status || t('dynamic.selectedUnknown')}`;
+  getElement<HTMLDivElement>('selectedFreshness').textContent = formatFreshnessStatus(endpoint);
+  getElement<HTMLDivElement>('selectedUpdatedAt').textContent = endpoint.lastUpdatedAt
+    ? new Date(endpoint.lastUpdatedAt).toLocaleString(currentLanguage === 'zh' ? 'zh-CN' : 'en-US')
+    : '-';
   getElement<HTMLAnchorElement>('openSelectedApi').href = endpoint.url;
 
   getElement<HTMLButtonElement>('trySelected').onclick = () => testAPI(endpoint.path);
@@ -578,6 +627,12 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
     .map(
       (endpoint, index) => {
         const localized = getLocalizedFields(endpoint);
+        const freshnessClass =
+          endpoint.freshness?.status === 'fresh'
+            ? 'badge-green'
+            : endpoint.freshness?.status === 'stale'
+              ? 'badge-amber'
+              : 'badge-blue';
         return `
         <button
           type="button"
@@ -591,6 +646,10 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
           <div class="mt-5">
             <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(localized.label)}</h3>
             <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(localized.description)}</p>
+          </div>
+          <div class="mt-5 flex items-center gap-2 text-xs">
+            <span class="${freshnessClass} rounded-full px-3 py-1 mono">${escapeHtml(t(`freshness.${endpoint.freshness?.status || 'unknown'}`))}</span>
+            <span class="text-slate-500 mono">${escapeHtml(formatRelativeAge(endpoint.freshness?.ageSeconds))}</span>
           </div>
           <div class="mt-6 flex items-center justify-between text-sm">
             <span class="${endpoint.access === 'mock_demo' ? 'badge-amber' : 'badge-green'} rounded-full px-3 py-1 text-xs mono">

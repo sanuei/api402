@@ -4,6 +4,42 @@
 
 ### 本轮目标
 
+- 在前端直接展示 catalog 的 freshness 状态与更新时间，提升开发者接入判断效率（conversion + developer adoption）
+
+### 已完成
+
+- API 卡片新增 freshness 可视化：
+  - 状态徽章（fresh / stale / unknown）
+  - 相对更新时间（秒/分钟/小时）
+- 接口详情面板新增字段：
+  - `Freshness`
+  - `Updated At`
+- freshness 文案完成中英文国际化（状态、信号来源、相对时间）
+- README / ROADMAP 已同步更新
+
+### 涉及文件
+
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 优先推进 AI 类接口真实上游替换（需要凭据）
+2. 将 upstream telemetry / requestMetrics 持久化到 Durable Objects 或 KV，避免冷启动窗口丢失
+3. 在前端补 requestMetrics 可视化（最近请求量、402 比率、replay 转化率）
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为 catalog endpoint 增加 `lastUpdatedAt` 与 `freshness`，提升开发者/SDK 对数据新鲜度的判断效率（conversion + developer adoption）
 
 ### 已完成
