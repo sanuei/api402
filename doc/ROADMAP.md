@@ -51,6 +51,7 @@
 - 前端 API 卡片与接口详情已补 request trend sparkline（6 桶）与 Top 错误码展示，加快转化波动定位
 - 402 challenge、成功响应与 settlement 查询均支持 `requestId` 回传（`X-Request-Id`），payment funnel 现基于 requestId 做 challenge→replay 精确归因
 - upstream telemetry 与 endpoint requestMetrics 已持久化到 Durable Objects，并用于 catalog snapshot 聚合（降低冷启动窗口丢失）
+- 已新增 `GET /api/v1/metrics/funnel`，支持 `window=24h|7d` 的 requestId 漏斗聚合导出（challenged402 / settled / replayed / conversion）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 
@@ -133,7 +134,7 @@
 1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
 2. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
 3. 基于持久化 requestId 漏斗补长期归因导出接口（例如 24h / 7d 聚合视图）
-4. 在 worker 增加 request funnel 聚合导出接口（24h / 7d），为外部 dashboard/SDK 提供机器可读转化视图
+4. 将 request funnel 聚合升级为分片聚合/预计算索引，降低高流量下 DO 单实例读取压力
 
 ## Operations
 

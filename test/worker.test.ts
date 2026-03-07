@@ -115,6 +115,74 @@ class FakeMetricsStoreStub {
       return Response.json({ upstreamTelemetry, endpointMetrics });
     }
 
+    if (resolvedRequest.method === 'POST' && url.pathname === '/funnel') {
+      const payload = (await resolvedRequest.json().catch(() => ({}))) as {
+        now?: number;
+        window?: '24h' | '7d';
+      };
+      const now = Number(payload.now) || Date.now();
+      const windowMs = payload.window === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+      const from = now - windowMs;
+      const endpoints: Array<{
+        path: string;
+        challenged402: number;
+        settled: number;
+        replayed: number;
+        challengeToReplayConversionRate: number;
+      }> = [];
+
+      for (const [key, value] of metricsStore.entries()) {
+        if (!key.startsWith('endpoint:') || !Array.isArray(value)) {
+          continue;
+        }
+
+        const events = value.filter(
+          (event) => typeof (event as { at?: number }).at === 'number' && (event as { at: number }).at >= from,
+        ) as Array<{ statusCode: number; requestId?: string | null; paymentCode?: string | null }>;
+
+        const challengedRequestIds = new Set(
+          events.filter((event) => event.statusCode === 402 && event.requestId).map((event) => event.requestId as string),
+        );
+        const replayedRequestIds = new Set(
+          events
+            .filter(
+              (event) =>
+                event.statusCode < 400 &&
+                ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || '') &&
+                event.requestId &&
+                challengedRequestIds.has(event.requestId),
+            )
+            .map((event) => event.requestId as string),
+        );
+
+        const challenged402 = events.filter((event) => event.statusCode === 402).length;
+        const settled = events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
+        const replayed = replayedRequestIds.size;
+
+        if (challenged402 === 0 && settled === 0 && replayed === 0) {
+          continue;
+        }
+
+        endpoints.push({
+          path: key.slice('endpoint:'.length),
+          challenged402,
+          settled,
+          replayed,
+          challengeToReplayConversionRate:
+            challengedRequestIds.size > 0 ? Number((replayed / challengedRequestIds.size).toFixed(4)) : 0,
+        });
+      }
+
+      endpoints.sort((a, b) => b.challenged402 - a.challenged402 || a.path.localeCompare(b.path));
+
+      return Response.json({
+        window: payload.window === '7d' ? '7d' : '24h',
+        from: new Date(from).toISOString(),
+        to: new Date(now).toISOString(),
+        endpoints,
+      });
+    }
+
     return Response.json({ error: 'not found' }, { status: 404 });
   }
 }
@@ -533,6 +601,46 @@ test('catalog requestMetrics expose endpoint request volume and error trend', as
   assert.equal(deepseek?.freshness?.signal, 'request_metrics');
   assert.equal(deepseek?.freshness?.maxAgeSeconds, 900);
   assert.ok((deepseek?.freshness?.ageSeconds ?? 0) >= 0);
+});
+
+test('funnel metrics endpoint exposes 24h and 7d payment funnel summaries', async () => {
+  const env = createEnv();
+
+  await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      headers: { 'X-Request-Id': 'req-window-1' },
+    }),
+    env,
+  );
+
+  await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      headers: { Authorization: 'Bearer demo', 'X-Request-Id': 'req-window-1' },
+    }),
+    env,
+  );
+
+  const response24h = await worker.fetch(
+    new Request('https://api-402.com/api/v1/metrics/funnel?window=24h'),
+    env,
+  );
+  assert.equal(response24h.status, 200);
+  const body24h = (await response24h.json()) as {
+    window: '24h' | '7d';
+    endpoints: Array<{ path: string; challenged402: number; replayed: number; challengeToReplayConversionRate: number }>;
+  };
+  assert.equal(body24h.window, '24h');
+  const deepseek24h = body24h.endpoints.find((endpoint) => endpoint.path === '/api/deepseek');
+  assert.equal(deepseek24h?.challenged402, 1);
+  assert.equal(deepseek24h?.replayed, 1);
+  assert.equal(deepseek24h?.challengeToReplayConversionRate, 1);
+
+  const response7d = await worker.fetch(
+    new Request('https://api-402.com/api/v1/metrics/funnel?window=7d'),
+    env,
+  );
+  const body7d = (await response7d.json()) as { window: '24h' | '7d' };
+  assert.equal(body7d.window, '7d');
 });
 
 test('valid signed payment payload is accepted', async () => {

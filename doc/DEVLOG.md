@@ -4,6 +4,45 @@
 
 ### 本轮目标
 
+- 提供机器可读的长期漏斗导出接口（24h / 7d），提升外部 dashboard / SDK 的转化分析可用性（conversion + developer adoption）
+
+### 已完成
+
+- Worker 新增 `GET /api/v1/metrics/funnel`：
+  - `window=24h`（默认）或 `window=7d`
+  - 输出 endpoint 级漏斗：`challenged402` / `settled` / `replayed` / `challengeToReplayConversionRate`
+- Metrics Durable Object 新增 `/funnel` 聚合读取路径
+- endpoint metrics 在 Durable Object 中的保留窗口提升到 7 天（并增加上限裁剪），支持 24h/7d 查询
+- catalog `payment` 新增可发现字段：
+  - `requestFunnelEndpoint`
+  - `requestFunnelSupportedWindows`
+- 测试新增 `funnel metrics endpoint exposes 24h and 7d payment funnel summaries`
+- ROADMAP 已同步“漏斗导出接口已完成”状态，并刷新 Immediate Next Tasks
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 22 个测试全部通过
+- `npm run build:frontend` 通过
+- `npm run deploy` 通过（Worker Version: `86167a12-adeb-469c-a9a4-2a71efae91fe`）
+
+### 下一步建议
+
+1. 继续把 AI 类接口从 demo 替换为真实上游（需凭据）
+2. 将 metrics 持久层从单实例 DO 升级为按 endpoint/source 分片
+3. 将漏斗导出升级为分片聚合或预计算索引，降低高流量读取压力
+
+
+## 2026-03-08
+
+### 本轮目标
+
 - 在前端补 requestMetrics 趋势可视化（6 桶 sparkline + Top 错误码），提升转化波动排障效率（conversion + developer adoption）
 
 ### 已完成

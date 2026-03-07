@@ -159,6 +159,7 @@ const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const SETTLEMENT_PATH_PREFIX = '/api/v1/settlement/';
+const FUNNEL_METRICS_PATH = '/api/v1/metrics/funnel';
 const REMEDIATION_CHANGELOG_PATH = '/.well-known/remediation-changelog.json';
 const REMEDIATION_DEPRECATIONS_PATH = '/.well-known/remediation-deprecations.json';
 
@@ -171,6 +172,8 @@ const UPSTREAM_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 const UPSTREAM_TELEMETRY_MAX_EVENTS = 120;
 const ENDPOINT_METRICS_WINDOW_MS = 60 * 60 * 1000;
 const ENDPOINT_METRICS_MAX_EVENTS = 600;
+const ENDPOINT_METRICS_DURABLE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ENDPOINT_METRICS_DURABLE_MAX_EVENTS = 20_000;
 const ENDPOINT_METRICS_BUCKET_MS = 10 * 60 * 1000;
 const ENDPOINT_METRICS_BUCKET_COUNT = 6;
 const REQUEST_ID_HEADER = 'X-Request-Id';
@@ -849,7 +852,12 @@ export class MetricsStoreDurableObject {
         await this.state.storage.put(storageKey, next);
       } else {
         const existing = ((await this.state.storage.get<EndpointRequestMetricEvent[]>(storageKey)) || []).filter(Boolean);
-        const next = pruneEndpointRequestEvents([...existing, payload.event as EndpointRequestMetricEvent], Date.now());
+        const next = pruneEndpointRequestEventsWithWindow(
+          [...existing, payload.event as EndpointRequestMetricEvent],
+          Date.now(),
+          ENDPOINT_METRICS_DURABLE_RETENTION_MS,
+          ENDPOINT_METRICS_DURABLE_MAX_EVENTS,
+        );
         await this.state.storage.put(storageKey, next);
       }
 
@@ -888,6 +896,24 @@ export class MetricsStoreDurableObject {
       return jsonResponse({ upstreamTelemetry, endpointMetrics });
     }
 
+    if (request.method === 'POST' && url.pathname === '/funnel') {
+      const payload = (await request.json().catch(() => ({}))) as { now?: number; window?: FunnelWindow };
+      const now = Number(payload.now) || Date.now();
+      const window = payload.window === '7d' ? '7d' : '24h';
+      const entries = await this.state.storage.list<EndpointRequestMetricEvent[]>({ prefix: 'endpoint:' });
+      const endpointMetrics: Record<string, EndpointRequestMetricEvent[]> = {};
+
+      for (const [key, value] of entries.entries()) {
+        if (!Array.isArray(value)) {
+          continue;
+        }
+
+        endpointMetrics[key.slice('endpoint:'.length)] = value as EndpointRequestMetricEvent[];
+      }
+
+      return jsonResponse(summarizeFunnelFromEndpointMetrics(endpointMetrics, window, now));
+    }
+
     return jsonResponse({ error: 'Not found' }, { status: 404 });
   }
 
@@ -911,7 +937,12 @@ export class MetricsStoreDurableObject {
       }
 
       if (key.startsWith('endpoint:')) {
-        const next = pruneEndpointRequestEvents(value as EndpointRequestMetricEvent[], now);
+        const next = pruneEndpointRequestEventsWithWindow(
+          value as EndpointRequestMetricEvent[],
+          now,
+          ENDPOINT_METRICS_DURABLE_RETENTION_MS,
+          ENDPOINT_METRICS_DURABLE_MAX_EVENTS,
+        );
         if (next.length === 0) {
           await this.state.storage.delete(key);
         } else {
@@ -1166,10 +1197,74 @@ function getEndpointRequestMetricsState(): Map<string, EndpointRequestMetricEven
   return globalThis.endpointRequestMetricsState;
 }
 
-function pruneEndpointRequestEvents(events: EndpointRequestMetricEvent[], now: number): EndpointRequestMetricEvent[] {
-  const windowStart = now - ENDPOINT_METRICS_WINDOW_MS;
+function pruneEndpointRequestEventsWithWindow(
+  events: EndpointRequestMetricEvent[],
+  now: number,
+  windowMs: number,
+  maxEvents: number,
+): EndpointRequestMetricEvent[] {
+  const windowStart = now - windowMs;
   const inWindow = events.filter((event) => event.at >= windowStart);
-  return inWindow.slice(-ENDPOINT_METRICS_MAX_EVENTS);
+  return inWindow.slice(-maxEvents);
+}
+
+function pruneEndpointRequestEvents(events: EndpointRequestMetricEvent[], now: number): EndpointRequestMetricEvent[] {
+  return pruneEndpointRequestEventsWithWindow(events, now, ENDPOINT_METRICS_WINDOW_MS, ENDPOINT_METRICS_MAX_EVENTS);
+}
+
+function getFunnelWindowMs(window: FunnelWindow): number {
+  return window === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+}
+
+function summarizeFunnelFromEndpointMetrics(
+  endpointMetrics: Record<string, EndpointRequestMetricEvent[]>,
+  window: FunnelWindow,
+  now: number,
+): FunnelSummary {
+  const windowMs = getFunnelWindowMs(window);
+  const fromMs = now - windowMs;
+
+  const endpoints = Object.entries(endpointMetrics)
+    .map(([path, events]) => {
+      const inWindow = events.filter((event) => event.at >= fromMs && event.at <= now);
+      const challengedRequestIds = new Set(
+        inWindow
+          .filter((event) => event.statusCode === 402 && event.requestId)
+          .map((event) => event.requestId as string),
+      );
+      const replayedRequestIds = new Set(
+        inWindow
+          .filter(
+            (event) =>
+              event.statusCode < 400 &&
+              ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || '') &&
+              event.requestId &&
+              challengedRequestIds.has(event.requestId),
+          )
+          .map((event) => event.requestId as string),
+      );
+
+      const challenged402 = inWindow.filter((event) => event.statusCode === 402).length;
+      const settled = inWindow.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
+      const replayed = replayedRequestIds.size;
+      return {
+        path,
+        challenged402,
+        settled,
+        replayed,
+        challengeToReplayConversionRate:
+          challengedRequestIds.size > 0 ? Number((replayed / challengedRequestIds.size).toFixed(4)) : 0,
+      };
+    })
+    .filter((endpoint) => endpoint.challenged402 > 0 || endpoint.settled > 0 || endpoint.replayed > 0)
+    .sort((a, b) => b.challenged402 - a.challenged402 || b.replayed - a.replayed || a.path.localeCompare(b.path));
+
+  return {
+    window,
+    from: new Date(fromMs).toISOString(),
+    to: new Date(now).toISOString(),
+    endpoints,
+  };
 }
 
 function recordEndpointRequestMetric(path: string, event: EndpointRequestMetricEvent): void {
@@ -2157,6 +2252,23 @@ type MetricsSnapshot = {
   endpointMetrics: Record<string, EndpointRequestMetricEvent[]>;
 };
 
+type FunnelWindow = '24h' | '7d';
+
+type EndpointFunnelSummary = {
+  path: string;
+  challenged402: number;
+  settled: number;
+  replayed: number;
+  challengeToReplayConversionRate: number;
+};
+
+type FunnelSummary = {
+  window: FunnelWindow;
+  from: string;
+  to: string;
+  endpoints: EndpointFunnelSummary[];
+};
+
 async function appendDurableMetric(
   env: Env,
   payload:
@@ -2203,6 +2315,42 @@ async function getDurableMetricsSnapshot(env: Env, now: number): Promise<Metrics
     console.error('metrics store snapshot failed', error);
     return null;
   }
+}
+
+async function getDurableFunnelSummary(
+  env: Env,
+  now: number,
+  window: FunnelWindow,
+): Promise<FunnelSummary | null> {
+  if (!env.METRICS_STORE) {
+    return null;
+  }
+
+  try {
+    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
+    const response = await stub.fetch('https://metrics-store/funnel', {
+      method: 'POST',
+      body: JSON.stringify({ now, window }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`metrics store ${response.status}`);
+    }
+
+    return (await response.json()) as FunnelSummary;
+  } catch (error) {
+    console.error('metrics store funnel failed', error);
+    return null;
+  }
+}
+
+function getInMemoryFunnelSummary(now: number, window: FunnelWindow): FunnelSummary {
+  const endpointMetrics: Record<string, EndpointRequestMetricEvent[]> = {};
+  for (const [path, events] of getEndpointRequestMetricsState().entries()) {
+    endpointMetrics[path] = events;
+  }
+
+  return summarizeFunnelFromEndpointMetrics(endpointMetrics, window, now);
 }
 
 type EndpointFreshness = {
@@ -2712,6 +2860,14 @@ const worker = {
       });
     }
 
+    if (path === FUNNEL_METRICS_PATH) {
+      const now = Date.now();
+      const window = url.searchParams.get('window') === '7d' ? '7d' : '24h';
+      const durableSummary = await getDurableFunnelSummary(env, now, window);
+      const summary = durableSummary || getInMemoryFunnelSummary(now, window);
+      return apiResponse(summary);
+    }
+
     if (path === CATALOG_PATH) {
       const minConfirmations = parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS);
       const maxAgeSeconds = parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS);
@@ -2738,6 +2894,8 @@ const worker = {
       catalog.payment.settlementStatusFilters = ['payer', 'resource', 'payTo', 'minAmount'];
       catalog.payment.settlementStatusRemediation = SETTLEMENT_REMEDIATION_MAP;
       catalog.payment.paymentReasonRemediation = PAYMENT_REMEDIATION_MAP;
+      catalog.payment.requestFunnelEndpoint = `${origin}${FUNNEL_METRICS_PATH}`;
+      catalog.payment.requestFunnelSupportedWindows = ['24h', '7d'];
       catalog.payment.remediationSchemaVersion = REMEDIATION_SCHEMA_VERSION;
       catalog.payment.remediationCompatibility = REMEDIATION_COMPATIBILITY;
 
