@@ -30,6 +30,7 @@
 - 已补 `hreflang`、多语言 canonical 与双语 sitemap
 - 已固定收款地址、USDC 合约和 Base 主网支付范围
 - 已将 nonce / tx hash 防重放迁移到 Durable Objects
+- 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 
 ## Phase 1
 
@@ -111,3 +112,9 @@
 2. 把 Base USDC 入账校验从单交易回执升级到更完整的交易证明模型
 3. 把 `whale-positions` 接成真实上游代理
 4. 在 catalog 中增加更明确的延迟/可用性字段
+
+## Operations
+
+- OpenClaw 定时任务 `API402 Autopilot` 每 15 分钟检查一次仓库状态
+- 自动任务会优先读取 `doc/DEVLOG.md` 与 `doc/ROADMAP.md`
+- 连续性主要依赖仓库文档与 git 历史，不依赖当前 Codex 聊天窗口
