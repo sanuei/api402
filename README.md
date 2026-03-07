@@ -34,6 +34,7 @@
 - remediation 相关字段已增加稳定元信息：`remediationSchemaVersion`（当前 `1.0.0`）和 `remediationCompatibility`（`semver-minor-backward-compatible`）
 - catalog / 402 / settlement 响应现在都附带 `remediationRefs`（`changelog` 与 `deprecations` 公告地址），便于 SDK 自动发现兼容变更公告
 - catalog `endpoints[].requestMetrics` 已输出最近 60 分钟请求量、错误码分布、10 分钟分桶错误趋势，以及 `paymentFunnel`（`challenged402` / `settled` / `replayed` 与 challenge→replay 转化率）；漏斗现支持基于 `X-Request-Id` 的精确 challenge→replay 归因
+- catalog endpoint 新增 `lastUpdatedAt` 与 `freshness`（`status` / `ageSeconds` / `maxAgeSeconds` / `signal`），方便 SDK 与开发者快速判断数据新鲜度
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
 - 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存

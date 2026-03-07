@@ -238,6 +238,13 @@ test('catalog exposes enriched endpoint metadata', async () => {
         errorsByCode: Array<{ code: string; count: number }>;
         requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
       };
+      lastUpdatedAt?: string | null;
+      freshness?: {
+        status: 'fresh' | 'stale' | 'unknown';
+        ageSeconds: number | null;
+        maxAgeSeconds: number;
+        signal: 'upstream_telemetry' | 'request_metrics' | 'none';
+      };
       upstreamPolicy?: {
         timeoutMs: number;
         failureThreshold: number;
@@ -306,6 +313,11 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.endpoints[0].requestMetrics?.paymentFunnel?.replayed, 0);
   assert.equal(body.endpoints[0].requestMetrics?.paymentFunnel?.challengeToReplayConversionRate, 0);
   assert.equal(body.endpoints[0].requestMetrics?.requestTrend.length, 6);
+  assert.equal(body.endpoints[0].lastUpdatedAt, null);
+  assert.equal(body.endpoints[0].freshness?.status, 'unknown');
+  assert.equal(body.endpoints[0].freshness?.ageSeconds, null);
+  assert.equal(body.endpoints[0].freshness?.maxAgeSeconds, 900);
+  assert.equal(body.endpoints[0].freshness?.signal, 'none');
   const firstLiveEndpoint = body.endpoints.find((endpoint) => endpoint.upstreamPolicy);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.timeoutMs, 8000);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.failureThreshold, 3);
@@ -316,6 +328,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.successRate, 1);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.avgLatencyMs, null);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.p95LatencyMs, null);
+  assert.equal(firstLiveEndpoint?.lastUpdatedAt, null);
+  assert.equal(firstLiveEndpoint?.freshness?.status, 'unknown');
 });
 
 test('health endpoint returns status information', async () => {
@@ -416,6 +430,13 @@ test('catalog requestMetrics expose endpoint request volume and error trend', as
         errorsByCode: Array<{ code: string; count: number }>;
         requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
       };
+      lastUpdatedAt?: string | null;
+      freshness?: {
+        status: 'fresh' | 'stale' | 'unknown';
+        ageSeconds: number | null;
+        maxAgeSeconds: number;
+        signal: 'upstream_telemetry' | 'request_metrics' | 'none';
+      };
     }>;
   };
 
@@ -430,6 +451,11 @@ test('catalog requestMetrics expose endpoint request volume and error trend', as
   assert.equal(deepseek?.requestMetrics?.errorsByCode[0]?.code, 'PAYMENT_MISSING');
   assert.equal(deepseek?.requestMetrics?.errorsByCode[0]?.count, 2);
   assert.equal(deepseek?.requestMetrics?.requestTrend.length, 6);
+  assert.equal(typeof deepseek?.lastUpdatedAt, 'string');
+  assert.equal(deepseek?.freshness?.status, 'fresh');
+  assert.equal(deepseek?.freshness?.signal, 'request_metrics');
+  assert.equal(deepseek?.freshness?.maxAgeSeconds, 900);
+  assert.ok((deepseek?.freshness?.ageSeconds ?? 0) >= 0);
 });
 
 test('valid signed payment payload is accepted', async () => {

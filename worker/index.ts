@@ -937,6 +937,7 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
     ? getUpstreamTelemetrySummary(endpoint.upstream, now)
     : null;
   const requestMetrics = getEndpointRequestMetricSummary(endpoint.path, now, Boolean(endpoint.upstream));
+  const { lastUpdatedAt, freshness } = computeEndpointFreshness(now, requestMetrics, upstreamTelemetry);
   const samplePayload = buildPaymentMessage({
     version: '1',
     scheme: 'exact',
@@ -989,6 +990,8 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
     },
     exampleResponse: endpoint.sample(),
     requestMetrics,
+    lastUpdatedAt,
+    freshness,
     upstreamPolicy: endpoint.upstream
       ? {
           timeoutMs: UPSTREAM_TIMEOUT_MS,
@@ -2025,6 +2028,58 @@ type EndpointRequestMetricSummary = {
   errorsByCode: Array<{ code: string; count: number }>;
   requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
 };
+
+type EndpointFreshness = {
+  status: 'fresh' | 'stale' | 'unknown';
+  ageSeconds: number | null;
+  maxAgeSeconds: number;
+  signal: 'upstream_telemetry' | 'request_metrics' | 'none';
+};
+
+const ENDPOINT_FRESHNESS_MAX_AGE_SECONDS = 15 * 60;
+
+function computeEndpointFreshness(
+  now: number,
+  requestMetrics: EndpointRequestMetricSummary,
+  upstreamTelemetry: UpstreamTelemetrySummary | null,
+): { lastUpdatedAt: string | null; freshness: EndpointFreshness } {
+  const signalAt = upstreamTelemetry?.updatedAt || requestMetrics.lastRequestAt;
+  if (!signalAt) {
+    return {
+      lastUpdatedAt: null,
+      freshness: {
+        status: 'unknown',
+        ageSeconds: null,
+        maxAgeSeconds: ENDPOINT_FRESHNESS_MAX_AGE_SECONDS,
+        signal: 'none',
+      },
+    };
+  }
+
+  const updatedAtMs = Date.parse(signalAt);
+  if (Number.isNaN(updatedAtMs)) {
+    return {
+      lastUpdatedAt: null,
+      freshness: {
+        status: 'unknown',
+        ageSeconds: null,
+        maxAgeSeconds: ENDPOINT_FRESHNESS_MAX_AGE_SECONDS,
+        signal: 'none',
+      },
+    };
+  }
+
+  const ageSeconds = Math.max(0, Math.floor((now - updatedAtMs) / 1000));
+  return {
+    lastUpdatedAt: new Date(updatedAtMs).toISOString(),
+    freshness: {
+      status: ageSeconds <= ENDPOINT_FRESHNESS_MAX_AGE_SECONDS ? 'fresh' : 'stale',
+      ageSeconds,
+      maxAgeSeconds: ENDPOINT_FRESHNESS_MAX_AGE_SECONDS,
+      signal: upstreamTelemetry?.updatedAt ? 'upstream_telemetry' : 'request_metrics',
+    },
+  };
+}
 
 function getUpstreamCircuitState(): Map<string, { failures: number; openUntil: number; lastErrorCode?: string }> {
   if (!globalThis.upstreamCircuitState) {

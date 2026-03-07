@@ -4,6 +4,47 @@
 
 ### 本轮目标
 
+- 为 catalog endpoint 增加 `lastUpdatedAt` 与 `freshness`，提升开发者/SDK 对数据新鲜度的判断效率（conversion + developer adoption）
+
+### 已完成
+
+- `catalog.endpoints[]` 新增 `lastUpdatedAt`
+- `catalog.endpoints[]` 新增 `freshness` 结构：
+  - `status`: `fresh | stale | unknown`
+  - `ageSeconds`: 最近更新距离当前秒数
+  - `maxAgeSeconds`: 新鲜度阈值（当前 900 秒）
+  - `signal`: `upstream_telemetry | request_metrics | none`
+- 新鲜度优先基于上游 telemetry `updatedAt`，无上游信号时回退到 endpoint `requestMetrics.lastRequestAt`
+- 前端类型 `src/types.ts` 已同步新字段定义
+- 测试已扩展：
+  - 空窗口时 freshness 为 `unknown`
+  - 有请求流量后 freshness 为 `fresh`，并带 `request_metrics` 信号
+- README / ROADMAP 已同步能力说明与后续任务
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 将 requestMetrics / upstream telemetry / requestId funnel 持久化到 Durable Objects 或 KV，避免冷启动窗口丢失
+2. 提供 AI 上游凭据后继续推进 `/api/deepseek`、`/api/qwen` 真实上游替换
+3. 在前端 API 卡片直接展示 freshness 状态和更新时间
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为 402 / settlement / 成功响应补 `requestId` 追踪，并将 payment funnel 升级为 challenge→replay 精确归因，提升转化诊断可靠性
 
 ### 已完成

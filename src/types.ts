@@ -43,6 +43,13 @@ export interface CatalogEndpoint {
   upstream: string | null;
   status: 'live' | 'demo' | string;
   tags: string[];
+  lastUpdatedAt?: string | null;
+  freshness?: {
+    status: 'fresh' | 'stale' | 'unknown';
+    ageSeconds: number | null;
+    maxAgeSeconds: number;
+    signal: 'upstream_telemetry' | 'request_metrics' | 'none';
+  };
   locales?: {
     zh: CatalogEndpointLocale;
     en: CatalogEndpointLocale;
