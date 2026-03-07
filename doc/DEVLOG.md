@@ -2,6 +2,21 @@
 
 ## 2026-03-08
 
+### 本轮状态
+
+- 阻塞（未实施代码变更）
+
+### Blocker
+
+- **阻塞项**: 按当前优先级，下一项应为把 AI 类 demo 接口（`/api/deepseek`、`/api/qwen`）替换为真实上游；但仓库当前没有可用的 AI 上游凭据。
+- **阻塞原因**: 主流可用上游（DeepSeek / DashScope(Qwen) / OpenRouter / Cloudflare AI）都需要 API Key 或绑定配置；在无凭据情况下无法安全完成“真实付费上游”接入与联调验证。
+- **需要你提供的精确信息**:
+  1. 选择一个目标上游（`deepseek` / `dashscope-qwen` / `openrouter` / `cloudflare-ai`）
+  2. 提供对应生产可用凭据（例如 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY`，或 Cloudflare AI 绑定信息）
+  3. 指定期望模型与计费上限（例如 `deepseek-chat`、`qwen-max`，以及单请求 token/成本上限）
+
+## 2026-03-08
+
 ### 本轮目标
 
 - 在 catalog 暴露 endpoint 级 latency / availability 遥测字段，提升 SDK 选路与开发者接入可观测性
