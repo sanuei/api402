@@ -412,3 +412,44 @@
 1. 把 nonce / tx hash 防重放迁移到持久层
 2. 加入确认数或区块高度校验
 3. 再做浏览器端真实支付发起流程
+
+## 2026-03-08
+
+### 本轮目标
+
+- 把 nonce / tx hash 防重放从单实例内存迁移到 Durable Objects
+- 保证同一笔支付证明不会因为 Worker 重启或多实例而失效
+- 补 Durable Objects 配置、测试和文档
+
+### 已完成
+
+- 新增 `ReplayGuardDurableObject`
+- `wrangler.toml` 新增 `REPLAY_GUARD` binding 和迁移配置
+- nonce 与 tx hash 现在通过 Durable Objects 原子消费，避免单实例内存丢失
+- 本地测试环境已补 fake Durable Object namespace，覆盖新逻辑
+- README 和 ROADMAP 已同步记录持久化防重放能力
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 8 个测试全部通过
+- `npx wrangler deploy --dry-run` 通过
+
+### 遗留问题
+
+- Durable Object 目前是单全局实例，流量继续增长后可以再分片
+- 还没有对 Base 交易确认数做更严格的结算策略
+
+### 下一步建议
+
+1. 增加确认数或区块高度校验
+2. 把 `whale-positions` 接成真实上游代理
+3. 再做浏览器端真实支付发起流程

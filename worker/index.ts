@@ -12,6 +12,7 @@ export interface Env {
   PAY_TO?: string;
   APP_NAME?: string;
   BASE_RPC_URL?: string;
+  REPLAY_GUARD?: DurableObjectNamespace;
   ASSETS?: Fetcher;
 }
 
@@ -92,6 +93,11 @@ const DEMO_PAYMENT_TOKEN = 'demo';
 const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
+
+type ReplayConsumeResult = {
+  consumed: boolean;
+  replayedKey?: string;
+};
 
 export const API_ENDPOINTS: APIEndpoint[] = [
   {
@@ -274,6 +280,10 @@ function getTransactionStore(): Map<string, number> {
   return globalThis.usedPaymentTransactions;
 }
 
+function getReplayStore(kind: 'nonce' | 'tx'): Map<string, number> {
+  return kind === 'nonce' ? getNonceStore() : getTransactionStore();
+}
+
 function sweepExpiredNonces(now: number) {
   const nonceStore = getNonceStore();
   for (const [key, expiry] of nonceStore.entries()) {
@@ -294,6 +304,48 @@ function sweepExpiredTransactions(now: number) {
 
 function buildNonceKey(payload: PaymentPayload): string {
   return `${payload.from.toLowerCase()}:${payload.resource}:${payload.nonce}`;
+}
+
+function buildReplayGuardKey(kind: 'nonce' | 'tx', value: string): string {
+  return `${kind}:${value.toLowerCase()}`;
+}
+
+async function consumeReplayKeys(
+  env: Env,
+  entries: Array<{ kind: 'nonce' | 'tx'; value: string }>,
+  expiry: number,
+  now: number,
+): Promise<ReplayConsumeResult> {
+  const keys = entries.map(({ kind, value }) => buildReplayGuardKey(kind, value));
+
+  if (env.REPLAY_GUARD) {
+    const stub = env.REPLAY_GUARD.get(env.REPLAY_GUARD.idFromName('global'));
+    const response = await stub.fetch('https://replay-guard/consume', {
+      method: 'POST',
+      body: JSON.stringify({ keys, expiry, now }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`replay guard ${response.status}`);
+    }
+
+    return (await response.json()) as ReplayConsumeResult;
+  }
+
+  for (const entry of entries) {
+    const key = buildReplayGuardKey(entry.kind, entry.value);
+    const currentExpiry = getReplayStore(entry.kind).get(key);
+    if (currentExpiry && currentExpiry > now) {
+      return { consumed: false, replayedKey: key };
+    }
+  }
+
+  for (const entry of entries) {
+    const key = buildReplayGuardKey(entry.kind, entry.value);
+    getReplayStore(entry.kind).set(key, expiry);
+  }
+
+  return { consumed: true };
 }
 
 function parseTokenAmount(value: string, decimals: number): bigint | null {
@@ -451,6 +503,70 @@ async function verifyBaseUsdcSettlement(
     code: 'PAYMENT_VALID',
     message: 'Base USDC payment transfer verified successfully.',
   };
+}
+
+export class ReplayGuardDurableObject {
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: Env,
+  ) {}
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+    if (request.method !== 'POST' || url.pathname !== '/consume') {
+      return jsonResponse({ error: 'Not found' }, { status: 404 });
+    }
+
+    const payload = (await request.json()) as { keys?: string[]; expiry?: number; now?: number };
+    const keys = Array.isArray(payload.keys) ? payload.keys.filter((value) => typeof value === 'string') : [];
+    const expiry = Number(payload.expiry);
+    const now = Number(payload.now);
+
+    if (!Number.isFinite(expiry) || !Number.isFinite(now) || keys.length === 0) {
+      return jsonResponse({ error: 'Invalid replay payload' }, { status: 400 });
+    }
+
+    for (const key of keys) {
+      const currentExpiry = await this.state.storage.get<number>(key);
+      if (typeof currentExpiry === 'number' && currentExpiry > now) {
+        return jsonResponse({ consumed: false, replayedKey: key });
+      }
+    }
+
+    await this.state.storage.put(
+      keys.reduce<Record<string, number>>((result, key) => {
+        result[key] = expiry;
+        return result;
+      }, {}),
+    );
+
+    const currentAlarm = await this.state.storage.getAlarm();
+    if (currentAlarm === null || expiry < currentAlarm) {
+      await this.state.storage.setAlarm(expiry);
+    }
+    return jsonResponse({ consumed: true });
+  }
+
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    let nextAlarm: number | null = null;
+    const entries = await this.state.storage.list<number>();
+
+    for (const [key, expiry] of entries.entries()) {
+      if (typeof expiry === 'number' && expiry <= now) {
+        await this.state.storage.delete(key);
+        continue;
+      }
+
+      if (typeof expiry === 'number' && (nextAlarm === null || expiry < nextAlarm)) {
+        nextAlarm = expiry;
+      }
+    }
+
+    if (nextAlarm !== null) {
+      await this.state.storage.setAlarm(nextAlarm);
+    }
+  }
 }
 
 export function buildPaymentMessage(input: Omit<PaymentPayload, 'signature'>): PaymentMessage {
@@ -804,18 +920,9 @@ export async function verifyPayment(
     };
   }
 
+  const nonceKey = buildNonceKey(rawPayload);
   sweepExpiredNonces(now);
   sweepExpiredTransactions(now);
-  const nonceKey = buildNonceKey(rawPayload);
-  const nonceStore = getNonceStore();
-  const currentNonceExpiry = nonceStore.get(nonceKey);
-  if (currentNonceExpiry && currentNonceExpiry > now) {
-    return {
-      ok: false,
-      code: 'PAYMENT_NONCE_REPLAYED',
-      message: 'Payment payload nonce has already been used.',
-    };
-  }
 
   const txHash = getPaymentTxHash(request);
   if (!txHash) {
@@ -831,16 +938,6 @@ export async function verifyPayment(
       ok: false,
       code: 'PAYMENT_TX_HASH_INVALID',
       message: 'Payment transaction hash is not a valid 32-byte hex value.',
-    };
-  }
-
-  const transactionStore = getTransactionStore();
-  const existingTransactionExpiry = transactionStore.get(txHash.toLowerCase());
-  if (existingTransactionExpiry && existingTransactionExpiry > now) {
-    return {
-      ok: false,
-      code: 'PAYMENT_TX_REPLAYED',
-      message: 'Payment transaction hash has already been used for a request.',
     };
   }
 
@@ -868,8 +965,34 @@ export async function verifyPayment(
     return settlementVerification;
   }
 
-  nonceStore.set(nonceKey, deadline);
-  transactionStore.set(txHash.toLowerCase(), deadline);
+  try {
+    const replayResult = await consumeReplayKeys(
+      env,
+      [
+        { kind: 'nonce', value: nonceKey },
+        { kind: 'tx', value: txHash },
+      ],
+      deadline,
+      now,
+    );
+
+    if (!replayResult.consumed) {
+      return {
+        ok: false,
+        code: replayResult.replayedKey?.startsWith('nonce:') ? 'PAYMENT_NONCE_REPLAYED' : 'PAYMENT_TX_REPLAYED',
+        message:
+          replayResult.replayedKey?.startsWith('nonce:')
+            ? 'Payment payload nonce has already been used.'
+            : 'Payment transaction hash has already been used for a request.',
+      };
+    }
+  } catch {
+    return {
+      ok: false,
+      code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
+      message: 'Replay protection storage could not be reached.',
+    };
+  }
 
   return {
     ok: true,

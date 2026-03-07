@@ -29,6 +29,7 @@
 - 已补 logo、favicon、Open Graph、robots 和 sitemap
 - 已补 `hreflang`、多语言 canonical 与双语 sitemap
 - 已固定收款地址、USDC 合约和 Base 主网支付范围
+- 已将 nonce / tx hash 防重放迁移到 Durable Objects
 
 ## Phase 1
 

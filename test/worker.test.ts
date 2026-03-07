@@ -13,11 +13,65 @@ const TEST_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const ERC20_TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
+let replayGuardStore = new Map<string, number>();
+
+class FakeReplayGuardStub {
+  async fetch(request: Request | string, init?: RequestInit): Promise<Response> {
+    const resolvedRequest =
+      typeof request === 'string' ? new Request(request, init) : request;
+    const payload = (await resolvedRequest.json()) as {
+      keys?: string[];
+      expiry?: number;
+      now?: number;
+    };
+
+    const keys = Array.isArray(payload.keys) ? payload.keys : [];
+    const expiry = Number(payload.expiry);
+    const now = Number(payload.now);
+
+    for (const key of keys) {
+      const currentExpiry = replayGuardStore.get(key);
+      if (currentExpiry && currentExpiry > now) {
+        return Response.json({ consumed: false, replayedKey: key });
+      }
+    }
+
+    for (const key of keys) {
+      replayGuardStore.set(key, expiry);
+    }
+
+    return Response.json({ consumed: true });
+  }
+}
+
+function createReplayGuardNamespace(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { name } as unknown as DurableObjectId;
+    },
+    idFromString(name: string) {
+      return { name } as unknown as DurableObjectId;
+    },
+    newUniqueId() {
+      return { name: crypto.randomUUID() } as unknown as DurableObjectId;
+    },
+    get() {
+      return new FakeReplayGuardStub() as unknown as DurableObjectStub;
+    },
+    getByName() {
+      return new FakeReplayGuardStub() as unknown as DurableObjectStub;
+    },
+    jurisdiction() {
+      return undefined;
+    },
+  } as unknown as DurableObjectNamespace;
+}
 
 function createEnv(): Env {
   return {
     APP_NAME: 'API Market',
     PAY_TO: TEST_PAY_TO,
+    REPLAY_GUARD: createReplayGuardNamespace(),
     ASSETS: {
       fetch: async () => new Response('<html>ok</html>', { headers: { 'Content-Type': 'text/html' } }),
     } as unknown as Fetcher,
@@ -96,6 +150,7 @@ test.beforeEach(() => {
   globalThis.rateLimiter = new Map();
   globalThis.usedPaymentNonces = new Map();
   globalThis.usedPaymentTransactions = new Map();
+  replayGuardStore = new Map();
 });
 
 test('catalog exposes enriched endpoint metadata', async () => {
