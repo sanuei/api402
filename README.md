@@ -33,6 +33,9 @@ npm run deploy
 
 `deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。
 
+另外，`wrangler.toml` 已配置 `[build] command = "npm run build:static"`。
+这意味着即使部署平台直接执行 `npx wrangler deploy`，也会先生成 `dist/`，不会再因为缺少静态目录而失败。
+
 ## Current Scope
 
 - BTC / ETH 价格可尝试代理 Binance

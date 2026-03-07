@@ -1,6 +1,7 @@
 name = "api-market-x402"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
+build = { command = "npm run build:static", watch_dir = ["src", "index.html"] }
 
 assets = { directory = "dist", binding = "ASSETS", not_found_handling = "single-page-application" }
 
