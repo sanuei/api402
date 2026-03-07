@@ -642,3 +642,69 @@ test('settlement status endpoint returns ready when confirmations are satisfied'
     },
   );
 });
+
+test('settlement status endpoint can verify payment proof binding', async () => {
+  const txHash = '0x9999999999999999999999999999999999999999999999999999999999999999';
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request(`https://api-402.com/api/v1/settlement/${txHash}?payer=${payload.from}&resource=/api/deepseek`, {
+          headers: {
+            'PAYMENT-SIGNATURE': encodeBase64(payload),
+          },
+        }),
+        createEnv(),
+      );
+      const body = (await response.json()) as {
+        code: string;
+        settlementProof?: {
+          verified: boolean;
+          payer: string;
+          resource: string;
+          requestedAmount: string;
+          transferredAmount: string | null;
+        } | null;
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(body.code, 'SETTLEMENT_READY');
+      assert.equal(body.settlementProof?.verified, true);
+      assert.equal(body.settlementProof?.payer, payload.from);
+      assert.equal(body.settlementProof?.resource, '/api/deepseek');
+      assert.equal(body.settlementProof?.requestedAmount, '0.003');
+      assert.equal(body.settlementProof?.transferredAmount, '3000');
+    },
+  );
+});
+
+test('settlement status endpoint rejects proof when resource filter mismatches', async () => {
+  const txHash = '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request(`https://api-402.com/api/v1/settlement/${txHash}?resource=/api/qwen`, {
+          headers: {
+            'PAYMENT-SIGNATURE': encodeBase64(payload),
+          },
+        }),
+        createEnv(),
+      );
+      const body = (await response.json()) as { code: string };
+
+      assert.equal(response.status, 409);
+      assert.equal(body.code, 'SETTLEMENT_PROOF_MISMATCH');
+    },
+  );
+});

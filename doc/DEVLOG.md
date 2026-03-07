@@ -4,6 +4,40 @@
 
 ### 本轮目标
 
+- 为 settlement 查询补可选签名证明校验（payer/resource 维度），降低第三方归因误判
+
+### 已完成
+
+- `GET /api/v1/settlement/{txHash}` 新增可选 `PAYMENT-SIGNATURE` 证明校验
+- 支持在 settlement 查询中使用 `payer` / `resource` 过滤参数绑定支付归因
+- settlement proof 校验会验证签名、收款地址一致性与链上 USDC `Transfer` 金额匹配
+- catalog 新增 `settlementStatusProofHeaders` 与 `settlementStatusFilters`，便于 SDK 自动发现能力
+- 新增测试覆盖 settlement proof 成功校验与 resource 过滤不匹配拒绝
+- README 与 ROADMAP 已同步更新 settlement proof 查询能力
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 17 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 在 catalog 中增加 latency / availability 指标字段
+2. 为关键上游接口补统一熔断 / 降级策略与 machine-readable 错误码
+3. 推进 AI 类接口真实上游替换，继续降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 增加支付后结算状态查询端点，提升 SDK 自动重试与交易追踪能力
 
 ### 已完成

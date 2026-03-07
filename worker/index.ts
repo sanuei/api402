@@ -83,9 +83,15 @@ export interface SettlementPolicy {
 
 type SettlementStatusResult = {
   ok: boolean;
-  code: 'SETTLEMENT_READY' | 'SETTLEMENT_PENDING' | 'SETTLEMENT_TOO_OLD' | 'SETTLEMENT_NOT_FOUND' | 'SETTLEMENT_RPC_FAILED';
+  code:
+    | 'SETTLEMENT_READY'
+    | 'SETTLEMENT_PENDING'
+    | 'SETTLEMENT_TOO_OLD'
+    | 'SETTLEMENT_NOT_FOUND'
+    | 'SETTLEMENT_RPC_FAILED';
   message: string;
   settlement: PaymentSettlementContext;
+  receipt: JsonRpcTransactionReceipt | null;
 };
 
 export interface PaymentVerificationResult {
@@ -640,38 +646,14 @@ async function verifyBaseUsdcSettlement(
     };
   }
 
-  const matchingTransfer = (receipt.logs || []).find((log) => {
-    if (!log.address || log.address.toLowerCase() !== BASE_USDC_CONTRACT.toLowerCase()) {
-      return false;
-    }
-
-    if (!log.topics || log.topics[0]?.toLowerCase() !== ERC20_TRANSFER_TOPIC) {
-      return false;
-    }
-
-    const from = normalizeTopicAddress(log.topics[1]);
-    const to = normalizeTopicAddress(log.topics[2]);
-    return from === payload.from.toLowerCase() && to === payTo.toLowerCase();
-  });
-
-  if (!matchingTransfer) {
+  const transferredAmount = findMatchingTransferAmount(receipt, payload.from, payTo);
+  if (transferredAmount === null) {
     return {
       ok: false,
       code: 'PAYMENT_TRANSFER_MISSING',
       message: 'No matching Base USDC transfer to the gateway receiver was found in the transaction.',
     };
   }
-
-  const amountHex = matchingTransfer.data;
-  if (!amountHex || !/^0x[0-9a-fA-F]+$/.test(amountHex)) {
-    return {
-      ok: false,
-      code: 'PAYMENT_TRANSFER_MISSING',
-      message: 'Matching Base USDC transfer log is missing an amount.',
-    };
-  }
-
-  const transferredAmount = BigInt(amountHex);
   if (transferredAmount < minimumAmount) {
     return {
       ok: false,
@@ -792,6 +774,37 @@ function isPaymentPayload(value: unknown): value is PaymentPayload {
   return requiredStringKeys.every((key) => typeof payload[key] === 'string');
 }
 
+function findMatchingTransferAmount(
+  receipt: JsonRpcTransactionReceipt | null,
+  from: string,
+  to: string,
+): bigint | null {
+  if (!receipt) {
+    return null;
+  }
+
+  const matchingTransfer = (receipt.logs || []).find((log) => {
+    if (!log.address || log.address.toLowerCase() !== BASE_USDC_CONTRACT.toLowerCase()) {
+      return false;
+    }
+
+    if (!log.topics || log.topics[0]?.toLowerCase() !== ERC20_TRANSFER_TOPIC) {
+      return false;
+    }
+
+    const fromAddress = normalizeTopicAddress(log.topics[1]);
+    const toAddress = normalizeTopicAddress(log.topics[2]);
+    return fromAddress === from.toLowerCase() && toAddress === to.toLowerCase();
+  });
+
+  const amountHex = matchingTransfer?.data;
+  if (!amountHex || !/^0x[0-9a-fA-F]+$/.test(amountHex)) {
+    return null;
+  }
+
+  return BigInt(amountHex);
+}
+
 function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoint) {
   const samplePayload = buildPaymentMessage({
     version: '1',
@@ -897,6 +910,7 @@ async function getSettlementStatus(
       code: 'SETTLEMENT_RPC_FAILED',
       message: 'Base RPC could not be reached for settlement status query.',
       settlement: createSettlementContext(null, null, 0n),
+      receipt: null,
     };
   }
 
@@ -906,6 +920,7 @@ async function getSettlementStatus(
       code: 'SETTLEMENT_NOT_FOUND',
       message: 'Transaction is not found or not successful on Base.',
       settlement: createSettlementContext(parseHexBlockNumber(receipt?.blockNumber), null, 0n),
+      receipt: receipt || null,
     };
   }
 
@@ -916,6 +931,7 @@ async function getSettlementStatus(
       code: 'SETTLEMENT_PENDING',
       message: 'Transaction receipt block is not available yet.',
       settlement: createSettlementContext(null, null, 0n),
+      receipt,
     };
   }
 
@@ -933,6 +949,7 @@ async function getSettlementStatus(
       code: 'SETTLEMENT_RPC_FAILED',
       message: 'Base RPC could not be reached for latest block query.',
       settlement: createSettlementContext(receiptBlock, null, 0n),
+      receipt,
     };
   }
 
@@ -946,6 +963,7 @@ async function getSettlementStatus(
       code: 'SETTLEMENT_TOO_OLD',
       message: `Settlement proof is older than ${maxSettlementAgeBlocks.toString()} blocks.`,
       settlement,
+      receipt,
     };
   }
 
@@ -955,6 +973,7 @@ async function getSettlementStatus(
       code: 'SETTLEMENT_PENDING',
       message: `Settlement has ${confirmations.toString()} confirmations and needs ${minConfirmations.toString()}.`,
       settlement,
+      receipt,
     };
   }
 
@@ -963,6 +982,7 @@ async function getSettlementStatus(
     code: 'SETTLEMENT_READY',
     message: 'Settlement confirmation requirement is satisfied.',
     settlement,
+    receipt,
   };
 }
 
@@ -1140,6 +1160,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
     env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
     DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
   );
+  const payTo = env.PAY_TO || DEFAULT_PAY_TO;
 
   if (!isTransactionHash(txHash)) {
     return apiResponse(
@@ -1162,6 +1183,113 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
     headers['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
   }
 
+  const proofHeader = request.headers.get('PAYMENT-SIGNATURE');
+  const payerFilter = url.searchParams.get('payer')?.toLowerCase() || null;
+  const resourceFilter = url.searchParams.get('resource') || null;
+  let settlementProof: Record<string, unknown> | null = null;
+
+  if (proofHeader) {
+    const proofPayload = decodeBase64Json(proofHeader);
+    if (!isPaymentPayload(proofPayload)) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_INVALID',
+          message: 'PAYMENT-SIGNATURE proof must be a valid base64 encoded payment payload.',
+        },
+        { status: 400 },
+      );
+    }
+
+    try {
+      const canonicalMessage = buildPaymentMessage(proofPayload);
+      const recovered = verifyMessage(JSON.stringify(canonicalMessage), proofPayload.signature);
+      if (recovered.toLowerCase() !== proofPayload.from.toLowerCase()) {
+        return apiResponse(
+          {
+            code: 'SETTLEMENT_PROOF_INVALID',
+            message: 'Settlement proof signature does not match the payer address.',
+          },
+          { status: 400 },
+        );
+      }
+    } catch {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_INVALID',
+          message: 'Settlement proof signature verification failed.',
+        },
+        { status: 400 },
+      );
+    }
+
+    if (proofPayload.payTo.toLowerCase() !== payTo.toLowerCase()) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_MISMATCH',
+          message: 'Settlement proof payTo does not match the current gateway receiver.',
+        },
+        { status: 409 },
+      );
+    }
+
+    if (payerFilter && proofPayload.from.toLowerCase() !== payerFilter) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_MISMATCH',
+          message: 'Settlement proof payer does not match the requested payer filter.',
+        },
+        { status: 409 },
+      );
+    }
+
+    if (resourceFilter && proofPayload.resource !== resourceFilter) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_MISMATCH',
+          message: 'Settlement proof resource does not match the requested resource filter.',
+        },
+        { status: 409 },
+      );
+    }
+
+    const minimumAmount = parseTokenAmount(proofPayload.amount, 6);
+    if (minimumAmount === null) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_INVALID',
+          message: 'Settlement proof amount is not a valid USDC decimal string.',
+        },
+        { status: 400 },
+      );
+    }
+
+    const transferredAmount = findMatchingTransferAmount(statusResult.receipt, proofPayload.from, payTo);
+    const amountSatisfied = transferredAmount !== null && transferredAmount >= minimumAmount;
+
+    settlementProof = {
+      verified: amountSatisfied,
+      payer: proofPayload.from,
+      resource: proofPayload.resource,
+      requestedAmount: proofPayload.amount,
+      transferredAmount: transferredAmount === null ? null : transferredAmount.toString(),
+    };
+
+    if (!amountSatisfied) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_MISMATCH',
+          message: 'Settlement transaction does not include a matching Base USDC transfer for this proof.',
+          txHash,
+          settlement: statusResult.settlement,
+          settlementPolicy,
+          settlementProof,
+          settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
+        },
+        { status: 409, headers },
+      );
+    }
+  }
+
   return apiResponse(
     {
       code: statusResult.code,
@@ -1169,6 +1297,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
       txHash,
       settlement: statusResult.settlement,
       settlementPolicy,
+      settlementProof,
       settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
     },
     { status: statusCode, headers },
@@ -1688,6 +1817,8 @@ const worker = {
         maxSettlementAgeBlocks,
       ) as ReturnType<typeof createCatalog> & { payment: Record<string, unknown> };
       catalog.payment.settlementStatusEndpointTemplate = `${origin}${SETTLEMENT_PATH_PREFIX}{txHash}`;
+      catalog.payment.settlementStatusProofHeaders = ['PAYMENT-SIGNATURE'];
+      catalog.payment.settlementStatusFilters = ['payer', 'resource'];
 
       return apiResponse(catalog);
     }
