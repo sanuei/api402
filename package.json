@@ -1,0 +1,15 @@
+{
+  "name": "api-market-x402",
+  "version": "1.0.0",
+  "description": "x402 API Payment Gateway Demo",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240620.0",
+    "typescript": "^5.0.0",
+    "wrangler": "^4.71.0"
+  }
+}
