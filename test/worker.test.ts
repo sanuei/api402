@@ -10,6 +10,9 @@ import worker, {
 } from '../worker/index';
 
 const TEST_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
+const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const ERC20_TRANSFER_TOPIC =
+  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 
 function createEnv(): Env {
   return {
@@ -45,9 +48,54 @@ async function createSignedPayload(path: string, amount: string): Promise<Paymen
   return { ...message, signature };
 }
 
+function toTopicAddress(address: string): string {
+  return `0x${'0'.repeat(24)}${address.toLowerCase().slice(2)}`;
+}
+
+function toAmountHex(value: string): string {
+  const [whole, fraction = ''] = value.split('.');
+  const units = BigInt(whole) * 1_000_000n + BigInt((fraction + '000000').slice(0, 6));
+  return `0x${units.toString(16)}`;
+}
+
+function createTransferReceipt(from: string, to: string, amount: string) {
+  return {
+    jsonrpc: '2.0',
+    id: 1,
+    result: {
+      status: '0x1',
+      logs: [
+        {
+          address: BASE_USDC_CONTRACT,
+          topics: [ERC20_TRANSFER_TOPIC, toTopicAddress(from), toTopicAddress(to)],
+          data: toAmountHex(amount),
+        },
+      ],
+    },
+  };
+}
+
+async function withMockedFetch<T>(
+  receiptFactory: () => Record<string, unknown>,
+  handler: () => Promise<T>,
+): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify(receiptFactory()), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+  try {
+    return await handler();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 test.beforeEach(() => {
   globalThis.rateLimiter = new Map();
   globalThis.usedPaymentNonces = new Map();
+  globalThis.usedPaymentTransactions = new Map();
 });
 
 test('catalog exposes enriched endpoint metadata', async () => {
@@ -59,6 +107,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
       chainId: number;
       tokenContract: string;
       acceptance: string;
+      settlementProofHeader: string;
       payloadSchema: { requiredFields: string[] };
     };
     endpoints: Array<{
@@ -76,6 +125,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.chainId, 8453);
   assert.equal(body.payment.tokenContract, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
   assert.equal(body.payment.acceptance, 'base-mainnet-usdc-only');
+  assert.equal(body.payment.settlementProofHeader, 'X-PAYMENT-TX-HASH');
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
@@ -122,15 +172,21 @@ test('valid signed payment payload is accepted', async () => {
   const request = new Request('https://api-402.com/api/deepseek', {
     headers: {
       'PAYMENT-SIGNATURE': encodeBase64(payload),
+      'X-PAYMENT-TX-HASH': '0x1111111111111111111111111111111111111111111111111111111111111111',
     },
   });
 
-  const response = await worker.fetch(request, createEnv());
-  const body = (await response.json()) as { _meta: { paymentMode: string; paid: boolean } };
+  await withMockedFetch(
+    () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003'),
+    async () => {
+    const response = await worker.fetch(request, createEnv());
+    const body = (await response.json()) as { _meta: { paymentMode: string; paid: boolean } };
 
-  assert.equal(response.status, 200);
-  assert.equal(body._meta.paid, true);
-  assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
+    assert.equal(response.status, 200);
+    assert.equal(body._meta.paid, true);
+    assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
+    },
+  );
 });
 
 test('expired signed payment payload is rejected with machine-readable reason', async () => {
@@ -151,7 +207,7 @@ test('expired signed payment payload is rejected with machine-readable reason', 
   assert.equal(body.reason, 'PAYMENT_EXPIRED');
 });
 
-test('replayed signed payment nonce is rejected', async () => {
+test('signed payment without settlement proof is rejected', async () => {
   const payload = await createSignedPayload('/api/deepseek', '0.003');
   const request = new Request('https://api-402.com/api/deepseek', {
     headers: {
@@ -159,11 +215,32 @@ test('replayed signed payment nonce is rejected', async () => {
     },
   });
 
-  const firstResponse = await worker.fetch(request, createEnv());
-  const secondResponse = await worker.fetch(request, createEnv());
-  const body = (await secondResponse.json()) as { reason: string };
+  const response = await worker.fetch(request, createEnv());
+  const body = (await response.json()) as { reason: string };
 
-  assert.equal(firstResponse.status, 200);
-  assert.equal(secondResponse.status, 402);
-  assert.equal(body.reason, 'PAYMENT_NONCE_REPLAYED');
+  assert.equal(response.status, 402);
+  assert.equal(body.reason, 'PAYMENT_TX_HASH_MISSING');
+});
+
+test('replayed signed payment nonce is rejected', async () => {
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+  const request = new Request('https://api-402.com/api/deepseek', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(payload),
+      'X-PAYMENT-TX-HASH': '0x2222222222222222222222222222222222222222222222222222222222222222',
+    },
+  });
+
+  await withMockedFetch(
+    () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003'),
+    async () => {
+    const firstResponse = await worker.fetch(request, createEnv());
+    const secondResponse = await worker.fetch(request, createEnv());
+    const body = (await secondResponse.json()) as { reason: string };
+
+    assert.equal(firstResponse.status, 200);
+    assert.equal(secondResponse.status, 402);
+    assert.equal(body.reason, 'PAYMENT_NONCE_REPLAYED');
+    },
+  );
 });

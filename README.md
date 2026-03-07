@@ -24,6 +24,7 @@
 - 已补 `hreflang`、多语言 canonical 和双语 sitemap
 - 收款地址由 Worker 的 `PAY_TO` 环境变量决定，catalog 和 402 challenge 会对外暴露这个地址
 - 当前支付范围固定为 `Base` 主网原生 `USDC`，不接受其他链上的 USDC
+- 非 demo 请求现在要求提供 `PAYMENT-SIGNATURE` 和 `X-PAYMENT-TX-HASH`，Worker 会回查 Base 链上 USDC 转账回执
 
 ## Core Routes
 
@@ -52,6 +53,7 @@ npm run deploy
 生产环境需要在 Cloudflare Worker 中配置 `PAY_TO`，它就是用户调用付费 API 后应该支付到的钱包地址。
 当前仓库默认已配置为 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`。
 支付资产固定为 `Base` 主网原生 `USDC`，合约地址为 `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`。
+默认 Base RPC 为 `https://mainnet.base.org`，可通过 `BASE_RPC_URL` 覆盖。
 
 `deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。
 

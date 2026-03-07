@@ -28,6 +28,7 @@
 - 已把 catalog 的名称/分类/描述下沉为中英文字段
 - 已补 logo、favicon、Open Graph、robots 和 sitemap
 - 已补 `hreflang`、多语言 canonical 与双语 sitemap
+- 已固定收款地址、USDC 合约和 Base 主网支付范围
 
 ## Phase 1
 
@@ -106,6 +107,6 @@
 建议下一轮直接做下面 4 项:
 
 1. 把 nonce 存储从单实例内存迁移到更稳定的持久层
-2. 把 `whale-positions` 接成真实上游代理
-3. 在 catalog 中增加更明确的延迟/可用性字段
-4. 补 `doc/DEPLOYMENT.md` 和更完整的接入示例
+2. 把 Base USDC 入账校验从单交易回执升级到更完整的交易证明模型
+3. 把 `whale-positions` 接成真实上游代理
+4. 在 catalog 中增加更明确的延迟/可用性字段

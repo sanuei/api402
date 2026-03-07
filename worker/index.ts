@@ -11,6 +11,7 @@ import { verifyMessage } from 'ethers';
 export interface Env {
   PAY_TO?: string;
   APP_NAME?: string;
+  BASE_RPC_URL?: string;
   ASSETS?: Fetcher;
 }
 
@@ -22,6 +23,7 @@ export interface LocalizedText {
 declare global {
   var rateLimiter: Map<string, number[]>;
   var usedPaymentNonces: Map<string, number>;
+  var usedPaymentTransactions: Map<string, number>;
 }
 
 export interface APIEndpoint {
@@ -68,12 +70,24 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_AMOUNT_TOO_LOW'
     | 'PAYMENT_EXPIRED'
     | 'PAYMENT_NONCE_REPLAYED'
+    | 'PAYMENT_TX_HASH_MISSING'
+    | 'PAYMENT_TX_HASH_INVALID'
+    | 'PAYMENT_TX_REPLAYED'
+    | 'PAYMENT_SETTLEMENT_RPC_FAILED'
+    | 'PAYMENT_TX_NOT_FOUND'
+    | 'PAYMENT_TX_FAILED'
+    | 'PAYMENT_TRANSFER_MISSING'
+    | 'PAYMENT_TRANSFER_AMOUNT_TOO_LOW'
     | 'PAYMENT_SIGNATURE_INVALID';
   message: string;
 }
 
 const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
+const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
+const PAYMENT_TX_HASH_HEADER = 'X-PAYMENT-TX-HASH';
+const ERC20_TRANSFER_TOPIC =
+  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 const DEMO_PAYMENT_TOKEN = 'demo';
 const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
@@ -191,7 +205,8 @@ const API_INDEX: Record<string, APIEndpoint> = Object.fromEntries(
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof',
+  'Access-Control-Allow-Headers':
+    'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof, X-PAYMENT-TX-HASH',
   'Access-Control-Expose-Headers':
     'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason',
 };
@@ -251,6 +266,14 @@ function getNonceStore(): Map<string, number> {
   return globalThis.usedPaymentNonces;
 }
 
+function getTransactionStore(): Map<string, number> {
+  if (!globalThis.usedPaymentTransactions) {
+    globalThis.usedPaymentTransactions = new Map<string, number>();
+  }
+
+  return globalThis.usedPaymentTransactions;
+}
+
 function sweepExpiredNonces(now: number) {
   const nonceStore = getNonceStore();
   for (const [key, expiry] of nonceStore.entries()) {
@@ -260,8 +283,174 @@ function sweepExpiredNonces(now: number) {
   }
 }
 
+function sweepExpiredTransactions(now: number) {
+  const transactionStore = getTransactionStore();
+  for (const [key, expiry] of transactionStore.entries()) {
+    if (expiry <= now) {
+      transactionStore.delete(key);
+    }
+  }
+}
+
 function buildNonceKey(payload: PaymentPayload): string {
   return `${payload.from.toLowerCase()}:${payload.resource}:${payload.nonce}`;
+}
+
+function parseTokenAmount(value: string, decimals: number): bigint | null {
+  const normalized = value.trim();
+  if (!/^\d+(\.\d+)?$/.test(normalized)) {
+    return null;
+  }
+
+  const [whole, fraction = ''] = normalized.split('.');
+  if (fraction.length > decimals) {
+    return null;
+  }
+
+  const wholeUnits = BigInt(whole) * 10n ** BigInt(decimals);
+  const fractionUnits = BigInt((fraction + '0'.repeat(decimals)).slice(0, decimals));
+  return wholeUnits + fractionUnits;
+}
+
+function normalizeTopicAddress(value: string | undefined): string | null {
+  if (!value || !/^0x[0-9a-fA-F]{64}$/.test(value)) {
+    return null;
+  }
+
+  return `0x${value.slice(-40)}`.toLowerCase();
+}
+
+function getPaymentTxHash(request: Request): string | null {
+  return request.headers.get(PAYMENT_TX_HASH_HEADER);
+}
+
+function isTransactionHash(value: string): boolean {
+  return /^0x[0-9a-fA-F]{64}$/.test(value);
+}
+
+type JsonRpcReceiptLog = {
+  address?: string;
+  topics?: string[];
+  data?: string;
+};
+
+type JsonRpcTransactionReceipt = {
+  status?: string;
+  logs?: JsonRpcReceiptLog[];
+};
+
+async function callBaseRpc(env: Env, method: string, params: unknown[]): Promise<unknown> {
+  const response = await fetch(env.BASE_RPC_URL || DEFAULT_BASE_RPC_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
+      method,
+      params,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`rpc ${response.status}`);
+  }
+
+  const payload = (await response.json()) as { result?: unknown; error?: { message?: string } };
+  if (payload.error) {
+    throw new Error(payload.error.message || 'unknown rpc error');
+  }
+
+  return payload.result ?? null;
+}
+
+async function verifyBaseUsdcSettlement(
+  env: Env,
+  txHash: string,
+  payload: PaymentPayload,
+  payTo: string,
+): Promise<PaymentVerificationResult> {
+  let receipt: JsonRpcTransactionReceipt | null;
+
+  try {
+    receipt = (await callBaseRpc(env, 'eth_getTransactionReceipt', [txHash])) as JsonRpcTransactionReceipt | null;
+  } catch {
+    return {
+      ok: false,
+      code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
+      message: 'Base RPC could not be reached for payment verification.',
+    };
+  }
+
+  if (!receipt) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_NOT_FOUND',
+      message: 'Payment transaction hash was not found on Base.',
+    };
+  }
+
+  if (receipt.status !== '0x1') {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_FAILED',
+      message: 'Payment transaction did not succeed on-chain.',
+    };
+  }
+
+  const minimumAmount = parseTokenAmount(payload.amount, 6);
+  if (minimumAmount === null) {
+    return {
+      ok: false,
+      code: 'INVALID_PAYMENT_PAYLOAD',
+      message: 'Payment payload amount is not a valid USDC decimal string.',
+    };
+  }
+
+  const matchingTransfer = (receipt.logs || []).find((log) => {
+    if (!log.address || log.address.toLowerCase() !== BASE_USDC_CONTRACT.toLowerCase()) {
+      return false;
+    }
+
+    if (!log.topics || log.topics[0]?.toLowerCase() !== ERC20_TRANSFER_TOPIC) {
+      return false;
+    }
+
+    const from = normalizeTopicAddress(log.topics[1]);
+    const to = normalizeTopicAddress(log.topics[2]);
+    return from === payload.from.toLowerCase() && to === payTo.toLowerCase();
+  });
+
+  if (!matchingTransfer) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TRANSFER_MISSING',
+      message: 'No matching Base USDC transfer to the gateway receiver was found in the transaction.',
+    };
+  }
+
+  const amountHex = matchingTransfer.data;
+  if (!amountHex || !/^0x[0-9a-fA-F]+$/.test(amountHex)) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TRANSFER_MISSING',
+      message: 'Matching Base USDC transfer log is missing an amount.',
+    };
+  }
+
+  const transferredAmount = BigInt(amountHex);
+  if (transferredAmount < minimumAmount) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TRANSFER_AMOUNT_TOO_LOW',
+      message: 'On-chain Base USDC transfer amount is lower than the requested payment amount.',
+    };
+  }
+
+  return {
+    ok: true,
+    code: 'PAYMENT_VALID',
+    message: 'Base USDC payment transfer verified successfully.',
+  };
 }
 
 export function buildPaymentMessage(input: Omit<PaymentPayload, 'signature'>): PaymentMessage {
@@ -345,7 +534,14 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
       },
     },
     exampleRequest: {
-      curl: `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" ${baseUrl}${endpoint.path}`,
+      curl: [
+        `curl -H "PAYMENT-SIGNATURE: <base64-signed-payload>" \\`,
+        `  -H "${PAYMENT_TX_HASH_HEADER}: 0xreplace-with-base-usdc-transaction-hash" \\`,
+        `  ${baseUrl}${endpoint.path}`,
+        '',
+        `# demo mode`,
+        `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" ${baseUrl}${endpoint.path}`,
+      ].join('\n'),
       paymentPayload: samplePayload,
     },
     exampleResponse: endpoint.sample(),
@@ -367,7 +563,9 @@ export function createCatalog(baseUrl: string, payTo: string) {
       acceptance: 'base-mainnet-usdc-only',
       note: 'Only Base mainnet native USDC is accepted. USDC bridged or sent on any other chain is not valid.',
       demoToken: DEMO_PAYMENT_TOKEN,
-      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
+      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
+      settlementProofHeader: PAYMENT_TX_HASH_HEADER,
+      settlementMethod: 'base-usdc-transfer-receipt',
       payloadSchema: {
         version: '1',
         scheme: 'exact',
@@ -414,7 +612,8 @@ function createPaymentRequired(
       acceptance: 'base-mainnet-usdc-only',
       path: endpoint.path,
       description: endpoint.description.en,
-      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
+      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
+      settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       paymentSchema: {
         version: '1',
         scheme: 'exact',
@@ -449,11 +648,13 @@ function createPaymentRequired(
           } as Omit<PaymentPayload, 'signature'>),
           signature: 'replace-with-signature',
         })}`,
+        settlement: `${PAYMENT_TX_HASH_HEADER}: 0xreplace-with-base-usdc-transaction-hash`,
       },
       instructions: [
         'Only Base mainnet native USDC is accepted.',
         `Use the USDC contract ${BASE_USDC_CONTRACT} on Base mainnet.`,
         'Connect a wallet with Base USDC.',
+        'Submit the Base USDC transaction hash in X-PAYMENT-TX-HASH.',
         'Build a payment payload for the requested resource.',
         'Sign the canonical JSON string of the payload without the signature field.',
         'Replay the request with Authorization or PAYMENT-SIGNATURE.',
@@ -508,12 +709,13 @@ function extractPaymentPayload(request: Request): PaymentPayload | 'demo' | 'pro
   return null;
 }
 
-export function verifyPayment(
+export async function verifyPayment(
   request: Request,
   endpoint: APIEndpoint,
   payTo: string,
+  env: Env,
   now = Date.now(),
-): PaymentVerificationResult {
+): Promise<PaymentVerificationResult> {
   const rawPayload = extractPaymentPayload(request);
 
   if (rawPayload === 'demo') {
@@ -603,6 +805,7 @@ export function verifyPayment(
   }
 
   sweepExpiredNonces(now);
+  sweepExpiredTransactions(now);
   const nonceKey = buildNonceKey(rawPayload);
   const nonceStore = getNonceStore();
   const currentNonceExpiry = nonceStore.get(nonceKey);
@@ -611,6 +814,33 @@ export function verifyPayment(
       ok: false,
       code: 'PAYMENT_NONCE_REPLAYED',
       message: 'Payment payload nonce has already been used.',
+    };
+  }
+
+  const txHash = getPaymentTxHash(request);
+  if (!txHash) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_HASH_MISSING',
+      message: 'Base settlement proof is required in the X-PAYMENT-TX-HASH header.',
+    };
+  }
+
+  if (!isTransactionHash(txHash)) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_HASH_INVALID',
+      message: 'Payment transaction hash is not a valid 32-byte hex value.',
+    };
+  }
+
+  const transactionStore = getTransactionStore();
+  const existingTransactionExpiry = transactionStore.get(txHash.toLowerCase());
+  if (existingTransactionExpiry && existingTransactionExpiry > now) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_REPLAYED',
+      message: 'Payment transaction hash has already been used for a request.',
     };
   }
 
@@ -633,7 +863,13 @@ export function verifyPayment(
     };
   }
 
+  const settlementVerification = await verifyBaseUsdcSettlement(env, txHash, rawPayload, payTo);
+  if (!settlementVerification.ok) {
+    return settlementVerification;
+  }
+
   nonceStore.set(nonceKey, deadline);
+  transactionStore.set(txHash.toLowerCase(), deadline);
 
   return {
     ok: true,
@@ -787,7 +1023,7 @@ const worker = {
         return rateLimitResponse;
       }
 
-      const verification = verifyPayment(request, endpoint, payTo);
+      const verification = await verifyPayment(request, endpoint, payTo, env);
       if (!verification.ok) {
         return createPaymentRequired(payTo, endpoint, verification);
       }

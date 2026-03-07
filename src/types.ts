@@ -15,6 +15,8 @@ export interface CatalogPaymentConfig {
   note?: string;
   demoToken: string;
   acceptedHeaders?: string[];
+  settlementProofHeader?: string;
+  settlementMethod?: string;
 }
 
 export interface CatalogEndpoint {

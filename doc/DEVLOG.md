@@ -368,3 +368,47 @@
 1. 做 Base USDC 入账校验
 2. 把支付证明和链上交易哈希关联起来
 3. 再考虑多链或多商户扩展
+
+## 2026-03-08
+
+### 本轮目标
+
+- 开始接入真实 Base USDC 入账校验
+- 让非 demo 请求必须提供链上交易证明
+- 补充部署配置和测试覆盖
+
+### 已完成
+
+- Worker 现在支持通过 `X-PAYMENT-TX-HASH` 提交 Base 交易哈希
+- 非 demo 请求会回查 Base RPC 的 `eth_getTransactionReceipt`
+- 只接受命中 Base 原生 USDC 合约、`from -> payTo`、金额足够的 `Transfer` 日志
+- 新增交易哈希防重放，避免同一笔链上支付重复消费
+- catalog 和 402 challenge 已暴露 `settlementProofHeader` / `settlementMethod`
+- `wrangler.toml` 新增 `BASE_RPC_URL`
+- 测试新增真实结算通过和缺失交易哈希被拒绝两类场景
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 8 个测试全部通过
+
+### 遗留问题
+
+- 当前只校验单笔交易回执，没有做确认数策略
+- 还没有把交易哈希、nonce、请求日志持久化到 Durable Objects / KV
+- 浏览器端还没有提供真实链上支付发起 UI
+
+### 下一步建议
+
+1. 把 nonce / tx hash 防重放迁移到持久层
+2. 加入确认数或区块高度校验
+3. 再做浏览器端真实支付发起流程
