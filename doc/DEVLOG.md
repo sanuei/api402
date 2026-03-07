@@ -528,3 +528,43 @@
 1. 把 `whale-positions` 接成真实上游代理（优先级最高的 live integration 缺口）
 2. 给上游代理补统一超时 / 熔断 / fallback 策略
 3. 在 catalog 追加实时 latency / availability 指标字段
+
+## 2026-03-08
+
+### 本轮目标
+
+- 按 ROADMAP 优先级完成 live upstream integration 的最高缺口：`/api/whale-positions`
+- 将该接口从 demo 数据升级为可验证的实时上游聚合
+
+### 已完成
+
+- `whale-positions` 已接入 HyperLiquid `recentTrades` 实时上游（BTC/ETH）
+- 新增地址聚合逻辑：按地址统计交易次数、名义成交额、主导方向和最近活跃时间
+- catalog 中 `whale-positions` 元数据已更新为 `status: live`、`upstream: hyperliquid`
+- 上游请求统一改为带超时控制的 JSON 拉取工具（避免慢请求拖垮接口）
+- 新增测试覆盖：验证 `whale-positions` 在上游可用时返回 `proxied` 实时数据
+- 已完成部署到 Cloudflare Worker：`api-market-x402`（Version `feed74a5-914e-47d5-96e2-4f528c96e5b9`）
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 10 个测试全部通过
+- `npm run build:frontend` 通过
+- `npx wrangler deploy` 通过
+
+### 遗留问题
+
+- `whale-positions` 当前基于“最近成交”聚合，反映的是活跃巨鲸行为而非严格意义的持仓快照
+- 还缺少上游熔断与降级分层错误码，极端网络抖动下仍依赖样例回退
+
+### 下一步建议
+
+1. 给上游代理补统一熔断 / fallback 策略与 machine-readable 错误码
+2. 在 catalog 增加 latency / availability 指标字段
+3. 推进 AI 类接口的真实上游替换，减少 demo 占比

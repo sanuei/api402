@@ -170,17 +170,21 @@ export const API_ENDPOINTS: APIEndpoint[] = [
     price: '0.00002',
     label: { zh: '巨鲸仓位', en: 'Whale Positions' },
     description: {
-      zh: 'HyperLiquid 巨鲸仓位快照示例。',
-      en: 'Demo HyperLiquid whale position snapshots.',
+      zh: '基于 HyperLiquid 实时成交聚合的巨鲸活跃地址快照。',
+      en: 'Near real-time whale activity snapshot aggregated from HyperLiquid recent trades.',
     },
     category: { zh: '链上情报', en: 'Onchain Intelligence' },
-    tags: ['onchain', 'whale', 'demo'],
-    status: 'demo',
+    upstream: 'hyperliquid',
+    tags: ['onchain', 'whale', 'live'],
+    status: 'live',
     sample: () => ({
+      source: 'hyperliquid',
+      timeframe: 'recent',
+      markets: ['BTC', 'ETH'],
       positions: [
-        { address: '0x1234...', size: 1250000, pnl: 12.5 },
-        { address: '0x5678...', size: 980000, pnl: 8.2 },
-        { address: '0xabcd...', size: 750000, pnl: -2.1 },
+        { address: '0x1234...', trades: 12, notionalUsd: 1250000, dominantSide: 'buy' },
+        { address: '0x5678...', trades: 10, notionalUsd: 980000, dominantSide: 'buy' },
+        { address: '0xabcd...', trades: 9, notionalUsd: 750000, dominantSide: 'sell' },
       ],
     }),
   },
@@ -1066,11 +1070,47 @@ export async function verifyPayment(
   };
 }
 
+async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000): Promise<unknown> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal });
+    if (!response.ok) {
+      throw new Error(`upstream ${response.status}`);
+    }
+
+    return (await response.json()) as unknown;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+type HyperliquidTrade = {
+  coin?: string;
+  side?: string;
+  px?: string;
+  sz?: string;
+  time?: number;
+  users?: string[];
+};
+
+async function fetchHyperliquidRecentTrades(coin: string): Promise<HyperliquidTrade[]> {
+  const payload = await fetchJsonWithTimeout('https://api.hyperliquid.xyz/info', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: 'recentTrades', coin }),
+  });
+
+  return Array.isArray(payload) ? (payload as HyperliquidTrade[]) : [];
+}
+
 async function fetchUpstreamData(path: string): Promise<unknown | null> {
   try {
     if (path === '/api/btc-price') {
-      const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-      const data = (await response.json()) as { price?: string };
+      const data = (await fetchJsonWithTimeout('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', {
+        method: 'GET',
+      })) as { price?: string };
 
       return {
         symbol: 'BTC',
@@ -1081,8 +1121,9 @@ async function fetchUpstreamData(path: string): Promise<unknown | null> {
     }
 
     if (path === '/api/eth-price') {
-      const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT');
-      const data = (await response.json()) as { price?: string };
+      const data = (await fetchJsonWithTimeout('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT', {
+        method: 'GET',
+      })) as { price?: string };
 
       return {
         symbol: 'ETH',
@@ -1092,13 +1133,100 @@ async function fetchUpstreamData(path: string): Promise<unknown | null> {
       };
     }
 
+    if (path === '/api/whale-positions') {
+      const [btcTrades, ethTrades] = await Promise.all([
+        fetchHyperliquidRecentTrades('BTC'),
+        fetchHyperliquidRecentTrades('ETH'),
+      ]);
+
+      const trades = [...btcTrades, ...ethTrades];
+      const byAddress = new Map<
+        string,
+        {
+          address: string;
+          trades: number;
+          notionalUsd: number;
+          buyNotionalUsd: number;
+          sellNotionalUsd: number;
+          lastSeen: number;
+          markets: Set<string>;
+        }
+      >();
+
+      for (const trade of trades) {
+        const users = Array.isArray(trade.users) ? trade.users : [];
+        const maker = users[0]?.toLowerCase();
+        if (!maker || !/^0x[0-9a-f]{40}$/.test(maker)) {
+          continue;
+        }
+
+        const px = Number(trade.px);
+        const sz = Number(trade.sz);
+        if (!Number.isFinite(px) || !Number.isFinite(sz)) {
+          continue;
+        }
+
+        const notionalUsd = Math.abs(px * sz);
+        if (!Number.isFinite(notionalUsd) || notionalUsd <= 0) {
+          continue;
+        }
+
+        const position = byAddress.get(maker) || {
+          address: maker,
+          trades: 0,
+          notionalUsd: 0,
+          buyNotionalUsd: 0,
+          sellNotionalUsd: 0,
+          lastSeen: 0,
+          markets: new Set<string>(),
+        };
+
+        position.trades += 1;
+        position.notionalUsd += notionalUsd;
+        if (trade.side === 'A') {
+          position.buyNotionalUsd += notionalUsd;
+        } else {
+          position.sellNotionalUsd += notionalUsd;
+        }
+        position.lastSeen = Math.max(position.lastSeen, Number(trade.time) || 0);
+        if (trade.coin) {
+          position.markets.add(trade.coin);
+        }
+
+        byAddress.set(maker, position);
+      }
+
+      const positions = [...byAddress.values()]
+        .sort((a, b) => b.notionalUsd - a.notionalUsd)
+        .slice(0, 10)
+        .map((entry) => ({
+          address: entry.address,
+          trades: entry.trades,
+          notionalUsd: Number(entry.notionalUsd.toFixed(2)),
+          dominantSide: entry.buyNotionalUsd >= entry.sellNotionalUsd ? 'buy' : 'sell',
+          markets: [...entry.markets].sort(),
+          lastSeen: entry.lastSeen || null,
+        }));
+
+      if (positions.length === 0) {
+        return null;
+      }
+
+      return {
+        source: 'hyperliquid',
+        timeframe: 'recent',
+        markets: ['BTC', 'ETH'],
+        sampledTrades: trades.length,
+        positions,
+        timestamp: Date.now(),
+      };
+    }
+
     if (path === '/api/kline') {
-      const response = await fetch(
+      const data = (await fetchJsonWithTimeout(
         'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=6',
-      );
-      const data = (await response.json()) as Array<
-        [number, string, string, string, string, string, number, string, number, string, string, string]
-      >;
+        { method: 'GET' },
+      )) as Array<[number, string, string, string, string, string, number, string, number, string, string, string]>;
 
       return {
         symbol: 'BTCUSDT',

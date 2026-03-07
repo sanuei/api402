@@ -361,3 +361,58 @@ test('replayed signed payment nonce is rejected', async () => {
     },
   );
 });
+
+test('whale positions endpoint proxies live upstream trades when available', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const body = init?.body ? (JSON.parse(String(init.body)) as { coin?: string }) : {};
+    const coin = body.coin || 'BTC';
+
+    const payload = [
+      {
+        coin,
+        side: 'A',
+        px: coin === 'BTC' ? '68000' : '2000',
+        sz: '12',
+        time: 1700000000000,
+        users: ['0x1111111111111111111111111111111111111111', '0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+      },
+      {
+        coin,
+        side: 'B',
+        px: coin === 'BTC' ? '68010' : '2001',
+        sz: '6',
+        time: 1700000001000,
+        users: ['0x1111111111111111111111111111111111111111', '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'],
+      },
+    ];
+
+    return new Response(JSON.stringify(payload), {
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  try {
+    const request = new Request('https://api-402.com/api/whale-positions', {
+      headers: { Authorization: 'Bearer demo' },
+    });
+
+    const response = await worker.fetch(request, createEnv());
+    const body = (await response.json()) as {
+      source?: string;
+      sampledTrades?: number;
+      positions?: Array<{ address: string; trades: number; notionalUsd: number }>;
+      _meta: { origin: string };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.source, 'hyperliquid');
+    assert.equal(body.sampledTrades, 4);
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body.positions?.[0]?.address, '0x1111111111111111111111111111111111111111');
+    assert.equal(body.positions?.[0]?.trades, 4);
+    assert.ok((body.positions?.[0]?.notionalUsd || 0) > 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

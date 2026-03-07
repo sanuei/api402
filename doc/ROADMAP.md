@@ -31,6 +31,7 @@
 - 已固定收款地址、USDC 合约和 Base 主网支付范围
 - 已将 nonce / tx hash 防重放迁移到 Durable Objects
 - 已加入 Base 交易确认块数门槛（默认 2 confirmations）以增强结算稳健性
+- 已将 `whale-positions` 接入 HyperLiquid 实时成交聚合（BTC/ETH）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 
 ## Phase 1
@@ -109,10 +110,10 @@
 
 建议下一轮直接做下面 4 项:
 
-1. 把 Base USDC 入账校验升级为“确认块数 + 链上证明细节”可观测模型（含可配置 confirmations 与错误分层）
-2. 把 `whale-positions` 接成真实上游代理
-3. 在 catalog 中增加更明确的延迟/可用性字段
-4. 为关键上游接口补超时、熔断与降级策略
+1. 在 catalog 中增加更明确的延迟/可用性字段
+2. 为关键上游接口补统一超时、熔断与降级策略（含错误码分层）
+3. 为链上结算补“交易证明可观测字段”（receiptBlock、confirmations）
+4. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
 
 ## Operations
 
