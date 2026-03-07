@@ -4,6 +4,43 @@
 
 ### 本轮目标
 
+- 为 402 / settlement / 成功响应补 `requestId` 追踪，并将 payment funnel 升级为 challenge→replay 精确归因，提升转化诊断可靠性
+
+### 已完成
+
+- 新增 `X-Request-Id` 协议支持：
+  - 402 challenge 响应回传 `requestId`（header + body）
+  - paid 成功响应 `_meta` 回传 `requestId`（并附带响应头）
+  - settlement 查询响应回传 `requestId`（header + body）
+- `catalog.payment.acceptedHeaders` 与 402 challenge `acceptedHeaders` 已包含 `X-Request-Id`
+- `requestMetrics.paymentFunnel` 从“按成功请求粗略统计 replay”升级为“基于 requestId 关联 challenge→replay”的精确统计
+- 测试已扩展：
+  - 402 challenge 回传 requestId 断言
+  - settlement pending 回传 requestId 断言
+  - payment funnel 使用同 requestId 的 challenge→replay 序列断言
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 将 requestId 关联漏斗与 upstream telemetry 持久化到 Durable Objects / KV，避免冷启动窗口丢失
+2. 在具备凭据后继续推进 `/api/deepseek`、`/api/qwen` 真实上游替换
+3. 为 endpoint 增加 `lastUpdatedAt` 与 freshness 提示，优化开发者接入判断
+
+## 2026-03-08
+
+### 本轮目标
+
 - 补齐 endpoint `requestMetrics` 的支付阶段漏斗统计（402 / settled / replayed），直接支撑转化率优化
 
 ### 已完成

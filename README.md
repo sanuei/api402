@@ -28,11 +28,12 @@
 - 支付通过或被 402 拒绝时都会返回结构化 `settlement` 上下文（txHash、receiptBlock、confirmations），便于 SDK 自动重试
 - 新增 `GET /api/v1/settlement/{txHash}` 结算状态查询接口，返回 machine-readable 状态码与重试建议
 - settlement 查询支持可选 `PAYMENT-SIGNATURE` 证明校验，并可通过 `payer`/`resource`/`payTo`/`minAmount` 过滤条件做归因绑定校验
+- 402 challenge、成功响应与 settlement 查询均回传 `X-Request-Id` / `requestId`，便于客户端链路追踪与重放归因
 - catalog 与 402 challenge 会返回 `settlementPolicy`（确认数、平均区块时间、建议重试间隔）；当确认数不足时会返回 `Retry-After`
 - catalog 现在额外暴露 `settlementStatusRemediation` / `paymentReasonRemediation`，402 与 settlement 响应也会返回 `remediation` 字段，便于 SDK 根据错误码自动执行补救动作
 - remediation 相关字段已增加稳定元信息：`remediationSchemaVersion`（当前 `1.0.0`）和 `remediationCompatibility`（`semver-minor-backward-compatible`）
 - catalog / 402 / settlement 响应现在都附带 `remediationRefs`（`changelog` 与 `deprecations` 公告地址），便于 SDK 自动发现兼容变更公告
-- catalog `endpoints[].requestMetrics` 已输出最近 60 分钟请求量、错误码分布、10 分钟分桶错误趋势，以及 `paymentFunnel`（`challenged402` / `settled` / `replayed` 与 challenge→replay 转化率），便于转化与可靠性运营
+- catalog `endpoints[].requestMetrics` 已输出最近 60 分钟请求量、错误码分布、10 分钟分桶错误趋势，以及 `paymentFunnel`（`challenged402` / `settled` / `replayed` 与 challenge→replay 转化率）；漏斗现支持基于 `X-Request-Id` 的精确 challenge→replay 归因
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
 - 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存

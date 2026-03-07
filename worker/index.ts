@@ -172,6 +172,7 @@ const ENDPOINT_METRICS_WINDOW_MS = 60 * 60 * 1000;
 const ENDPOINT_METRICS_MAX_EVENTS = 600;
 const ENDPOINT_METRICS_BUCKET_MS = 10 * 60 * 1000;
 const ENDPOINT_METRICS_BUCKET_COUNT = 6;
+const REQUEST_ID_HEADER = 'X-Request-Id';
 
 
 const SETTLEMENT_REMEDIATION_MAP: Record<SettlementStatusResult['code'], RemediationHint> = {
@@ -346,9 +347,9 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers':
-    'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof, X-PAYMENT-TX-HASH',
+    'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof, X-PAYMENT-TX-HASH, X-Request-Id',
   'Access-Control-Expose-Headers':
-    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason',
+    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason, X-Request-Id',
 };
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -396,6 +397,11 @@ function decodeBase64Json(value: string): unknown | null {
 
 function getClientIP(request: Request): string {
   return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+function getRequestId(request: Request): string {
+  const fromHeader = request.headers.get(REQUEST_ID_HEADER)?.trim();
+  return fromHeader && fromHeader.length > 0 ? fromHeader : crypto.randomUUID();
 }
 
 function getNonceStore(): Map<string, number> {
@@ -1118,9 +1124,25 @@ function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream:
   const paymentRequiredCount = events.filter((event) => event.statusCode === 402).length;
   const rateLimitedCount = events.filter((event) => event.statusCode === 429).length;
   const settledCount = events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
-  const replayedCount = events.filter(
-    (event) => event.statusCode < 400 && ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || ''),
-  ).length;
+
+  const challengedRequestIds = new Set(
+    events
+      .filter((event) => event.statusCode === 402 && event.requestId)
+      .map((event) => event.requestId as string),
+  );
+  const replayedRequestIds = new Set(
+    events
+      .filter(
+        (event) =>
+          event.statusCode < 400 &&
+          ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || '') &&
+          event.requestId &&
+          challengedRequestIds.has(event.requestId),
+      )
+      .map((event) => event.requestId as string),
+  );
+  const replayedCount = replayedRequestIds.size;
+
   const upstreamFallbackCount = hasUpstream
     ? events.filter((event) => event.statusCode < 400 && event.upstreamReasonCode && event.upstreamReasonCode !== 'OK').length
     : 0;
@@ -1154,7 +1176,7 @@ function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream:
       settled: settledCount,
       replayed: replayedCount,
       challengeToReplayConversionRate:
-        paymentRequiredCount > 0 ? Number((replayedCount / paymentRequiredCount).toFixed(4)) : 0,
+        challengedRequestIds.size > 0 ? Number((replayedCount / challengedRequestIds.size).toFixed(4)) : 0,
     },
     lastRequestAt: new Date(events[events.length - 1].at).toISOString(),
     lastErrorAt: lastError ? new Date(lastError.at).toISOString() : null,
@@ -1298,7 +1320,7 @@ export function createCatalog(
       acceptance: 'base-mainnet-usdc-only',
       note: 'Only Base mainnet native USDC is accepted. USDC bridged or sent on any other chain is not valid.',
       demoToken: DEMO_PAYMENT_TOKEN,
-      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
+      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof', REQUEST_ID_HEADER],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementMethod: 'base-usdc-transfer-receipt',
       settlementConfirmationsRequired: minConfirmations,
@@ -1344,6 +1366,7 @@ function createPaymentRequired(
   maxAgeSeconds: number,
   futureSkewSeconds: number,
   maxSettlementAgeBlocks: number,
+  requestId: string,
 ): Response {
   const settlementPolicy = buildSettlementPolicy(
     minConfirmations,
@@ -1359,6 +1382,7 @@ function createPaymentRequired(
     'X-Chain': 'base',
     'X-Scheme': 'exact',
     'X-Payment-Reason': verification.code,
+    [REQUEST_ID_HEADER]: requestId,
   };
 
   if (verification.code === 'PAYMENT_TX_NOT_CONFIRMED') {
@@ -1376,6 +1400,7 @@ function createPaymentRequired(
       code: 'PAYMENT_REQUIRED',
       reason: verification.code,
       message: verification.message,
+      requestId,
       payTo,
       price: endpoint.price,
       currency: 'USDC',
@@ -1386,7 +1411,7 @@ function createPaymentRequired(
       acceptance: 'base-mainnet-usdc-only',
       path: endpoint.path,
       description: endpoint.description.en,
-      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
+      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof', REQUEST_ID_HEADER],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementConfirmationsRequired: minConfirmations,
       maxSettlementAgeBlocks,
@@ -1465,6 +1490,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
     DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
   );
   const payTo = env.PAY_TO || DEFAULT_PAY_TO;
+  const requestId = getRequestId(request);
 
   if (!isTransactionHash(txHash)) {
     return apiResponse(
@@ -1481,6 +1507,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
   const statusCode = statusResult.code === 'SETTLEMENT_RPC_FAILED' ? 503 : statusResult.ok ? 200 : 409;
   const headers: Record<string, string> = {
     'X-Settlement-Status': statusResult.code,
+    [REQUEST_ID_HEADER]: requestId,
   };
 
   if (statusResult.code === 'SETTLEMENT_PENDING') {
@@ -1613,6 +1640,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
         {
           code: 'SETTLEMENT_PROOF_MISMATCH',
           message: 'Settlement transaction does not include a matching Base USDC transfer for this proof.',
+          requestId,
           txHash,
           settlement: statusResult.settlement,
           settlementPolicy,
@@ -1643,6 +1671,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
         {
           code: 'SETTLEMENT_PROOF_MISMATCH',
           message: 'Settlement transaction does not satisfy the requested payTo/minAmount filters.',
+          requestId,
           txHash,
           settlement: statusResult.settlement,
           settlementPolicy,
@@ -1660,6 +1689,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
     {
       code: statusResult.code,
       message: statusResult.message,
+      requestId,
       txHash,
       settlement: statusResult.settlement,
       settlementPolicy,
@@ -1972,6 +2002,7 @@ type UpstreamResult = {
 type EndpointRequestMetricEvent = {
   at: number;
   statusCode: number;
+  requestId: string | null;
   paymentCode: PaymentVerificationResult['code'] | 'RATE_LIMIT' | null;
   upstreamReasonCode: UpstreamMeta['reasonCode'] | null;
 };
@@ -2480,15 +2511,23 @@ const worker = {
     const endpoint = API_INDEX[path];
     if (endpoint) {
       const now = Date.now();
+      const requestId = getRequestId(request);
       const rateLimitResponse = enforceRateLimit(request);
       if (rateLimitResponse) {
+        const limitedHeaders = new Headers(rateLimitResponse.headers);
+        limitedHeaders.set(REQUEST_ID_HEADER, requestId);
         recordEndpointRequestMetric(path, {
           at: now,
           statusCode: 429,
+          requestId,
           paymentCode: 'RATE_LIMIT',
           upstreamReasonCode: null,
         });
-        return rateLimitResponse;
+        return new Response(rateLimitResponse.body, {
+          status: rateLimitResponse.status,
+          statusText: rateLimitResponse.statusText,
+          headers: limitedHeaders,
+        });
       }
 
       const verification = await verifyPayment(request, endpoint, payTo, env);
@@ -2505,11 +2544,13 @@ const worker = {
             env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
             DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
           ),
+          requestId,
         );
 
         recordEndpointRequestMetric(path, {
           at: Date.now(),
           statusCode: response.status,
+          requestId,
           paymentCode: verification.code,
           upstreamReasonCode: null,
         });
@@ -2519,25 +2560,30 @@ const worker = {
       const upstreamResult = await fetchUpstreamData(path);
       const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
 
-      const response = apiResponse({
-        ...baseData,
-        _meta: {
-          paid: true,
-          paymentMode: verification.code,
-          price: endpoint.price,
-          payTo,
-          category: endpoint.category.en,
-          timestamp: Date.now(),
-          clientIP: getClientIP(request),
-          origin: upstreamResult.meta.status === 'live' ? 'proxied' : 'mock',
-          upstream: upstreamResult.meta,
-          settlement: verification.settlement || null,
+      const response = apiResponse(
+        {
+          ...baseData,
+          _meta: {
+            paid: true,
+            paymentMode: verification.code,
+            requestId,
+            price: endpoint.price,
+            payTo,
+            category: endpoint.category.en,
+            timestamp: Date.now(),
+            clientIP: getClientIP(request),
+            origin: upstreamResult.meta.status === 'live' ? 'proxied' : 'mock',
+            upstream: upstreamResult.meta,
+            settlement: verification.settlement || null,
+          },
         },
-      });
+        { headers: { [REQUEST_ID_HEADER]: requestId } },
+      );
 
       recordEndpointRequestMetric(path, {
         at: Date.now(),
         statusCode: response.status,
+        requestId,
         paymentCode: verification.code,
         upstreamReasonCode: upstreamResult.meta.reasonCode,
       });

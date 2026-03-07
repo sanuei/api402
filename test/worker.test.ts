@@ -328,10 +328,16 @@ test('health endpoint returns status information', async () => {
 });
 
 test('unpaid request returns a 402 challenge with reason code', async () => {
-  const response = await worker.fetch(new Request('https://api-402.com/api/deepseek'), createEnv());
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      headers: { 'X-Request-Id': 'req-402-test' },
+    }),
+    createEnv(),
+  );
   const body = (await response.json()) as {
     code: string;
     reason: string;
+    requestId?: string;
     remediationSchemaVersion?: string;
     remediationCompatibility?: string;
     remediationRefs?: { changelog: string; deprecations: string };
@@ -340,6 +346,8 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
   assert.equal(response.status, 402);
   assert.equal(body.code, 'PAYMENT_REQUIRED');
   assert.equal(body.reason, 'PAYMENT_MISSING');
+  assert.equal(body.requestId, 'req-402-test');
+  assert.equal(response.headers.get('X-Request-Id'), 'req-402-test');
   assert.equal(body.remediationSchemaVersion, '1.0.0');
   assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
   assert.equal(
@@ -368,14 +376,24 @@ test('demo bearer token can access a paid endpoint', async () => {
 test('catalog requestMetrics expose endpoint request volume and error trend', async () => {
   const env = createEnv();
 
-  const unpaidOne = await worker.fetch(new Request('https://api-402.com/api/deepseek'), env);
-  const paid = await worker.fetch(
+  const unpaidOne = await worker.fetch(
     new Request('https://api-402.com/api/deepseek', {
-      headers: { Authorization: 'Bearer demo' },
+      headers: { 'X-Request-Id': 'req-funnel-1' },
     }),
     env,
   );
-  const unpaidTwo = await worker.fetch(new Request('https://api-402.com/api/deepseek'), env);
+  const paid = await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      headers: { Authorization: 'Bearer demo', 'X-Request-Id': 'req-funnel-1' },
+    }),
+    env,
+  );
+  const unpaidTwo = await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      headers: { 'X-Request-Id': 'req-funnel-2' },
+    }),
+    env,
+  );
 
   assert.equal(unpaidOne.status, 402);
   assert.equal(paid.status, 200);
@@ -773,11 +791,14 @@ test('settlement status endpoint returns pending with retry guidance', async () 
     },
     async () => {
       const response = await worker.fetch(
-        new Request('https://api-402.com/api/v1/settlement/0x7777777777777777777777777777777777777777777777777777777777777777'),
+        new Request('https://api-402.com/api/v1/settlement/0x7777777777777777777777777777777777777777777777777777777777777777', {
+          headers: { 'X-Request-Id': 'req-settlement-1' },
+        }),
         createEnv(),
       );
       const body = (await response.json()) as {
         code: string;
+        requestId?: string;
         settlementPolicy?: { recommendedRetryAfterSeconds: number };
         remediation?: { retryable: boolean; retryAfterSeconds?: number };
         remediationSchemaVersion?: string;
@@ -788,6 +809,8 @@ test('settlement status endpoint returns pending with retry guidance', async () 
 
       assert.equal(response.status, 409);
       assert.equal(body.code, 'SETTLEMENT_PENDING');
+      assert.equal(body.requestId, 'req-settlement-1');
+      assert.equal(response.headers.get('X-Request-Id'), 'req-settlement-1');
       assert.equal(body.settlement?.confirmations, 1);
       assert.equal(body.settlement?.requiredConfirmations, 2);
       assert.equal(body.settlementPolicy?.recommendedRetryAfterSeconds, 2);
