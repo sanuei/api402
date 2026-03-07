@@ -47,6 +47,7 @@ async function createSignedPayload(path: string, amount: string): Promise<Paymen
 
 test.beforeEach(() => {
   globalThis.rateLimiter = new Map();
+  globalThis.usedPaymentNonces = new Map();
 });
 
 test('catalog exposes enriched endpoint metadata', async () => {
@@ -128,4 +129,21 @@ test('expired signed payment payload is rejected with machine-readable reason', 
 
   assert.equal(response.status, 402);
   assert.equal(body.reason, 'PAYMENT_EXPIRED');
+});
+
+test('replayed signed payment nonce is rejected', async () => {
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+  const request = new Request('https://api-402.com/api/deepseek', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(payload),
+    },
+  });
+
+  const firstResponse = await worker.fetch(request, createEnv());
+  const secondResponse = await worker.fetch(request, createEnv());
+  const body = (await secondResponse.json()) as { reason: string };
+
+  assert.equal(firstResponse.status, 200);
+  assert.equal(secondResponse.status, 402);
+  assert.equal(body.reason, 'PAYMENT_NONCE_REPLAYED');
 });

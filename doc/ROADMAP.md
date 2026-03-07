@@ -22,6 +22,9 @@
 - 保留 demo 支付流，方便完整演示 402 -> replay -> data
 - 已定义结构化 `PAYMENT-SIGNATURE` payload schema
 - 已补最小集成测试，覆盖 catalog、health、402、demo replay、签名验证
+- 已加入 nonce 防重放逻辑
+- 已支持 Rabby Wallet 地址连接
+- 已补 logo、favicon、Open Graph、robots 和 sitemap
 
 ## Phase 1
 
@@ -99,7 +102,7 @@
 
 建议下一轮直接做下面 4 项:
 
-1. 为支付 payload 增加 nonce 去重和更严格的时间窗策略
-2. 把 `whale-positions` 或 `kline` 接成真实上游代理
-3. 在 catalog 中增加更明确的 `status`、`upstream`、延迟/可用性字段
+1. 把 nonce 存储从单实例内存迁移到更稳定的持久层
+2. 把 `whale-positions` 接成真实上游代理
+3. 在 catalog 中增加更明确的延迟/可用性字段
 4. 补 `doc/DEPLOYMENT.md` 和更完整的接入示例

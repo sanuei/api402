@@ -149,3 +149,56 @@
 1. 继续把前端逻辑拆成 `catalog`、`wallet`、`modal` 模块
 2. 做 nonce 去重和防重放
 3. 选择一个 mock API 接成真实上游
+
+## 2026-03-08
+
+### 本轮目标
+
+- 继续推进协议可用性，补防重放
+- 接入 Rabby Wallet
+- 为网站补上 Logo 和 SEO 基础设施
+
+### 已完成
+
+- Worker 增加 nonce 防重放校验
+- `kline` 接口改为真实 Binance 上游代理
+- 前端增加 Rabby Wallet 连接入口与 provider 识别
+- 新增 logo、wordmark、favicon、Open Graph 卡片
+- 新增 `robots.txt` 与 `sitemap.xml`
+- 首页补 canonical、Open Graph、Twitter 和 JSON-LD 结构化数据
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [public/logo-mark.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-mark.svg)
+- [public/logo-wordmark.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-wordmark.svg)
+- [public/favicon.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/favicon.svg)
+- [public/og-card.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/og-card.svg)
+- [public/robots.txt](/Users/yangshangwei/Desktop/网页项目/api402/public/robots.txt)
+- [public/sitemap.xml](/Users/yangshangwei/Desktop/网页项目/api402/public/sitemap.xml)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 7 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 说明
+
+- 已按 `$logo-creator` 技能检查流程处理，但当前环境缺少图像生成所需 API key，因此本轮改用手工 SVG 方案直接落地可上线 Logo 资源
+
+### 遗留问题
+
+- nonce 目前仍然保存在 Worker 单实例内存中，不是跨实例持久存储
+- Rabby 目前完成的是地址连接，不包含专用交易或签名 UI
+- `whale-positions` 仍然是 demo 数据
+
+### 下一步建议
+
+1. 用 Durable Objects 或 KV 做 nonce 持久化
+2. 把 `whale-positions` 接成真实上游
+3. 把前端继续拆成更细的模块

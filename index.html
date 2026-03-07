@@ -4,8 +4,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Market - x402 API Payment Gateway</title>
-    <meta name="description" content="用 USDC 按次支付 API。无注册、无 API Key、可供开发者和 AI Agent 直接调用。">
+    <title>API Market | x402 API Payment Gateway on Base</title>
+    <meta name="description" content="API Market 是一个基于 Base 和 USDC 的 x402 API Payment Gateway，支持开发者与 AI Agent 按次付费调用 API，无需注册，无需 API Key。">
+    <meta name="keywords" content="x402, API payment gateway, USDC API, Base micropayments, AI agent API, Rabby wallet, crypto API market">
+    <meta name="author" content="API Market">
+    <meta name="robots" content="index,follow">
+    <link rel="canonical" href="https://api-402.com/">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <link rel="apple-touch-icon" href="/logo-mark.svg">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="API Market">
+    <meta property="og:title" content="API Market | Pay per API call with USDC">
+    <meta property="og:description" content="An x402 API gateway for developers and AI agents. Pay only when you call, on Base with USDC.">
+    <meta property="og:url" content="https://api-402.com/">
+    <meta property="og:image" content="https://api-402.com/og-card.svg">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="API Market | x402 API Payment Gateway">
+    <meta name="twitter:description" content="Pay per API call with USDC on Base. Built for developers and AI agents.">
+    <meta name="twitter:image" content="https://api-402.com/og-card.svg">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -13,6 +29,29 @@
         href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "name": "API Market",
+          "url": "https://api-402.com/",
+          "description": "x402 API Payment Gateway on Base for developers and AI agents."
+        }
+    </script>
+    <script type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "WebAPI",
+          "name": "API Market Gateway",
+          "url": "https://api-402.com/",
+          "documentation": "https://api-402.com/#examples",
+          "provider": {
+            "@type": "Organization",
+            "name": "API Market"
+          },
+          "description": "Machine-readable API marketplace using x402-style micropayments with USDC on Base."
+        }
+    </script>
     <script type="module" src="/src/main.ts"></script>
 </head>
 
@@ -20,9 +59,7 @@
     <nav class="fixed top-0 inset-x-0 z-50 border-b border-white/5 bg-[#040506]/75 backdrop-blur-xl">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
             <div class="flex items-center gap-3">
-                <div class="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center mono text-sm">
-                    x402
-                </div>
+                <img src="/logo-mark.svg" alt="API Market logo" class="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 p-1.5">
                 <div>
                     <div class="font-bold tracking-tight">API Market</div>
                     <div class="text-xs text-slate-500">USDC micropayments for APIs</div>
@@ -323,7 +360,9 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="soft-card rounded-[32px] px-6 py-6 md:px-8 md:py-7 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div>
-                    <div class="font-bold text-xl">API Market</div>
+                    <div class="font-bold text-xl">
+                        <img src="/logo-wordmark.svg" alt="API Market wordmark" class="h-8">
+                    </div>
                     <div class="text-slate-500 mt-1">Cloudflare Worker based x402 API payment gateway demo</div>
                 </div>
                 <div class="flex flex-wrap gap-3 text-sm">
@@ -358,6 +397,14 @@
                         <span class="flex items-center gap-3">
                             <i class="fab fa-ethereum text-[#ffcf66]"></i>
                             MetaMask
+                        </span>
+                        <i class="fas fa-chevron-right text-slate-600"></i>
+                    </button>
+                    <button data-wallet-type="rabby"
+                        class="w-full secondary-btn rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
+                        <span class="flex items-center gap-3">
+                            <i class="fas fa-wallet text-[#8b5cf6]"></i>
+                            Rabby Wallet
                         </span>
                         <i class="fas fa-chevron-right text-slate-600"></i>
                     </button>

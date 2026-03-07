@@ -30,6 +30,9 @@ export interface HealthResponse {
 }
 
 export interface EthereumProvider {
+  isMetaMask?: boolean;
+  isRabby?: boolean;
+  providers?: EthereumProvider[];
   request(args: { method: string }): Promise<string[]>;
 }
 

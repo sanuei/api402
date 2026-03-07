@@ -16,6 +16,7 @@ export interface Env {
 
 declare global {
   var rateLimiter: Map<string, number[]>;
+  var usedPaymentNonces: Map<string, number>;
 }
 
 export interface APIEndpoint {
@@ -60,6 +61,7 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_RESOURCE_MISMATCH'
     | 'PAYMENT_AMOUNT_TOO_LOW'
     | 'PAYMENT_EXPIRED'
+    | 'PAYMENT_NONCE_REPLAYED'
     | 'PAYMENT_SIGNATURE_INVALID';
   message: string;
 }
@@ -135,10 +137,11 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/kline',
     price: '0.001',
-    description: 'Demo BTC/USDT candlestick snapshots.',
+    description: 'BTC/USDT candlestick snapshots sourced from Binance.',
     category: 'Trading',
-    tags: ['trading', 'candles', 'demo'],
-    status: 'demo',
+    upstream: 'binance',
+    tags: ['trading', 'candles', 'binance'],
+    status: 'live',
     sample: () => ({
       symbol: 'BTC/USDT',
       interval: '1h',
@@ -207,6 +210,27 @@ function decodeBase64Json(value: string): unknown | null {
 
 function getClientIP(request: Request): string {
   return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+function getNonceStore(): Map<string, number> {
+  if (!globalThis.usedPaymentNonces) {
+    globalThis.usedPaymentNonces = new Map<string, number>();
+  }
+
+  return globalThis.usedPaymentNonces;
+}
+
+function sweepExpiredNonces(now: number) {
+  const nonceStore = getNonceStore();
+  for (const [key, expiry] of nonceStore.entries()) {
+    if (expiry <= now) {
+      nonceStore.delete(key);
+    }
+  }
+}
+
+function buildNonceKey(payload: PaymentPayload): string {
+  return `${payload.from.toLowerCase()}:${payload.resource}:${payload.nonce}`;
 }
 
 export function buildPaymentMessage(input: Omit<PaymentPayload, 'signature'>): PaymentMessage {
@@ -525,6 +549,18 @@ export function verifyPayment(
     };
   }
 
+  sweepExpiredNonces(now);
+  const nonceKey = buildNonceKey(rawPayload);
+  const nonceStore = getNonceStore();
+  const currentNonceExpiry = nonceStore.get(nonceKey);
+  if (currentNonceExpiry && currentNonceExpiry > now) {
+    return {
+      ok: false,
+      code: 'PAYMENT_NONCE_REPLAYED',
+      message: 'Payment payload nonce has already been used.',
+    };
+  }
+
   try {
     const canonicalMessage = buildPaymentMessage(rawPayload);
     const recovered = verifyMessage(JSON.stringify(canonicalMessage), rawPayload.signature);
@@ -543,6 +579,8 @@ export function verifyPayment(
       message: 'Payment signature verification failed.',
     };
   }
+
+  nonceStore.set(nonceKey, deadline);
 
   return {
     ok: true,
@@ -574,6 +612,30 @@ async function fetchUpstreamData(path: string): Promise<unknown | null> {
         price: data.price ? Number(data.price) : null,
         timestamp: Date.now(),
         source: 'binance',
+      };
+    }
+
+    if (path === '/api/kline') {
+      const response = await fetch(
+        'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=6',
+      );
+      const data = (await response.json()) as Array<
+        [number, string, string, string, string, string, number, string, number, string, string, string]
+      >;
+
+      return {
+        symbol: 'BTCUSDT',
+        interval: '1h',
+        candles: data.map((candle) => [
+          candle[0],
+          Number(candle[1]),
+          Number(candle[2]),
+          Number(candle[3]),
+          Number(candle[4]),
+          Number(candle[5]),
+        ]),
+        source: 'binance',
+        timestamp: Date.now(),
       };
     }
   } catch (error) {

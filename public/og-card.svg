@@ -1,0 +1,17 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#040506"/>
+  <circle cx="200" cy="90" r="180" fill="#3C7DFF" fill-opacity="0.12"/>
+  <circle cx="1020" cy="110" r="150" fill="#33F0B2" fill-opacity="0.12"/>
+  <circle cx="860" cy="540" r="220" fill="#3C7DFF" fill-opacity="0.08"/>
+  <rect x="70" y="70" width="1060" height="490" rx="40" fill="#0A1018" stroke="#FFFFFF" stroke-opacity="0.08"/>
+  <g transform="translate(120,170)">
+    <rect width="140" height="140" rx="34" fill="#09121B" stroke="#FFFFFF" stroke-opacity="0.08"/>
+    <path d="M46 38H67L50 70L67 102H46L29 70L46 38Z" fill="#3C7DFF"/>
+    <path d="M94 38H73L90 70L73 102H94L111 70L94 38Z" fill="#33F0B2"/>
+    <path d="M68 26H72V114H68V26Z" fill="#E7EDF4"/>
+  </g>
+  <text x="310" y="250" fill="#E7EDF4" font-family="Space Grotesk, Arial, sans-serif" font-weight="700" font-size="76">API Market</text>
+  <text x="310" y="316" fill="#33F0B2" font-family="JetBrains Mono, monospace" font-size="30">x402 API Payment Gateway on Base</text>
+  <text x="120" y="420" fill="#A3B1C1" font-family="Space Grotesk, Arial, sans-serif" font-size="34">Pay per API call with USDC.</text>
+  <text x="120" y="468" fill="#A3B1C1" font-family="Space Grotesk, Arial, sans-serif" font-size="34">Built for developers and AI agents.</text>
+</svg>

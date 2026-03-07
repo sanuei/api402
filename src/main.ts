@@ -29,6 +29,25 @@ function resolveApiBase(): string {
 
 const API_BASE = resolveApiBase();
 
+function getWalletProvider(type: 'coinbase' | 'metamask' | 'rabby') {
+  const ethereum = window.ethereum;
+  if (!ethereum) {
+    return null;
+  }
+
+  const providers = ethereum.providers && ethereum.providers.length > 0 ? ethereum.providers : [ethereum];
+
+  if (type === 'rabby') {
+    return providers.find((provider) => provider.isRabby) || null;
+  }
+
+  if (type === 'metamask') {
+    return providers.find((provider) => provider.isMetaMask && !provider.isRabby) || ethereum;
+  }
+
+  return ethereum;
+}
+
 function escapeHtml(value: unknown): string {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -211,15 +230,17 @@ function closeWalletModal() {
   getElement<HTMLDivElement>('walletModal').classList.remove('flex');
 }
 
-async function connectWallet(type: 'coinbase' | 'metamask') {
+async function connectWallet(type: 'coinbase' | 'metamask' | 'rabby') {
   closeWalletModal();
 
   let address = '';
   try {
-    if (window.ethereum && typeof window.ethereum.request === 'function') {
-      const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+    const provider = getWalletProvider(type);
+    if (provider && typeof provider.request === 'function') {
+      const accounts = await provider.request({ method: 'eth_requestAccounts' });
       address = accounts[0] || '';
-      walletType = type === 'coinbase' ? 'Coinbase Wallet' : 'MetaMask';
+      walletType =
+        type === 'coinbase' ? 'Coinbase Wallet' : type === 'rabby' ? 'Rabby Wallet' : 'MetaMask';
     }
   } catch (error) {
     console.log('wallet connect failed, fallback to demo', error);
@@ -308,9 +329,9 @@ async function executeRequest() {
         }
       } else {
         resultEl.innerHTML += logLine(
-          'Connect Demo Mode to complete the full request loop inside the browser.',
-          'warning',
-        );
+        'Connect Demo Mode to complete the full request loop inside the browser.',
+        'warning',
+      );
       }
     } else if (response.ok) {
       const data = await response.json();
@@ -347,7 +368,7 @@ function bindEvents() {
   document.querySelectorAll<HTMLElement>('[data-wallet-type]').forEach((button) => {
     button.addEventListener('click', () => {
       const walletTypeValue = button.dataset.walletType;
-      if (walletTypeValue === 'coinbase' || walletTypeValue === 'metamask') {
+      if (walletTypeValue === 'coinbase' || walletTypeValue === 'metamask' || walletTypeValue === 'rabby') {
         void connectWallet(walletTypeValue);
       }
     });

@@ -1,0 +1,11 @@
+<svg width="860" height="180" viewBox="0 0 860 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="860" height="180" rx="36" fill="#05070B"/>
+  <g transform="translate(20,20)">
+    <rect width="140" height="140" rx="34" fill="#0A1018" stroke="#FFFFFF" stroke-opacity="0.08"/>
+    <path d="M46 38H67L50 70L67 102H46L29 70L46 38Z" fill="#3C7DFF"/>
+    <path d="M94 38H73L90 70L73 102H94L111 70L94 38Z" fill="#33F0B2"/>
+    <path d="M68 26H72V114H68V26Z" fill="#E7EDF4"/>
+  </g>
+  <text x="190" y="84" fill="#E7EDF4" font-family="Space Grotesk, Arial, sans-serif" font-weight="700" font-size="54">API Market</text>
+  <text x="190" y="122" fill="#8B97A7" font-family="JetBrains Mono, monospace" font-size="20">x402 micropayments on Base</text>
+</svg>

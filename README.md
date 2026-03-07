@@ -8,6 +8,7 @@
 - `src/`：前端 TypeScript 和样式
 - `worker/`：Cloudflare Worker 后端
 - `test/`：Worker 集成测试
+- `public/`：Logo、favicon、OG 图、robots、sitemap 等静态资源
 - `dist/`：Vite 构建产物
 
 ## What It Does
@@ -16,6 +17,8 @@
 - 免费提供 machine-readable catalog: `/api/v1/catalog`
 - 付费接口先返回 402 challenge，再接受支付头重放请求
 - 当前保留 demo 支付模式，方便前端和 SDK 联调
+- 支持 MetaMask、Coinbase Wallet、Rabby Wallet 地址连接
+- 提供基础 SEO 资源，包括 favicon、OG 图、robots 和 sitemap
 
 ## Core Routes
 
@@ -49,9 +52,10 @@ npm run deploy
 ## Current Scope
 
 - BTC / ETH 价格可尝试代理 Binance
-- 其余接口仍然以 demo/mock 数据为主
-- 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验和 demo token
-- 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证
+- K 线接口已接入 Binance 上游
+- 其余部分接口仍然以 demo/mock 数据为主
+- 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验、nonce 防重放和 demo token
+- 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证和 nonce 重放
 
 ## Next Steps
 
