@@ -6,6 +6,8 @@
  * 2. paid API routes protected by an x402-style payment challenge
  */
 
+import { verifyMessage } from 'ethers';
+
 export interface Env {
   PAY_TO?: string;
   APP_NAME?: string;
@@ -16,24 +18,51 @@ declare global {
   var rateLimiter: Map<string, number[]>;
 }
 
-interface APIEndpoint {
+export interface APIEndpoint {
   path: string;
   price: string;
   description: string;
   category: string;
   upstream?: string;
-  sample: () => unknown;
+  tags: string[];
+  status: 'live' | 'demo';
+  sample: () => Record<string, unknown>;
 }
 
-interface PaymentPayload {
-  payTo?: string;
-  from?: string;
-  amount?: string | number;
-  signature?: string;
-  data?: unknown;
+export interface PaymentMessage {
+  version: '1';
+  scheme: 'exact';
+  network: 'base';
+  currency: 'USDC';
+  payTo: string;
+  from: string;
+  amount: string;
+  resource: string;
+  nonce: string;
+  deadline: string;
+  issuedAt: string;
 }
 
-import { verifyMessage } from 'ethers';
+export interface PaymentPayload extends PaymentMessage {
+  signature: string;
+}
+
+export interface PaymentVerificationResult {
+  ok: boolean;
+  code:
+    | 'PAYMENT_VALID'
+    | 'DEMO_PAYMENT'
+    | 'PAYMENT_MISSING'
+    | 'PAYMENT_PROOF_HEADER'
+    | 'INVALID_PAYMENT_ENCODING'
+    | 'INVALID_PAYMENT_PAYLOAD'
+    | 'PAYMENT_TARGET_MISMATCH'
+    | 'PAYMENT_RESOURCE_MISMATCH'
+    | 'PAYMENT_AMOUNT_TOO_LOW'
+    | 'PAYMENT_EXPIRED'
+    | 'PAYMENT_SIGNATURE_INVALID';
+  message: string;
+}
 
 const DEFAULT_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
 const DEMO_PAYMENT_TOKEN = 'demo';
@@ -41,13 +70,15 @@ const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 
-const API_ENDPOINTS: APIEndpoint[] = [
+export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/btc-price',
     price: '0.00001',
     description: 'Real-time BTC price feed aggregated from Binance.',
     category: 'Market Data',
     upstream: 'binance',
+    tags: ['btc', 'market-data', 'realtime'],
+    status: 'live',
     sample: () => ({ symbol: 'BTC', price: 67234.56, timestamp: Date.now() }),
   },
   {
@@ -56,6 +87,8 @@ const API_ENDPOINTS: APIEndpoint[] = [
     description: 'Real-time ETH price feed aggregated from Binance.',
     category: 'Market Data',
     upstream: 'binance',
+    tags: ['eth', 'market-data', 'realtime'],
+    status: 'live',
     sample: () => ({ symbol: 'ETH', price: 3456.78, timestamp: Date.now() }),
   },
   {
@@ -63,6 +96,8 @@ const API_ENDPOINTS: APIEndpoint[] = [
     price: '0.003',
     description: 'Demo DeepSeek chat completion response.',
     category: 'AI',
+    tags: ['ai', 'chat', 'demo'],
+    status: 'demo',
     sample: () => ({
       model: 'deepseek-v3',
       response: 'Hello! How can I help you today?',
@@ -74,6 +109,8 @@ const API_ENDPOINTS: APIEndpoint[] = [
     price: '0.01',
     description: 'Demo Qwen3 Max chat completion response.',
     category: 'AI',
+    tags: ['ai', 'chat', 'demo'],
+    status: 'demo',
     sample: () => ({
       model: 'qwen3-max',
       response: '您好！有什么我可以帮您的？',
@@ -85,6 +122,8 @@ const API_ENDPOINTS: APIEndpoint[] = [
     price: '0.00002',
     description: 'Demo HyperLiquid whale position snapshots.',
     category: 'Onchain Intelligence',
+    tags: ['onchain', 'whale', 'demo'],
+    status: 'demo',
     sample: () => ({
       positions: [
         { address: '0x1234...', size: 1250000, pnl: 12.5 },
@@ -98,6 +137,8 @@ const API_ENDPOINTS: APIEndpoint[] = [
     price: '0.001',
     description: 'Demo BTC/USDT candlestick snapshots.',
     category: 'Trading',
+    tags: ['trading', 'candles', 'demo'],
+    status: 'demo',
     sample: () => ({
       symbol: 'BTC/USDT',
       interval: '1h',
@@ -117,7 +158,8 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof',
-  'Access-Control-Expose-Headers': 'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme',
+  'Access-Control-Expose-Headers':
+    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason',
 };
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -149,15 +191,104 @@ function parseAmount(value: string | number | undefined): number {
   return 0;
 }
 
+function encodeJsonBase64(value: unknown): string {
+  return btoa(JSON.stringify(value));
+}
+
+function decodeBase64Json(value: string): unknown | null {
+  try {
+    const normalized = value.startsWith('Bearer ') ? value.slice(7).trim() : value.trim();
+    const decoded = atob(normalized);
+    return JSON.parse(decoded) as unknown;
+  } catch {
+    return null;
+  }
+}
+
 function getClientIP(request: Request): string {
   return request.headers.get('CF-Connecting-IP') || 'unknown';
 }
 
-function createCatalog(baseUrl: string, payTo: string) {
+export function buildPaymentMessage(input: Omit<PaymentPayload, 'signature'>): PaymentMessage {
+  return {
+    version: '1',
+    scheme: 'exact',
+    network: 'base',
+    currency: 'USDC',
+    payTo: input.payTo,
+    from: input.from,
+    amount: String(input.amount),
+    resource: input.resource,
+    nonce: input.nonce,
+    deadline: input.deadline,
+    issuedAt: input.issuedAt,
+  };
+}
+
+function isPaymentPayload(value: unknown): value is PaymentPayload {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const payload = value as Record<string, unknown>;
+  const requiredStringKeys = [
+    'version',
+    'scheme',
+    'network',
+    'currency',
+    'payTo',
+    'from',
+    'amount',
+    'resource',
+    'nonce',
+    'deadline',
+    'issuedAt',
+    'signature',
+  ];
+
+  return requiredStringKeys.every((key) => typeof payload[key] === 'string');
+}
+
+function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoint) {
+  const samplePayload = buildPaymentMessage({
+    version: '1',
+    scheme: 'exact',
+    network: 'base',
+    currency: 'USDC',
+    payTo,
+    from: '0xYourWalletAddress',
+    amount: endpoint.price,
+    resource: endpoint.path,
+    nonce: 'replace-with-unique-nonce',
+    deadline: '2026-03-08T16:00:00.000Z',
+    issuedAt: '2026-03-08T15:55:00.000Z',
+  } as Omit<PaymentPayload, 'signature'>);
+
+  return {
+    path: endpoint.path,
+    url: `${baseUrl}${endpoint.path}`,
+    method: 'GET',
+    price: endpoint.price,
+    currency: 'USDC',
+    category: endpoint.category,
+    description: endpoint.description,
+    access: endpoint.upstream ? 'live_or_fallback' : 'mock_demo',
+    upstream: endpoint.upstream || null,
+    status: endpoint.status,
+    tags: endpoint.tags,
+    exampleRequest: {
+      curl: `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" ${baseUrl}${endpoint.path}`,
+      paymentPayload: samplePayload,
+    },
+    exampleResponse: endpoint.sample(),
+  };
+}
+
+export function createCatalog(baseUrl: string, payTo: string) {
   return {
     name: 'API Market',
     appName: 'API Market',
-    version: '1.1.0',
+    version: '1.2.0',
     payment: {
       payTo,
       currency: 'USDC',
@@ -165,31 +296,42 @@ function createCatalog(baseUrl: string, payTo: string) {
       scheme: 'exact',
       demoToken: DEMO_PAYMENT_TOKEN,
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
+      payloadSchema: {
+        version: '1',
+        scheme: 'exact',
+        network: 'base',
+        currency: 'USDC',
+        requiredFields: [
+          'payTo',
+          'from',
+          'amount',
+          'resource',
+          'nonce',
+          'deadline',
+          'issuedAt',
+          'signature',
+        ],
+      },
     },
     docs: {
       quickstart: `${baseUrl}/#examples`,
       health: `${baseUrl}${HEALTH_PATH}`,
       catalog: `${baseUrl}${CATALOG_PATH}`,
     },
-    endpoints: API_ENDPOINTS.map((endpoint) => ({
-      path: endpoint.path,
-      url: `${baseUrl}${endpoint.path}`,
-      method: 'GET',
-      price: endpoint.price,
-      currency: 'USDC',
-      category: endpoint.category,
-      description: endpoint.description,
-      access: endpoint.upstream ? 'live_or_fallback' : 'mock_demo',
-      upstream: endpoint.upstream || null,
-    })),
+    endpoints: API_ENDPOINTS.map((endpoint) => getCatalogEndpoint(baseUrl, payTo, endpoint)),
   };
 }
 
-function createPaymentRequired(payTo: string, endpoint: APIEndpoint): Response {
+function createPaymentRequired(
+  payTo: string,
+  endpoint: APIEndpoint,
+  verification: PaymentVerificationResult,
+): Response {
   return apiResponse(
     {
       code: 'PAYMENT_REQUIRED',
-      message: 'Payment required to access this API.',
+      reason: verification.code,
+      message: verification.message,
       payTo,
       price: endpoint.price,
       currency: 'USDC',
@@ -198,14 +340,46 @@ function createPaymentRequired(payTo: string, endpoint: APIEndpoint): Response {
       path: endpoint.path,
       description: endpoint.description,
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
+      paymentSchema: {
+        version: '1',
+        scheme: 'exact',
+        network: 'base',
+        currency: 'USDC',
+        requiredFields: [
+          'payTo',
+          'from',
+          'amount',
+          'resource',
+          'nonce',
+          'deadline',
+          'issuedAt',
+          'signature',
+        ],
+      },
       examples: {
         demo: `Authorization: Bearer ${DEMO_PAYMENT_TOKEN}`,
-        signature: 'PAYMENT-SIGNATURE: <base64-encoded signed authorization payload>',
+        signature: `PAYMENT-SIGNATURE: ${encodeJsonBase64({
+          ...buildPaymentMessage({
+            version: '1',
+            scheme: 'exact',
+            network: 'base',
+            currency: 'USDC',
+            payTo,
+            from: '0xYourWalletAddress',
+            amount: endpoint.price,
+            resource: endpoint.path,
+            nonce: 'replace-with-unique-nonce',
+            deadline: '2026-03-08T16:00:00.000Z',
+            issuedAt: '2026-03-08T15:55:00.000Z',
+          } as Omit<PaymentPayload, 'signature'>),
+          signature: 'replace-with-signature',
+        })}`,
       },
       instructions: [
         'Connect a wallet with Base USDC.',
-        'Sign an authorization payload for the requested amount.',
-        'Replay the request with a payment header.',
+        'Build a payment payload for the requested resource.',
+        'Sign the canonical JSON string of the payload without the signature field.',
+        'Replay the request with Authorization or PAYMENT-SIGNATURE.',
       ],
       x402Spec: 'https://x402.org',
     },
@@ -218,22 +392,13 @@ function createPaymentRequired(payTo: string, endpoint: APIEndpoint): Response {
         'X-Currency': 'USDC',
         'X-Chain': 'base',
         'X-Scheme': 'exact',
+        'X-Payment-Reason': verification.code,
       },
     },
   );
 }
 
-function decodeBase64Json(value: string): PaymentPayload | null {
-  try {
-    const normalized = value.startsWith('Bearer ') ? value.slice(7).trim() : value.trim();
-    const decoded = atob(normalized);
-    return JSON.parse(decoded) as PaymentPayload;
-  } catch {
-    return null;
-  }
-}
-
-function extractPaymentPayload(request: Request): PaymentPayload | 'demo' | null {
+function extractPaymentPayload(request: Request): PaymentPayload | 'demo' | 'proof' | null {
   const authorization = request.headers.get('Authorization');
 
   if (authorization === `Bearer ${DEMO_PAYMENT_TOKEN}`) {
@@ -242,46 +407,148 @@ function extractPaymentPayload(request: Request): PaymentPayload | 'demo' | null
 
   if (authorization?.startsWith('Bearer ')) {
     const payload = decodeBase64Json(authorization);
-    if (payload) {
+    if (isPaymentPayload(payload)) {
       return payload;
     }
+
+    return authorization ? null : null;
   }
 
   const paymentSignature = request.headers.get('PAYMENT-SIGNATURE');
   if (paymentSignature) {
     const payload = decodeBase64Json(paymentSignature);
-    if (payload) {
+    if (isPaymentPayload(payload)) {
       return payload;
     }
+
+    return null;
+  }
+
+  if (request.headers.has('X-Payment-Proof')) {
+    return 'proof';
   }
 
   return null;
 }
 
-async function verifyPayment(request: Request, price: string, payTo: string): Promise<boolean> {
-  const payload = extractPaymentPayload(request);
+export function verifyPayment(
+  request: Request,
+  endpoint: APIEndpoint,
+  payTo: string,
+  now = Date.now(),
+): PaymentVerificationResult {
+  const rawPayload = extractPaymentPayload(request);
 
-  if (payload === 'demo') {
-    return true;
+  if (rawPayload === 'demo') {
+    return {
+      ok: true,
+      code: 'DEMO_PAYMENT',
+      message: 'Demo payment token accepted.',
+    };
   }
 
-  if (payload && payload.payTo?.toLowerCase() === payTo.toLowerCase()) {
-    const amount = parseAmount(payload.amount);
-    const expected = parseAmount(price);
+  if (rawPayload === 'proof') {
+    return {
+      ok: true,
+      code: 'PAYMENT_PROOF_HEADER',
+      message: 'Legacy payment proof header accepted.',
+    };
+  }
 
-    if (amount >= expected && payload.signature && payload.from) {
-      try {
-        const recovered = verifyMessage(JSON.stringify(payload.data ?? {}), payload.signature);
-        if (recovered.toLowerCase() === payload.from.toLowerCase()) {
-          return true;
-        }
-      } catch (error) {
-        console.log('Payment verification failed:', error);
-      }
+  const hasPaymentHeader =
+    request.headers.has('Authorization') ||
+    request.headers.has('PAYMENT-SIGNATURE') ||
+    request.headers.has('X-Payment-Proof');
+
+  if (!hasPaymentHeader) {
+    return {
+      ok: false,
+      code: 'PAYMENT_MISSING',
+      message: 'Payment header is required to access this API.',
+    };
+  }
+
+  if (!rawPayload) {
+    return {
+      ok: false,
+      code: 'INVALID_PAYMENT_ENCODING',
+      message: 'Payment payload could not be decoded from the request headers.',
+    };
+  }
+
+  if (rawPayload.payTo.toLowerCase() !== payTo.toLowerCase()) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TARGET_MISMATCH',
+      message: 'Payment payload payTo does not match the gateway receiver.',
+    };
+  }
+
+  if (rawPayload.resource !== endpoint.path) {
+    return {
+      ok: false,
+      code: 'PAYMENT_RESOURCE_MISMATCH',
+      message: 'Payment payload resource does not match the requested endpoint.',
+    };
+  }
+
+  if (parseAmount(rawPayload.amount) < parseAmount(endpoint.price)) {
+    return {
+      ok: false,
+      code: 'PAYMENT_AMOUNT_TOO_LOW',
+      message: 'Payment payload amount is lower than the endpoint price.',
+    };
+  }
+
+  const deadline = Date.parse(rawPayload.deadline);
+  if (!Number.isFinite(deadline)) {
+    return {
+      ok: false,
+      code: 'INVALID_PAYMENT_PAYLOAD',
+      message: 'Payment payload deadline is invalid.',
+    };
+  }
+
+  if (deadline < now) {
+    return {
+      ok: false,
+      code: 'PAYMENT_EXPIRED',
+      message: 'Payment payload has expired.',
+    };
+  }
+
+  if (!rawPayload.nonce.trim() || !rawPayload.issuedAt.trim()) {
+    return {
+      ok: false,
+      code: 'INVALID_PAYMENT_PAYLOAD',
+      message: 'Payment payload nonce and issuedAt are required.',
+    };
+  }
+
+  try {
+    const canonicalMessage = buildPaymentMessage(rawPayload);
+    const recovered = verifyMessage(JSON.stringify(canonicalMessage), rawPayload.signature);
+
+    if (recovered.toLowerCase() !== rawPayload.from.toLowerCase()) {
+      return {
+        ok: false,
+        code: 'PAYMENT_SIGNATURE_INVALID',
+        message: 'Payment signature does not match the payer address.',
+      };
     }
+  } catch {
+    return {
+      ok: false,
+      code: 'PAYMENT_SIGNATURE_INVALID',
+      message: 'Payment signature verification failed.',
+    };
   }
 
-  return request.headers.has('X-Payment-Proof');
+  return {
+    ok: true,
+    code: 'PAYMENT_VALID',
+    message: 'Payment payload verified successfully.',
+  };
 }
 
 async function fetchUpstreamData(path: string): Promise<unknown | null> {
@@ -356,7 +623,7 @@ async function serveStaticAsset(request: Request, env: Env): Promise<Response> {
   return new Response('Static assets binding is not available.', { status: 404 });
 }
 
-export default {
+const worker = {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -390,6 +657,8 @@ export default {
               price: endpoint.price,
               description: endpoint.description,
               category: endpoint.category,
+              status: endpoint.status,
+              tags: endpoint.tags,
             },
           ]),
         ),
@@ -403,9 +672,9 @@ export default {
         return rateLimitResponse;
       }
 
-      const isPaid = await verifyPayment(request, endpoint.price, payTo);
-      if (!isPaid) {
-        return createPaymentRequired(payTo, endpoint);
+      const verification = verifyPayment(request, endpoint, payTo);
+      if (!verification.ok) {
+        return createPaymentRequired(payTo, endpoint, verification);
       }
 
       const upstreamData = await fetchUpstreamData(path);
@@ -415,6 +684,7 @@ export default {
         ...baseData,
         _meta: {
           paid: true,
+          paymentMode: verification.code,
           price: endpoint.price,
           payTo,
           category: endpoint.category,
@@ -439,3 +709,5 @@ export default {
     return serveStaticAsset(request, env);
   },
 };
+
+export default worker;

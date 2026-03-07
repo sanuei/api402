@@ -22,6 +22,7 @@
 ```bash
 npm install
 npm run typecheck
+npm test
 npm run dev
 ```
 
@@ -40,7 +41,8 @@ npm run deploy
 
 - BTC / ETH 价格可尝试代理 Binance
 - 其余接口仍然以 demo/mock 数据为主
-- 支付验证仍以 demo token 和简化签名校验为主
+- 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验和 demo token
+- 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证
 
 ## Next Steps
 

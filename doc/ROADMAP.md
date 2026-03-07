@@ -1,6 +1,6 @@
 # API Market Roadmap
 
-更新日期: 2026-03-07
+更新日期: 2026-03-08
 
 ## Product Goal
 
@@ -19,6 +19,8 @@
 - 首页从 catalog 动态渲染，不再完全硬编码
 - 页面结构和开发者入口更贴近 `claw402.ai` 的产品表达方式
 - 保留 demo 支付流，方便完整演示 402 -> replay -> data
+- 已定义结构化 `PAYMENT-SIGNATURE` payload schema
+- 已补最小集成测试，覆盖 catalog、health、402、demo replay、签名验证
 
 ## Phase 1
 
@@ -96,7 +98,7 @@
 
 建议下一轮直接做下面 4 项:
 
-1. 真实定义 `PAYMENT-SIGNATURE` 的 payload 格式并补验证逻辑
-2. 把 `dist/index.html` 的发布流程固定成脚本，避免源文件与产物分叉
-3. 给 catalog 增加 `exampleRequest` / `exampleResponse` 字段
-4. 为 Worker 增加最小化的集成测试
+1. 为支付 payload 增加 nonce 去重和更严格的时间窗策略
+2. 把 `whale-positions` 或 `kline` 接成真实上游代理
+3. 在 catalog 中增加更明确的 `status`、`upstream`、延迟/可用性字段
+4. 补 `doc/DEPLOYMENT.md` 和更完整的接入示例

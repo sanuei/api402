@@ -699,11 +699,11 @@
             document.getElementById('selectedDescription').textContent = endpoint.description;
             document.getElementById('selectedPath').textContent = endpoint.url;
             document.getElementById('selectedCategory').textContent = endpoint.category;
-            document.getElementById('selectedAccess').textContent = endpoint.access;
+            document.getElementById('selectedAccess').textContent = `${endpoint.access} / ${endpoint.status || 'unknown'}`;
             document.getElementById('openSelectedApi').href = endpoint.url;
             document.getElementById('trySelected').onclick = () => testAPI(endpoint.path);
 
-            const curlExample = [
+            const curlExample = endpoint.exampleRequest?.curl || [
                 `curl -i ${endpoint.url}`,
                 '',
                 '# replay in demo mode',
@@ -720,7 +720,10 @@
                 '  });',
                 '  const data = await paid.json();',
                 '  console.log(data);',
-                '}'
+                '}',
+                '',
+                '// example response',
+                JSON.stringify(endpoint.exampleResponse || {}, null, 2)
             ].join('\n');
 
             document.getElementById('curlExample').textContent = curlExample;
