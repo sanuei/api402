@@ -26,6 +26,7 @@
 - `npm run typecheck` 通过
 - `npm test` 通过
 - `npm run build:frontend` 通过
+- `npm run deploy` 通过（Worker Version: `f5e9c0a6-0fba-4aa7-96e4-8e3731612265`）
 
 ### 下一步建议
 
