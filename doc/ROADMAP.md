@@ -32,6 +32,7 @@
 - 已将 nonce / tx hash 防重放迁移到 Durable Objects
 - 已加入 Base 交易确认块数门槛（默认 2 confirmations）以增强结算稳健性
 - 402 challenge 和成功响应已输出结构化 settlement 上下文（txHash、receiptBlock、latestBlock、confirmations）
+- catalog 和 402 challenge 已输出 settlementPolicy（确认目标、平均区块时间、推荐重试间隔）；确认数不足时会返回 Retry-After
 - 支付签名已加入时间窗约束（`issuedAt` 最大年龄与未来时钟偏差限制），降低延迟重放风险
 - Base 结算校验已支持 `BASE_RPC_URLS` 主备 RPC 自动回退（含请求超时控制）
 - Base 结算证明已加入最大区块年龄限制（默认 7200 blocks），可拦截历史交易延迟重放
@@ -116,8 +117,8 @@
 
 1. 在 catalog 中增加更明确的延迟/可用性字段
 2. 为关键上游接口补统一超时、熔断与降级策略（含错误码分层）
-3. 继续扩展 settlement policy 字段（例如确认目标时间、推荐重试间隔），方便 SDK 自动重试建模
-4. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
+3. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
+4. 增加支付成功后的可选结算回执查询端点，方便 SDK 追踪交易状态
 
 ## Operations
 

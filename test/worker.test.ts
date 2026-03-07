@@ -199,6 +199,13 @@ test('catalog exposes enriched endpoint metadata', async () => {
       maxPaymentAgeSeconds: number;
       maxFutureSkewSeconds: number;
       payloadSchema: { requiredFields: string[] };
+      settlementPolicy?: {
+        settlementMethod: string;
+        requiredConfirmations: number;
+        maxSettlementAgeBlocks: number;
+        averageBlockSeconds: number;
+        recommendedRetryAfterSeconds: number;
+      };
     };
     endpoints: Array<{
       exampleRequest: unknown;
@@ -220,6 +227,11 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.maxSettlementAgeBlocks, 7200);
   assert.equal(body.payment.maxPaymentAgeSeconds, 900);
   assert.equal(body.payment.maxFutureSkewSeconds, 120);
+  assert.equal(body.payment.settlementPolicy?.settlementMethod, 'base-usdc-transfer-receipt');
+  assert.equal(body.payment.settlementPolicy?.requiredConfirmations, 2);
+  assert.equal(body.payment.settlementPolicy?.maxSettlementAgeBlocks, 7200);
+  assert.equal(body.payment.settlementPolicy?.averageBlockSeconds, 2);
+  assert.equal(body.payment.settlementPolicy?.recommendedRetryAfterSeconds, 4);
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
@@ -373,6 +385,11 @@ test('signed payment requires block confirmations before acceptance', async () =
       const body = (await response.json()) as {
         reason: string;
         settlementConfirmationsRequired?: number;
+        settlementPolicy?: {
+          recommendedRetryAfterSeconds: number;
+          requiredConfirmations: number;
+          averageBlockSeconds: number;
+        };
         settlement?: {
           txHash: string;
           requiredConfirmations: number;
@@ -385,6 +402,10 @@ test('signed payment requires block confirmations before acceptance', async () =
       assert.equal(response.status, 402);
       assert.equal(body.reason, 'PAYMENT_TX_NOT_CONFIRMED');
       assert.equal(body.settlementConfirmationsRequired, 2);
+      assert.equal(response.headers.get('Retry-After'), '2');
+      assert.equal(body.settlementPolicy?.recommendedRetryAfterSeconds, 2);
+      assert.equal(body.settlementPolicy?.requiredConfirmations, 2);
+      assert.equal(body.settlementPolicy?.averageBlockSeconds, 2);
       assert.equal(body.settlement?.txHash, '0x3333333333333333333333333333333333333333333333333333333333333333');
       assert.equal(body.settlement?.requiredConfirmations, 2);
       assert.equal(body.settlement?.confirmations, 1);

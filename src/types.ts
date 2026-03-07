@@ -17,6 +17,17 @@ export interface CatalogPaymentConfig {
   acceptedHeaders?: string[];
   settlementProofHeader?: string;
   settlementMethod?: string;
+  settlementConfirmationsRequired?: number;
+  maxSettlementAgeBlocks?: number;
+  maxPaymentAgeSeconds?: number;
+  maxFutureSkewSeconds?: number;
+  settlementPolicy?: {
+    settlementMethod: string;
+    requiredConfirmations: number;
+    maxSettlementAgeBlocks: number;
+    averageBlockSeconds: number;
+    recommendedRetryAfterSeconds: number;
+  };
 }
 
 export interface CatalogEndpoint {

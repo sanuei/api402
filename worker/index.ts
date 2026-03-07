@@ -73,6 +73,14 @@ export interface PaymentSettlementContext {
   confirmations: number;
 }
 
+export interface SettlementPolicy {
+  settlementMethod: 'base-usdc-transfer-receipt';
+  requiredConfirmations: number;
+  maxSettlementAgeBlocks: number;
+  averageBlockSeconds: number;
+  recommendedRetryAfterSeconds: number;
+}
+
 export interface PaymentVerificationResult {
   ok: boolean;
   code:
@@ -112,6 +120,8 @@ const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
 const DEFAULT_PAYMENT_MAX_AGE_SECONDS = 15 * 60;
 const DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS = 2 * 60;
 const DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS = 7200;
+const BASE_CONFIRMATION_AVG_SECONDS = 2;
+const BASE_SETTLEMENT_RETRY_FLOOR_SECONDS = 2;
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const PAYMENT_TX_HASH_HEADER = 'X-PAYMENT-TX-HASH';
 const ERC20_TRANSFER_TOPIC =
@@ -829,6 +839,26 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
   };
 }
 
+function buildSettlementPolicy(
+  minConfirmations: number,
+  maxSettlementAgeBlocks: number,
+  settlement?: PaymentSettlementContext,
+): SettlementPolicy {
+  const missingConfirmations = Math.max(minConfirmations - (settlement?.confirmations || 0), 0);
+  const recommendedRetryAfterSeconds = Math.max(
+    BASE_SETTLEMENT_RETRY_FLOOR_SECONDS,
+    missingConfirmations * BASE_CONFIRMATION_AVG_SECONDS,
+  );
+
+  return {
+    settlementMethod: 'base-usdc-transfer-receipt',
+    requiredConfirmations: minConfirmations,
+    maxSettlementAgeBlocks,
+    averageBlockSeconds: BASE_CONFIRMATION_AVG_SECONDS,
+    recommendedRetryAfterSeconds,
+  };
+}
+
 export function createCatalog(
   baseUrl: string,
   payTo: string,
@@ -856,6 +886,7 @@ export function createCatalog(
       settlementMethod: 'base-usdc-transfer-receipt',
       settlementConfirmationsRequired: minConfirmations,
       maxSettlementAgeBlocks,
+      settlementPolicy: buildSettlementPolicy(minConfirmations, maxSettlementAgeBlocks),
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       payloadSchema: {
@@ -893,6 +924,26 @@ function createPaymentRequired(
   futureSkewSeconds: number,
   maxSettlementAgeBlocks: number,
 ): Response {
+  const settlementPolicy = buildSettlementPolicy(
+    minConfirmations,
+    maxSettlementAgeBlocks,
+    verification.settlement,
+  );
+
+  const responseHeaders: Record<string, string> = {
+    'X-Payment-Required': 'true',
+    'X-Pay-To': payTo,
+    'X-Price': endpoint.price,
+    'X-Currency': 'USDC',
+    'X-Chain': 'base',
+    'X-Scheme': 'exact',
+    'X-Payment-Reason': verification.code,
+  };
+
+  if (verification.code === 'PAYMENT_TX_NOT_CONFIRMED') {
+    responseHeaders['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
+  }
+
   return apiResponse(
     {
       code: 'PAYMENT_REQUIRED',
@@ -912,6 +963,7 @@ function createPaymentRequired(
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementConfirmationsRequired: minConfirmations,
       maxSettlementAgeBlocks,
+      settlementPolicy,
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       settlement: verification.settlement || null,
@@ -967,15 +1019,7 @@ function createPaymentRequired(
     },
     {
       status: 402,
-      headers: {
-        'X-Payment-Required': 'true',
-        'X-Pay-To': payTo,
-        'X-Price': endpoint.price,
-        'X-Currency': 'USDC',
-        'X-Chain': 'base',
-        'X-Scheme': 'exact',
-        'X-Payment-Reason': verification.code,
-      },
+      headers: responseHeaders,
     },
   );
 }

@@ -4,6 +4,41 @@
 
 ### 本轮目标
 
+- 扩展 settlement policy 机器可读字段，提升支付失败后的自动重试可靠性
+
+### 已完成
+
+- 新增结构化 `settlementPolicy`，包含确认门槛、平均区块时间、最大可接受结算区块年龄和建议重试间隔
+- `catalog.payment` 现输出 `settlementPolicy`，便于 SDK 静态建模自动重试参数
+- 402 challenge 现输出动态 `settlementPolicy`，会根据当前确认进度给出 `recommendedRetryAfterSeconds`
+- 当返回 `PAYMENT_TX_NOT_CONFIRMED` 时，HTTP 头新增 `Retry-After`（秒），便于客户端无状态退避重试
+- 前端类型已补齐 `settlementPolicy` 字段
+- 测试新增对 `settlementPolicy` 与 `Retry-After` 的断言
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 13 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 给关键上游接口补统一熔断 / fallback 策略与 machine-readable 错误码
+2. 在 catalog 增加 latency / availability 指标字段
+3. 推进 AI 类接口真实上游替换，继续降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 继续提升真实支付验证稳健性，阻断“历史旧交易”被拿来延迟重放的风险
 
 ### 已完成
