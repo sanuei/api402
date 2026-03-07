@@ -12,6 +12,7 @@ export interface Env {
   PAY_TO?: string;
   APP_NAME?: string;
   BASE_RPC_URL?: string;
+  PAYMENT_MIN_CONFIRMATIONS?: string;
   REPLAY_GUARD?: DurableObjectNamespace;
   ASSETS?: Fetcher;
 }
@@ -79,12 +80,14 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_TX_FAILED'
     | 'PAYMENT_TRANSFER_MISSING'
     | 'PAYMENT_TRANSFER_AMOUNT_TOO_LOW'
+    | 'PAYMENT_TX_NOT_CONFIRMED'
     | 'PAYMENT_SIGNATURE_INVALID';
   message: string;
 }
 
 const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
 const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
+const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const PAYMENT_TX_HASH_HEADER = 'X-PAYMENT-TX-HASH';
 const ERC20_TRANSFER_TOPIC =
@@ -372,6 +375,27 @@ function normalizeTopicAddress(value: string | undefined): string | null {
   return `0x${value.slice(-40)}`.toLowerCase();
 }
 
+function parseMinConfirmations(value: string | undefined): number {
+  if (!value) {
+    return DEFAULT_PAYMENT_MIN_CONFIRMATIONS;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return DEFAULT_PAYMENT_MIN_CONFIRMATIONS;
+  }
+
+  return parsed;
+}
+
+function parseHexBlockNumber(value: unknown): bigint | null {
+  if (typeof value !== 'string' || !/^0x[0-9a-fA-F]+$/.test(value)) {
+    return null;
+  }
+
+  return BigInt(value);
+}
+
 function getPaymentTxHash(request: Request): string | null {
   return request.headers.get(PAYMENT_TX_HASH_HEADER);
 }
@@ -388,6 +412,7 @@ type JsonRpcReceiptLog = {
 
 type JsonRpcTransactionReceipt = {
   status?: string;
+  blockNumber?: string;
   logs?: JsonRpcReceiptLog[];
 };
 
@@ -446,6 +471,42 @@ async function verifyBaseUsdcSettlement(
       ok: false,
       code: 'PAYMENT_TX_FAILED',
       message: 'Payment transaction did not succeed on-chain.',
+    };
+  }
+
+  const receiptBlock = parseHexBlockNumber(receipt.blockNumber);
+  if (receiptBlock === null) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_NOT_CONFIRMED',
+      message: 'Payment transaction is not confirmed yet.',
+    };
+  }
+
+  const requiredConfirmations = BigInt(parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS));
+  let latestBlock: bigint;
+  try {
+    const latestBlockHex = await callBaseRpc(env, 'eth_blockNumber', []);
+    const parsedLatestBlock = parseHexBlockNumber(latestBlockHex);
+    if (parsedLatestBlock === null) {
+      throw new Error('invalid block number');
+    }
+
+    latestBlock = parsedLatestBlock;
+  } catch {
+    return {
+      ok: false,
+      code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
+      message: 'Base RPC could not be reached for block confirmation verification.',
+    };
+  }
+
+  const confirmations = latestBlock >= receiptBlock ? latestBlock - receiptBlock + 1n : 0n;
+  if (confirmations < requiredConfirmations) {
+    return {
+      ok: false,
+      code: 'PAYMENT_TX_NOT_CONFIRMED',
+      message: `Payment transaction requires at least ${requiredConfirmations.toString()} confirmations on Base before replay.`,
     };
   }
 
@@ -664,7 +725,7 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
   };
 }
 
-export function createCatalog(baseUrl: string, payTo: string) {
+export function createCatalog(baseUrl: string, payTo: string, minConfirmations = DEFAULT_PAYMENT_MIN_CONFIRMATIONS) {
   return {
     name: 'API Market',
     appName: 'API Market',
@@ -682,6 +743,7 @@ export function createCatalog(baseUrl: string, payTo: string) {
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementMethod: 'base-usdc-transfer-receipt',
+      settlementConfirmationsRequired: minConfirmations,
       payloadSchema: {
         version: '1',
         scheme: 'exact',
@@ -712,6 +774,7 @@ function createPaymentRequired(
   payTo: string,
   endpoint: APIEndpoint,
   verification: PaymentVerificationResult,
+  minConfirmations: number,
 ): Response {
   return apiResponse(
     {
@@ -730,6 +793,7 @@ function createPaymentRequired(
       description: endpoint.description.en,
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
+      settlementConfirmationsRequired: minConfirmations,
       paymentSchema: {
         version: '1',
         scheme: 'exact',
@@ -771,6 +835,7 @@ function createPaymentRequired(
         `Use the USDC contract ${BASE_USDC_CONTRACT} on Base mainnet.`,
         'Connect a wallet with Base USDC.',
         'Submit the Base USDC transaction hash in X-PAYMENT-TX-HASH.',
+        `Wait for at least ${minConfirmations} Base block confirmations before replaying.`,
         'Build a payment payload for the requested resource.',
         'Sign the canonical JSON string of the payload without the signature field.',
         'Replay the request with Authorization or PAYMENT-SIGNATURE.',
@@ -1119,7 +1184,7 @@ const worker = {
     }
 
     if (path === CATALOG_PATH) {
-      return apiResponse(createCatalog(origin, payTo));
+      return apiResponse(createCatalog(origin, payTo, parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS)));
     }
 
     if (path === LEGACY_PRICE_PATH) {
@@ -1148,7 +1213,12 @@ const worker = {
 
       const verification = await verifyPayment(request, endpoint, payTo, env);
       if (!verification.ok) {
-        return createPaymentRequired(payTo, endpoint, verification);
+        return createPaymentRequired(
+          payTo,
+          endpoint,
+          verification,
+          parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS),
+        );
       }
 
       const upstreamData = await fetchUpstreamData(path);

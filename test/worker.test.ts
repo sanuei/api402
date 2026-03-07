@@ -112,12 +112,13 @@ function toAmountHex(value: string): string {
   return `0x${units.toString(16)}`;
 }
 
-function createTransferReceipt(from: string, to: string, amount: string) {
+function createTransferReceipt(from: string, to: string, amount: string, blockNumber = '0x100') {
   return {
     jsonrpc: '2.0',
     id: 1,
     result: {
       status: '0x1',
+      blockNumber,
       logs: [
         {
           address: BASE_USDC_CONTRACT,
@@ -129,15 +130,40 @@ function createTransferReceipt(from: string, to: string, amount: string) {
   };
 }
 
+function createBlockNumberResponse(blockNumber: string) {
+  return {
+    jsonrpc: '2.0',
+    id: 1,
+    result: blockNumber,
+  };
+}
+
 async function withMockedFetch<T>(
-  receiptFactory: () => Record<string, unknown>,
+  rpcHandlers: {
+    eth_getTransactionReceipt: () => Record<string, unknown>;
+    eth_blockNumber: () => Record<string, unknown>;
+  },
   handler: () => Promise<T>,
 ): Promise<T> {
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () =>
-    new Response(JSON.stringify(receiptFactory()), {
-      headers: { 'Content-Type': 'application/json' },
-    });
+  globalThis.fetch = async (_input, init) => {
+    const body = init?.body ? JSON.parse(String(init.body)) as { method?: string } : {};
+    const method = body.method;
+
+    if (method === 'eth_getTransactionReceipt') {
+      return new Response(JSON.stringify(rpcHandlers.eth_getTransactionReceipt()), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (method === 'eth_blockNumber') {
+      return new Response(JSON.stringify(rpcHandlers.eth_blockNumber()), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
+    return new Response(JSON.stringify({ error: 'Unsupported RPC method in test' }), { status: 500 });
+  };
 
   try {
     return await handler();
@@ -163,6 +189,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
       tokenContract: string;
       acceptance: string;
       settlementProofHeader: string;
+      settlementConfirmationsRequired: number;
       payloadSchema: { requiredFields: string[] };
     };
     endpoints: Array<{
@@ -181,6 +208,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.tokenContract, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
   assert.equal(body.payment.acceptance, 'base-mainnet-usdc-only');
   assert.equal(body.payment.settlementProofHeader, 'X-PAYMENT-TX-HASH');
+  assert.equal(body.payment.settlementConfirmationsRequired, 2);
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
@@ -232,14 +260,17 @@ test('valid signed payment payload is accepted', async () => {
   });
 
   await withMockedFetch(
-    () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003'),
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
     async () => {
-    const response = await worker.fetch(request, createEnv());
-    const body = (await response.json()) as { _meta: { paymentMode: string; paid: boolean } };
+      const response = await worker.fetch(request, createEnv());
+      const body = (await response.json()) as { _meta: { paymentMode: string; paid: boolean } };
 
-    assert.equal(response.status, 200);
-    assert.equal(body._meta.paid, true);
-    assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
+      assert.equal(response.status, 200);
+      assert.equal(body._meta.paid, true);
+      assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
     },
   );
 });
@@ -277,6 +308,34 @@ test('signed payment without settlement proof is rejected', async () => {
   assert.equal(body.reason, 'PAYMENT_TX_HASH_MISSING');
 });
 
+test('signed payment requires block confirmations before acceptance', async () => {
+  const payload = await createSignedPayload('/api/deepseek', '0.003');
+  const request = new Request('https://api-402.com/api/deepseek', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(payload),
+      'X-PAYMENT-TX-HASH': '0x3333333333333333333333333333333333333333333333333333333333333333',
+    },
+  });
+
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x100'),
+    },
+    async () => {
+      const response = await worker.fetch(request, createEnv());
+      const body = (await response.json()) as {
+        reason: string;
+        settlementConfirmationsRequired?: number;
+      };
+
+      assert.equal(response.status, 402);
+      assert.equal(body.reason, 'PAYMENT_TX_NOT_CONFIRMED');
+      assert.equal(body.settlementConfirmationsRequired, 2);
+    },
+  );
+});
+
 test('replayed signed payment nonce is rejected', async () => {
   const payload = await createSignedPayload('/api/deepseek', '0.003');
   const request = new Request('https://api-402.com/api/deepseek', {
@@ -287,15 +346,18 @@ test('replayed signed payment nonce is rejected', async () => {
   });
 
   await withMockedFetch(
-    () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003'),
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(payload.from, TEST_PAY_TO, '0.003'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
     async () => {
-    const firstResponse = await worker.fetch(request, createEnv());
-    const secondResponse = await worker.fetch(request, createEnv());
-    const body = (await secondResponse.json()) as { reason: string };
+      const firstResponse = await worker.fetch(request, createEnv());
+      const secondResponse = await worker.fetch(request, createEnv());
+      const body = (await secondResponse.json()) as { reason: string };
 
-    assert.equal(firstResponse.status, 200);
-    assert.equal(secondResponse.status, 402);
-    assert.equal(body.reason, 'PAYMENT_NONCE_REPLAYED');
+      assert.equal(firstResponse.status, 200);
+      assert.equal(secondResponse.status, 402);
+      assert.equal(body.reason, 'PAYMENT_NONCE_REPLAYED');
     },
   );
 });

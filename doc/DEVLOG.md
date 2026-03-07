@@ -494,3 +494,37 @@
 1. 观察首轮自动执行结果
 2. 如果自动任务出现稳定阻塞，再补更细的自动化约束
 3. 继续按 ROADMAP 当前优先级推进真实支付与真实上游
+
+## 2026-03-08
+
+### 本轮目标
+
+- 提升真实支付结算稳健性，降低“刚上链即重放”导致的确认风险
+
+### 已完成
+
+- 支付验证新增 Base 区块确认门槛：交易回执除 `status=0x1` 外，还需达到最少确认块数才放行
+- 新增 `PAYMENT_TX_NOT_CONFIRMED` 机器可读错误码，用于指导调用方等待确认后重试
+- catalog 与 402 challenge 同步暴露 `settlementConfirmationsRequired`，方便 SDK / Agent 自动化决策
+- 增加 `PAYMENT_MIN_CONFIRMATIONS` 环境变量（默认 2）
+- 更新测试桩为双 RPC 方法（`eth_getTransactionReceipt` + `eth_blockNumber`）并新增确认块数不足测试
+- 更新 README 与 ROADMAP，记录确认块门槛行为
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 9 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 把 `whale-positions` 接成真实上游代理（优先级最高的 live integration 缺口）
+2. 给上游代理补统一超时 / 熔断 / fallback 策略
+3. 在 catalog 追加实时 latency / availability 指标字段
