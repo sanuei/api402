@@ -4,6 +4,40 @@
 
 ### 本轮目标
 
+- 为 live 上游代理补统一 machine-readable 错误码与熔断降级策略，提升支付后数据交付可靠性与 SDK 自动恢复能力
+
+### 已完成
+
+- 为 Binance / HyperLiquid 上游调用新增统一错误码：`UPSTREAM_TIMEOUT`、`UPSTREAM_HTTP_ERROR`、`UPSTREAM_INVALID_RESPONSE`、`UPSTREAM_FETCH_FAILED`、`UPSTREAM_CIRCUIT_OPEN`
+- 新增上游熔断器：连续失败 3 次后打开 30 秒冷却窗口，冷却期内直接走 fallback，避免持续打爆上游
+- paid API 响应 `_meta` 新增 `upstream` 机器可读状态（`source` / `status` / `reasonCode` / `retryable`）
+- catalog endpoint 元数据新增 `upstreamPolicy`，暴露超时、失败阈值、冷却时间、fallback 策略与错误码清单，便于 SDK 静态建模
+- 新增测试覆盖：
+  - catalog `upstreamPolicy` 字段断言
+  - live upstream 成功时 `_meta.upstream` 状态断言
+  - 连续失败触发熔断并返回 `UPSTREAM_CIRCUIT_OPEN` 断言
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 20 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 在 catalog 增加 endpoint 级 latency / availability 指标字段（可先用窗口统计）
+2. 推进 AI 类接口真实上游替换，继续降低 demo 占比
+3. 补充 `doc/DEPLOYMENT.md`，明确监控、回滚与只读诊断路径
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为 remediation 字段引入稳定 schema 版本与兼容策略元信息，降低 SDK 自动补救解析漂移风险
 
 ### 已完成

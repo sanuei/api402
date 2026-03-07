@@ -30,6 +30,7 @@ declare global {
   var rateLimiter: Map<string, number[]>;
   var usedPaymentNonces: Map<string, number>;
   var usedPaymentTransactions: Map<string, number>;
+  var upstreamCircuitState: Map<string, { failures: number; openUntil: number; lastErrorCode?: string }>;
 }
 
 export interface APIEndpoint {
@@ -153,6 +154,10 @@ const SETTLEMENT_PATH_PREFIX = '/api/v1/settlement/';
 
 const REMEDIATION_SCHEMA_VERSION = '1.0.0';
 const REMEDIATION_COMPATIBILITY = 'semver-minor-backward-compatible';
+const UPSTREAM_TIMEOUT_MS = 8000;
+const UPSTREAM_FAILURE_THRESHOLD = 3;
+const UPSTREAM_CIRCUIT_COOLDOWN_MS = 30_000;
+
 
 const SETTLEMENT_REMEDIATION_MAP: Record<SettlementStatusResult['code'], RemediationHint> = {
   SETTLEMENT_READY: {
@@ -957,6 +962,21 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
       paymentPayload: samplePayload,
     },
     exampleResponse: endpoint.sample(),
+    upstreamPolicy: endpoint.upstream
+      ? {
+          timeoutMs: UPSTREAM_TIMEOUT_MS,
+          failureThreshold: UPSTREAM_FAILURE_THRESHOLD,
+          circuitCooldownMs: UPSTREAM_CIRCUIT_COOLDOWN_MS,
+          fallback: 'sample_response',
+          errorCodes: [
+            'UPSTREAM_TIMEOUT',
+            'UPSTREAM_HTTP_ERROR',
+            'UPSTREAM_INVALID_RESPONSE',
+            'UPSTREAM_FETCH_FAILED',
+            'UPSTREAM_CIRCUIT_OPEN',
+          ],
+        }
+      : null,
   };
 }
 
@@ -1742,17 +1762,99 @@ export async function verifyPayment(
   };
 }
 
-async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 8000): Promise<unknown> {
+type UpstreamErrorCode =
+  | 'UPSTREAM_TIMEOUT'
+  | 'UPSTREAM_HTTP_ERROR'
+  | 'UPSTREAM_INVALID_RESPONSE'
+  | 'UPSTREAM_FETCH_FAILED'
+  | 'UPSTREAM_CIRCUIT_OPEN';
+
+type UpstreamFailure = {
+  code: UpstreamErrorCode;
+  message: string;
+  retryable: boolean;
+};
+
+type UpstreamMeta = {
+  source: string;
+  status: 'live' | 'fallback';
+  reasonCode: 'OK' | UpstreamErrorCode;
+  retryable: boolean;
+};
+
+type UpstreamResult = {
+  data: unknown | null;
+  meta: UpstreamMeta;
+};
+
+function getUpstreamCircuitState(): Map<string, { failures: number; openUntil: number; lastErrorCode?: string }> {
+  if (!globalThis.upstreamCircuitState) {
+    globalThis.upstreamCircuitState = new Map();
+  }
+
+  return globalThis.upstreamCircuitState;
+}
+
+function getUpstreamCircuitSnapshot(source: string, now: number): { open: boolean; openUntil: number } {
+  const state = getUpstreamCircuitState().get(source);
+  if (!state) {
+    return { open: false, openUntil: 0 };
+  }
+
+  return { open: state.openUntil > now, openUntil: state.openUntil };
+}
+
+function recordUpstreamSuccess(source: string): void {
+  const store = getUpstreamCircuitState();
+  store.set(source, { failures: 0, openUntil: 0 });
+}
+
+function recordUpstreamFailure(source: string, code: UpstreamErrorCode, now: number): void {
+  const store = getUpstreamCircuitState();
+  const state = store.get(source) || { failures: 0, openUntil: 0 };
+  const failures = state.failures + 1;
+  const openUntil = failures >= UPSTREAM_FAILURE_THRESHOLD ? now + UPSTREAM_CIRCUIT_COOLDOWN_MS : state.openUntil;
+
+  store.set(source, {
+    failures,
+    openUntil,
+    lastErrorCode: code,
+  });
+}
+
+async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(url, { ...init, signal: controller.signal });
     if (!response.ok) {
-      throw new Error(`upstream ${response.status}`);
+      throw {
+        code: 'UPSTREAM_HTTP_ERROR',
+        message: `upstream ${response.status}`,
+        retryable: response.status >= 500 || response.status === 429,
+      } as UpstreamFailure;
     }
 
     return (await response.json()) as unknown;
+  } catch (error) {
+    if (typeof error === 'object' && error && 'code' in error) {
+      throw error;
+    }
+
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw {
+        code: 'UPSTREAM_TIMEOUT',
+        message: 'upstream timeout',
+        retryable: true,
+      } as UpstreamFailure;
+    }
+
+    throw {
+      code: 'UPSTREAM_FETCH_FAILED',
+      message: error instanceof Error ? error.message : 'unknown upstream error',
+      retryable: true,
+    } as UpstreamFailure;
   } finally {
     clearTimeout(timeout);
   }
@@ -1777,18 +1879,50 @@ async function fetchHyperliquidRecentTrades(coin: string): Promise<HyperliquidTr
   return Array.isArray(payload) ? (payload as HyperliquidTrade[]) : [];
 }
 
-async function fetchUpstreamData(path: string): Promise<unknown | null> {
+async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
+  const sourceByPath: Record<string, string | undefined> = {
+    '/api/btc-price': 'binance',
+    '/api/eth-price': 'binance',
+    '/api/whale-positions': 'hyperliquid',
+    '/api/kline': 'binance',
+  };
+
+  const source = sourceByPath[path];
+  if (!source) {
+    return {
+      data: null,
+      meta: { source: 'none', status: 'fallback', reasonCode: 'UPSTREAM_INVALID_RESPONSE', retryable: false },
+    };
+  }
+
+  const now = Date.now();
+  const circuit = getUpstreamCircuitSnapshot(source, now);
+  if (circuit.open) {
+    return {
+      data: null,
+      meta: { source, status: 'fallback', reasonCode: 'UPSTREAM_CIRCUIT_OPEN', retryable: true },
+    };
+  }
+
   try {
     if (path === '/api/btc-price') {
       const data = (await fetchJsonWithTimeout('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', {
         method: 'GET',
       })) as { price?: string };
 
+      if (!data.price) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
+      }
+
+      recordUpstreamSuccess(source);
       return {
-        symbol: 'BTC',
-        price: data.price ? Number(data.price) : null,
-        timestamp: Date.now(),
-        source: 'binance',
+        data: {
+          symbol: 'BTC',
+          price: Number(data.price),
+          timestamp: Date.now(),
+          source: 'binance',
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
       };
     }
 
@@ -1797,11 +1931,19 @@ async function fetchUpstreamData(path: string): Promise<unknown | null> {
         method: 'GET',
       })) as { price?: string };
 
+      if (!data.price) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
+      }
+
+      recordUpstreamSuccess(source);
       return {
-        symbol: 'ETH',
-        price: data.price ? Number(data.price) : null,
-        timestamp: Date.now(),
-        source: 'binance',
+        data: {
+          symbol: 'ETH',
+          price: Number(data.price),
+          timestamp: Date.now(),
+          source: 'binance',
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
       };
     }
 
@@ -1881,16 +2023,20 @@ async function fetchUpstreamData(path: string): Promise<unknown | null> {
         }));
 
       if (positions.length === 0) {
-        return null;
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'no positions', retryable: true } as UpstreamFailure;
       }
 
+      recordUpstreamSuccess(source);
       return {
-        source: 'hyperliquid',
-        timeframe: 'recent',
-        markets: ['BTC', 'ETH'],
-        sampledTrades: trades.length,
-        positions,
-        timestamp: Date.now(),
+        data: {
+          source: 'hyperliquid',
+          timeframe: 'recent',
+          markets: ['BTC', 'ETH'],
+          sampledTrades: trades.length,
+          positions,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
       };
     }
 
@@ -1900,26 +2046,46 @@ async function fetchUpstreamData(path: string): Promise<unknown | null> {
         { method: 'GET' },
       )) as Array<[number, string, string, string, string, string, number, string, number, string, string, string]>;
 
+      if (!Array.isArray(data) || data.length === 0) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing candles', retryable: true } as UpstreamFailure;
+      }
+
+      recordUpstreamSuccess(source);
       return {
-        symbol: 'BTCUSDT',
-        interval: '1h',
-        candles: data.map((candle) => [
-          candle[0],
-          Number(candle[1]),
-          Number(candle[2]),
-          Number(candle[3]),
-          Number(candle[4]),
-          Number(candle[5]),
-        ]),
-        source: 'binance',
-        timestamp: Date.now(),
+        data: {
+          symbol: 'BTCUSDT',
+          interval: '1h',
+          candles: data.map((candle) => [
+            candle[0],
+            Number(candle[1]),
+            Number(candle[2]),
+            Number(candle[3]),
+            Number(candle[4]),
+            Number(candle[5]),
+          ]),
+          source: 'binance',
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
       };
     }
-  } catch (error) {
-    console.error('Upstream fetch failed:', error);
-  }
 
-  return null;
+    throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'unsupported path', retryable: false } as UpstreamFailure;
+  } catch (error) {
+    const failure = (error || { code: 'UPSTREAM_FETCH_FAILED', message: 'unknown upstream error', retryable: true }) as UpstreamFailure;
+    recordUpstreamFailure(source, failure.code || 'UPSTREAM_FETCH_FAILED', now);
+    console.error('Upstream fetch failed:', source, failure.code, failure.message);
+
+    return {
+      data: null,
+      meta: {
+        source,
+        status: 'fallback',
+        reasonCode: failure.code || 'UPSTREAM_FETCH_FAILED',
+        retryable: failure.retryable ?? true,
+      },
+    };
+  }
 }
 
 function enforceRateLimit(request: Request): Response | null {
@@ -2058,8 +2224,8 @@ const worker = {
         );
       }
 
-      const upstreamData = await fetchUpstreamData(path);
-      const baseData = (upstreamData || endpoint.sample()) as Record<string, unknown>;
+      const upstreamResult = await fetchUpstreamData(path);
+      const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
 
       return apiResponse({
         ...baseData,
@@ -2071,7 +2237,8 @@ const worker = {
           category: endpoint.category.en,
           timestamp: Date.now(),
           clientIP: getClientIP(request),
-          origin: upstreamData ? 'proxied' : 'mock',
+          origin: upstreamResult.meta.status === 'live' ? 'proxied' : 'mock',
+          upstream: upstreamResult.meta,
           settlement: verification.settlement || null,
         },
       });

@@ -181,6 +181,7 @@ test.beforeEach(() => {
   globalThis.rateLimiter = new Map();
   globalThis.usedPaymentNonces = new Map();
   globalThis.usedPaymentTransactions = new Map();
+  globalThis.upstreamCircuitState = new Map();
   replayGuardStore = new Map();
 });
 
@@ -218,6 +219,12 @@ test('catalog exposes enriched endpoint metadata', async () => {
       status: string;
       tags: string[];
       locales?: { zh?: { label?: string }; en?: { label?: string } };
+      upstreamPolicy?: {
+        timeoutMs: number;
+        failureThreshold: number;
+        circuitCooldownMs: number;
+        errorCodes: string[];
+      } | null;
     }>;
   };
 
@@ -253,6 +260,11 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.ok(body.endpoints[0].exampleResponse);
   assert.equal(typeof body.endpoints[0].locales?.zh?.label, 'string');
   assert.equal(typeof body.endpoints[0].locales?.en?.label, 'string');
+  const firstLiveEndpoint = body.endpoints.find((endpoint) => endpoint.upstreamPolicy);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.timeoutMs, 8000);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.failureThreshold, 3);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.circuitCooldownMs, 30000);
+  assert.ok(firstLiveEndpoint?.upstreamPolicy?.errorCodes.includes('UPSTREAM_CIRCUIT_OPEN'));
 });
 
 test('health endpoint returns status information', async () => {
@@ -594,16 +606,50 @@ test('whale positions endpoint proxies live upstream trades when available', asy
       source?: string;
       sampledTrades?: number;
       positions?: Array<{ address: string; trades: number; notionalUsd: number }>;
-      _meta: { origin: string };
+      _meta: {
+        origin: string;
+        upstream?: { source: string; status: string; reasonCode: string; retryable: boolean };
+      };
     };
 
     assert.equal(response.status, 200);
     assert.equal(body.source, 'hyperliquid');
     assert.equal(body.sampledTrades, 4);
     assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.status, 'live');
+    assert.equal(body._meta.upstream?.reasonCode, 'OK');
     assert.equal(body.positions?.[0]?.address, '0x1111111111111111111111111111111111111111');
     assert.equal(body.positions?.[0]?.trades, 4);
     assert.ok((body.positions?.[0]?.notionalUsd || 0) > 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('upstream circuit breaker opens after repeated failures and returns machine-readable fallback reason', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error('simulated upstream outage');
+  };
+
+  try {
+    const request = new Request('https://api-402.com/api/btc-price', {
+      headers: { Authorization: 'Bearer demo' },
+    });
+
+    const first = await worker.fetch(request, createEnv());
+    const second = await worker.fetch(request, createEnv());
+    const third = await worker.fetch(request, createEnv());
+    const fourth = await worker.fetch(request, createEnv());
+
+    const firstBody = (await first.json()) as { _meta: { upstream?: { reasonCode: string } } };
+    const thirdBody = (await third.json()) as { _meta: { upstream?: { reasonCode: string } } };
+    const fourthBody = (await fourth.json()) as { _meta: { upstream?: { reasonCode: string; status: string } } };
+
+    assert.equal(firstBody._meta.upstream?.reasonCode, 'UPSTREAM_FETCH_FAILED');
+    assert.equal(thirdBody._meta.upstream?.reasonCode, 'UPSTREAM_FETCH_FAILED');
+    assert.equal(fourthBody._meta.upstream?.reasonCode, 'UPSTREAM_CIRCUIT_OPEN');
+    assert.equal(fourthBody._meta.upstream?.status, 'fallback');
   } finally {
     globalThis.fetch = originalFetch;
   }
