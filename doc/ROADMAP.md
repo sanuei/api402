@@ -37,6 +37,7 @@
 - settlement 查询已支持可选 `PAYMENT-SIGNATURE` 证明绑定校验，并支持 `payer` / `resource` / `payTo` / `minAmount` 过滤归因
 - catalog 已输出 `settlementStatusRemediation` / `paymentReasonRemediation`，402 challenge 与 settlement 查询响应会返回 `remediation`，方便 SDK 按错误码执行自动补救
 - remediation 字段已增加稳定版本元信息（`remediationSchemaVersion=1.0.0`、`remediationCompatibility=semver-minor-backward-compatible`），降低 SDK 解析漂移风险
+- catalog / 402 / settlement 响应已附 `remediationRefs`（changelog / deprecations 公告地址），便于 SDK 自动发现兼容升级公告
 - 支付签名已加入时间窗约束（`issuedAt` 最大年龄与未来时钟偏差限制），降低延迟重放风险
 - Base 结算校验已支持 `BASE_RPC_URLS` 主备 RPC 自动回退（含请求超时控制）
 - Base 结算证明已加入最大区块年龄限制（默认 7200 blocks），可拦截历史交易延迟重放
@@ -123,9 +124,9 @@
 建议下一轮直接做下面 4 项:
 
 1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
-2. 为 remediation 字段补 changelog / deprecation 公告地址，完善 SDK 自动兼容升级路径
-3. 将 upstream 遥测扩展为持久化时间序列（避免冷启动丢失窗口）
-4. 增加 endpoint 级请求量统计与最近错误趋势，支撑转化与可靠性运营
+2. 将 upstream 遥测扩展为持久化时间序列（避免冷启动丢失窗口）
+3. 增加 endpoint 级请求量统计与最近错误趋势，支撑转化与可靠性运营
+4. 给 catalog 增加每个 endpoint 的最近更新时间（lastUpdatedAt）与数据新鲜度提示，提升开发者接入判断效率
 
 ## Operations
 

@@ -102,6 +102,11 @@ type RemediationHint = {
   retryAfterSeconds?: number;
 };
 
+type RemediationRefs = {
+  changelog: string;
+  deprecations: string;
+};
+
 export interface PaymentVerificationResult {
   ok: boolean;
   code:
@@ -152,6 +157,8 @@ const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const SETTLEMENT_PATH_PREFIX = '/api/v1/settlement/';
+const REMEDIATION_CHANGELOG_PATH = '/.well-known/remediation-changelog.json';
+const REMEDIATION_DEPRECATIONS_PATH = '/.well-known/remediation-deprecations.json';
 
 const REMEDIATION_SCHEMA_VERSION = '1.0.0';
 const REMEDIATION_COMPATIBILITY = 'semver-minor-backward-compatible';
@@ -1021,6 +1028,13 @@ function buildRemediation(
   };
 }
 
+function buildRemediationRefs(baseUrl: string): RemediationRefs {
+  return {
+    changelog: `${baseUrl}${REMEDIATION_CHANGELOG_PATH}`,
+    deprecations: `${baseUrl}${REMEDIATION_DEPRECATIONS_PATH}`,
+  };
+}
+
 async function getSettlementStatus(
   env: Env,
   txHash: string,
@@ -1136,6 +1150,8 @@ export function createCatalog(
   futureSkewSeconds = DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS,
   maxSettlementAgeBlocks = DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
 ) {
+  const remediationRefs = buildRemediationRefs(baseUrl);
+
   return {
     name: 'API Market',
     appName: 'API Market',
@@ -1158,6 +1174,7 @@ export function createCatalog(
       settlementPolicy: buildSettlementPolicy(minConfirmations, maxSettlementAgeBlocks),
       remediationSchemaVersion: REMEDIATION_SCHEMA_VERSION,
       remediationCompatibility: REMEDIATION_COMPATIBILITY,
+      remediationRefs,
       maxPaymentAgeSeconds: maxAgeSeconds,
       maxFutureSkewSeconds: futureSkewSeconds,
       payloadSchema: {
@@ -1187,6 +1204,7 @@ export function createCatalog(
 }
 
 function createPaymentRequired(
+  baseUrl: string,
   payTo: string,
   endpoint: APIEndpoint,
   verification: PaymentVerificationResult,
@@ -1219,6 +1237,7 @@ function createPaymentRequired(
   const remediation = remediationHint
     ? buildRemediation(remediationHint, verification.code === 'PAYMENT_TX_NOT_CONFIRMED' ? settlementPolicy : undefined)
     : null;
+  const remediationRefs = buildRemediationRefs(baseUrl);
 
   return apiResponse(
     {
@@ -1246,6 +1265,7 @@ function createPaymentRequired(
       remediation,
       remediationSchemaVersion: REMEDIATION_SCHEMA_VERSION,
       remediationCompatibility: REMEDIATION_COMPATIBILITY,
+      remediationRefs,
       paymentSchema: {
         version: '1',
         scheme: 'exact',
@@ -1305,6 +1325,7 @@ function createPaymentRequired(
 
 async function createSettlementStatusResponse(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
+  const remediationRefs = buildRemediationRefs(url.origin);
   const txHash = decodeURIComponent(url.pathname.slice(SETTLEMENT_PATH_PREFIX.length));
   const minConfirmations = parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS);
   const maxSettlementAgeBlocks = parsePositiveInt(
@@ -1464,6 +1485,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
           settlement: statusResult.settlement,
           settlementPolicy,
           remediation,
+          remediationRefs,
           settlementProof,
           settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
         },
@@ -1493,6 +1515,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
           settlement: statusResult.settlement,
           settlementPolicy,
           remediation,
+          remediationRefs,
           settlementProof,
           settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
         },
@@ -1511,6 +1534,7 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
       remediation,
       remediationSchemaVersion: REMEDIATION_SCHEMA_VERSION,
       remediationCompatibility: REMEDIATION_COMPATIBILITY,
+      remediationRefs,
       settlementProof,
       settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
     },
@@ -2305,6 +2329,7 @@ const worker = {
       const verification = await verifyPayment(request, endpoint, payTo, env);
       if (!verification.ok) {
         return createPaymentRequired(
+          origin,
           payTo,
           endpoint,
           verification,

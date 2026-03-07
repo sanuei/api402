@@ -4,6 +4,44 @@
 
 ### 本轮目标
 
+- 为 remediation 能力增加稳定 changelog / deprecation 公告地址，提升 SDK 自动兼容升级能力与开发者接入确定性
+
+### 已完成
+
+- 新增公开公告资源：
+  - `/.well-known/remediation-changelog.json`
+  - `/.well-known/remediation-deprecations.json`
+- catalog `payment` 新增 `remediationRefs`（`changelog` / `deprecations`）
+- 402 challenge 响应新增 `remediationRefs`
+- settlement 状态响应（含 mismatch 分支）新增 `remediationRefs`
+- 测试新增断言，覆盖 catalog / 402 / settlement 的 `remediationRefs` 地址正确性
+- README 与 ROADMAP 已同步更新
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [public/.well-known/remediation-changelog.json](/Users/yangshangwei/Desktop/网页项目/api402/public/.well-known/remediation-changelog.json)
+- [public/.well-known/remediation-deprecations.json](/Users/yangshangwei/Desktop/网页项目/api402/public/.well-known/remediation-deprecations.json)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 20 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 在具备 AI 上游凭据后继续推进 `/api/deepseek`、`/api/qwen` 的真实上游替换
+2. 将 upstream 遥测扩展为持久化时间序列
+3. 增加 endpoint 请求量与错误趋势统计
+
+## 2026-03-08
+
+### 本轮目标
+
 - 在 AI 上游凭据缺失导致 live integration 阻塞时，优先补齐生产部署清晰度（发布/回滚/排障 runbook）
 
 ### 已完成

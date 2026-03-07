@@ -1,0 +1,23 @@
+{
+  "schema": "api402-remediation-changelog/v1",
+  "service": "api-402.com",
+  "latestSchemaVersion": "1.0.0",
+  "entries": [
+    {
+      "date": "2026-03-08",
+      "schemaVersion": "1.0.0",
+      "changeType": "added",
+      "summary": "Introduced stable remediation schema metadata and machine-readable retry guidance.",
+      "breaking": false,
+      "compatibility": "semver-minor-backward-compatible"
+    },
+    {
+      "date": "2026-03-08",
+      "schemaVersion": "1.0.0",
+      "changeType": "added",
+      "summary": "Published remediation changelog/deprecations announcement URLs in catalog, 402, and settlement responses.",
+      "breaking": false,
+      "compatibility": "semver-minor-backward-compatible"
+    }
+  ]
+}

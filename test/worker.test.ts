@@ -202,6 +202,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
       maxFutureSkewSeconds: number;
       remediationSchemaVersion?: string;
       remediationCompatibility?: string;
+      remediationRefs?: { changelog: string; deprecations: string };
       payloadSchema: { requiredFields: string[] };
       settlementPolicy?: {
         settlementMethod: string;
@@ -253,6 +254,14 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.maxFutureSkewSeconds, 120);
   assert.equal(body.payment.remediationSchemaVersion, '1.0.0');
   assert.equal(body.payment.remediationCompatibility, 'semver-minor-backward-compatible');
+  assert.equal(
+    body.payment.remediationRefs?.changelog,
+    'https://api-402.com/.well-known/remediation-changelog.json',
+  );
+  assert.equal(
+    body.payment.remediationRefs?.deprecations,
+    'https://api-402.com/.well-known/remediation-deprecations.json',
+  );
   assert.equal(body.payment.settlementPolicy?.settlementMethod, 'base-usdc-transfer-receipt');
   assert.equal(body.payment.settlementPolicy?.requiredConfirmations, 2);
   assert.equal(body.payment.settlementPolicy?.maxSettlementAgeBlocks, 7200);
@@ -300,6 +309,7 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
     reason: string;
     remediationSchemaVersion?: string;
     remediationCompatibility?: string;
+    remediationRefs?: { changelog: string; deprecations: string };
   };
 
   assert.equal(response.status, 402);
@@ -307,6 +317,14 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
   assert.equal(body.reason, 'PAYMENT_MISSING');
   assert.equal(body.remediationSchemaVersion, '1.0.0');
   assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
+  assert.equal(
+    body.remediationRefs?.changelog,
+    'https://api-402.com/.well-known/remediation-changelog.json',
+  );
+  assert.equal(
+    body.remediationRefs?.deprecations,
+    'https://api-402.com/.well-known/remediation-deprecations.json',
+  );
   assert.equal(response.headers.get('X-Payment-Reason'), 'PAYMENT_MISSING');
 });
 
@@ -690,6 +708,7 @@ test('settlement status endpoint returns pending with retry guidance', async () 
         remediation?: { retryable: boolean; retryAfterSeconds?: number };
         remediationSchemaVersion?: string;
         remediationCompatibility?: string;
+        remediationRefs?: { changelog: string; deprecations: string };
         settlement?: { confirmations: number; requiredConfirmations: number };
       };
 
@@ -702,6 +721,14 @@ test('settlement status endpoint returns pending with retry guidance', async () 
       assert.equal(body.remediation?.retryAfterSeconds, 2);
       assert.equal(body.remediationSchemaVersion, '1.0.0');
       assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
+      assert.equal(
+        body.remediationRefs?.changelog,
+        'https://api-402.com/.well-known/remediation-changelog.json',
+      );
+      assert.equal(
+        body.remediationRefs?.deprecations,
+        'https://api-402.com/.well-known/remediation-deprecations.json',
+      );
       assert.equal(response.headers.get('Retry-After'), '2');
       assert.equal(response.headers.get('X-Settlement-Status'), 'SETTLEMENT_PENDING');
     },

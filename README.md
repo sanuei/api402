@@ -31,6 +31,7 @@
 - catalog 与 402 challenge 会返回 `settlementPolicy`（确认数、平均区块时间、建议重试间隔）；当确认数不足时会返回 `Retry-After`
 - catalog 现在额外暴露 `settlementStatusRemediation` / `paymentReasonRemediation`，402 与 settlement 响应也会返回 `remediation` 字段，便于 SDK 根据错误码自动执行补救动作
 - remediation 相关字段已增加稳定元信息：`remediationSchemaVersion`（当前 `1.0.0`）和 `remediationCompatibility`（`semver-minor-backward-compatible`）
+- catalog / 402 / settlement 响应现在都附带 `remediationRefs`（`changelog` 与 `deprecations` 公告地址），便于 SDK 自动发现兼容变更公告
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
 - 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
