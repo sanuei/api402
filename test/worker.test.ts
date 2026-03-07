@@ -588,3 +588,57 @@ test('whale positions endpoint proxies live upstream trades when available', asy
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test('settlement status endpoint returns pending with retry guidance', async () => {
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(TEST_PAY_TO, TEST_PAY_TO, '0.003', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x100'),
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://api-402.com/api/v1/settlement/0x7777777777777777777777777777777777777777777777777777777777777777'),
+        createEnv(),
+      );
+      const body = (await response.json()) as {
+        code: string;
+        settlementPolicy?: { recommendedRetryAfterSeconds: number };
+        settlement?: { confirmations: number; requiredConfirmations: number };
+      };
+
+      assert.equal(response.status, 409);
+      assert.equal(body.code, 'SETTLEMENT_PENDING');
+      assert.equal(body.settlement?.confirmations, 1);
+      assert.equal(body.settlement?.requiredConfirmations, 2);
+      assert.equal(body.settlementPolicy?.recommendedRetryAfterSeconds, 2);
+      assert.equal(response.headers.get('Retry-After'), '2');
+      assert.equal(response.headers.get('X-Settlement-Status'), 'SETTLEMENT_PENDING');
+    },
+  );
+});
+
+test('settlement status endpoint returns ready when confirmations are satisfied', async () => {
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(TEST_PAY_TO, TEST_PAY_TO, '0.003', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request('https://api-402.com/api/v1/settlement/0x8888888888888888888888888888888888888888888888888888888888888888'),
+        createEnv(),
+      );
+      const body = (await response.json()) as {
+        code: string;
+        settlement?: { confirmations: number; requiredConfirmations: number };
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(body.code, 'SETTLEMENT_READY');
+      assert.equal(body.settlement?.confirmations, 2);
+      assert.equal(body.settlement?.requiredConfirmations, 2);
+      assert.equal(response.headers.get('X-Settlement-Status'), 'SETTLEMENT_READY');
+    },
+  );
+});

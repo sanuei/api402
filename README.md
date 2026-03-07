@@ -26,6 +26,7 @@
 - 当前支付范围固定为 `Base` 主网原生 `USDC`，不接受其他链上的 USDC
 - 非 demo 请求现在要求提供 `PAYMENT-SIGNATURE` 和 `X-PAYMENT-TX-HASH`，Worker 会回查 Base 链上 USDC 转账回执
 - 支付通过或被 402 拒绝时都会返回结构化 `settlement` 上下文（txHash、receiptBlock、confirmations），便于 SDK 自动重试
+- 新增 `GET /api/v1/settlement/{txHash}` 结算状态查询接口，返回 machine-readable 状态码与重试建议
 - catalog 与 402 challenge 会返回 `settlementPolicy`（确认数、平均区块时间、建议重试间隔）；当确认数不足时会返回 `Retry-After`
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
 - 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
@@ -36,6 +37,7 @@
 - `/`：产品首页
 - `/api/v1/catalog`：免费 catalog
 - `/api/v1/health`：健康检查
+- `/api/v1/settlement/{txHash}`：链上结算确认状态查询
 - `/prices`：兼容旧版价格接口
 - `/api/*`：付费 API
 

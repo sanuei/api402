@@ -81,6 +81,13 @@ export interface SettlementPolicy {
   recommendedRetryAfterSeconds: number;
 }
 
+type SettlementStatusResult = {
+  ok: boolean;
+  code: 'SETTLEMENT_READY' | 'SETTLEMENT_PENDING' | 'SETTLEMENT_TOO_OLD' | 'SETTLEMENT_NOT_FOUND' | 'SETTLEMENT_RPC_FAILED';
+  message: string;
+  settlement: PaymentSettlementContext;
+};
+
 export interface PaymentVerificationResult {
   ok: boolean;
   code:
@@ -130,6 +137,7 @@ const DEMO_PAYMENT_TOKEN = 'demo';
 const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
+const SETTLEMENT_PATH_PREFIX = '/api/v1/settlement/';
 
 type ReplayConsumeResult = {
   consumed: boolean;
@@ -859,6 +867,106 @@ function buildSettlementPolicy(
   };
 }
 
+async function getSettlementStatus(
+  env: Env,
+  txHash: string,
+  minConfirmations: number,
+  maxSettlementAgeBlocks: number,
+): Promise<SettlementStatusResult> {
+  const createSettlementContext = (
+    receiptBlock: bigint | null,
+    latestBlock: bigint | null,
+    confirmations: bigint,
+  ): PaymentSettlementContext => ({
+    txHash,
+    chainId: 8453,
+    tokenContract: BASE_USDC_CONTRACT,
+    settlementMethod: 'base-usdc-transfer-receipt',
+    requiredConfirmations: minConfirmations,
+    receiptBlock: receiptBlock === null ? null : Number(receiptBlock),
+    latestBlock: latestBlock === null ? null : Number(latestBlock),
+    confirmations: Number(confirmations),
+  });
+
+  let receipt: JsonRpcTransactionReceipt | null;
+  try {
+    receipt = (await callBaseRpc(env, 'eth_getTransactionReceipt', [txHash])) as JsonRpcTransactionReceipt | null;
+  } catch {
+    return {
+      ok: false,
+      code: 'SETTLEMENT_RPC_FAILED',
+      message: 'Base RPC could not be reached for settlement status query.',
+      settlement: createSettlementContext(null, null, 0n),
+    };
+  }
+
+  if (!receipt || receipt.status !== '0x1') {
+    return {
+      ok: false,
+      code: 'SETTLEMENT_NOT_FOUND',
+      message: 'Transaction is not found or not successful on Base.',
+      settlement: createSettlementContext(parseHexBlockNumber(receipt?.blockNumber), null, 0n),
+    };
+  }
+
+  const receiptBlock = parseHexBlockNumber(receipt.blockNumber);
+  if (receiptBlock === null) {
+    return {
+      ok: false,
+      code: 'SETTLEMENT_PENDING',
+      message: 'Transaction receipt block is not available yet.',
+      settlement: createSettlementContext(null, null, 0n),
+    };
+  }
+
+  let latestBlock: bigint;
+  try {
+    const latestBlockHex = await callBaseRpc(env, 'eth_blockNumber', []);
+    const parsedLatestBlock = parseHexBlockNumber(latestBlockHex);
+    if (parsedLatestBlock === null) {
+      throw new Error('invalid block number');
+    }
+    latestBlock = parsedLatestBlock;
+  } catch {
+    return {
+      ok: false,
+      code: 'SETTLEMENT_RPC_FAILED',
+      message: 'Base RPC could not be reached for latest block query.',
+      settlement: createSettlementContext(receiptBlock, null, 0n),
+    };
+  }
+
+  const confirmations = latestBlock >= receiptBlock ? latestBlock - receiptBlock + 1n : 0n;
+  const txAgeBlocks = latestBlock >= receiptBlock ? latestBlock - receiptBlock : 0n;
+  const settlement = createSettlementContext(receiptBlock, latestBlock, confirmations);
+
+  if (txAgeBlocks > BigInt(maxSettlementAgeBlocks)) {
+    return {
+      ok: false,
+      code: 'SETTLEMENT_TOO_OLD',
+      message: `Settlement proof is older than ${maxSettlementAgeBlocks.toString()} blocks.`,
+      settlement,
+    };
+  }
+
+  if (confirmations < BigInt(minConfirmations)) {
+    return {
+      ok: false,
+      code: 'SETTLEMENT_PENDING',
+      message: `Settlement has ${confirmations.toString()} confirmations and needs ${minConfirmations.toString()}.`,
+      settlement,
+    };
+  }
+
+  return {
+    ok: true,
+    code: 'SETTLEMENT_READY',
+    message: 'Settlement confirmation requirement is satisfied.',
+    settlement,
+  };
+}
+
+
 export function createCatalog(
   baseUrl: string,
   payTo: string,
@@ -1021,6 +1129,49 @@ function createPaymentRequired(
       status: 402,
       headers: responseHeaders,
     },
+  );
+}
+
+async function createSettlementStatusResponse(request: Request, env: Env): Promise<Response> {
+  const url = new URL(request.url);
+  const txHash = decodeURIComponent(url.pathname.slice(SETTLEMENT_PATH_PREFIX.length));
+  const minConfirmations = parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS);
+  const maxSettlementAgeBlocks = parsePositiveInt(
+    env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+    DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+  );
+
+  if (!isTransactionHash(txHash)) {
+    return apiResponse(
+      {
+        code: 'INVALID_TX_HASH',
+        message: 'Settlement query requires a valid 32-byte transaction hash.',
+      },
+      { status: 400 },
+    );
+  }
+
+  const statusResult = await getSettlementStatus(env, txHash, minConfirmations, maxSettlementAgeBlocks);
+  const settlementPolicy = buildSettlementPolicy(minConfirmations, maxSettlementAgeBlocks, statusResult.settlement);
+  const statusCode = statusResult.code === 'SETTLEMENT_RPC_FAILED' ? 503 : statusResult.ok ? 200 : 409;
+  const headers: Record<string, string> = {
+    'X-Settlement-Status': statusResult.code,
+  };
+
+  if (statusResult.code === 'SETTLEMENT_PENDING') {
+    headers['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
+  }
+
+  return apiResponse(
+    {
+      code: statusResult.code,
+      message: statusResult.message,
+      txHash,
+      settlement: statusResult.settlement,
+      settlementPolicy,
+      settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
+    },
+    { status: statusCode, headers },
   );
 }
 
@@ -1517,19 +1668,32 @@ const worker = {
     }
 
     if (path === CATALOG_PATH) {
-      return apiResponse(
-        createCatalog(
-          origin,
-          payTo,
-          parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS),
-          parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS),
-          parsePositiveInt(env.PAYMENT_MAX_FUTURE_SKEW_SECONDS, DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS),
-          parsePositiveInt(
-            env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
-            DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
-          ),
-        ),
+      const minConfirmations = parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS);
+      const maxAgeSeconds = parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS);
+      const maxFutureSkewSeconds = parsePositiveInt(
+        env.PAYMENT_MAX_FUTURE_SKEW_SECONDS,
+        DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS,
       );
+      const maxSettlementAgeBlocks = parsePositiveInt(
+        env.PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+        DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
+      );
+
+      const catalog = createCatalog(
+        origin,
+        payTo,
+        minConfirmations,
+        maxAgeSeconds,
+        maxFutureSkewSeconds,
+        maxSettlementAgeBlocks,
+      ) as ReturnType<typeof createCatalog> & { payment: Record<string, unknown> };
+      catalog.payment.settlementStatusEndpointTemplate = `${origin}${SETTLEMENT_PATH_PREFIX}{txHash}`;
+
+      return apiResponse(catalog);
+    }
+
+    if (path.startsWith(SETTLEMENT_PATH_PREFIX)) {
+      return createSettlementStatusResponse(request, env);
     }
 
     if (path === LEGACY_PRICE_PATH) {

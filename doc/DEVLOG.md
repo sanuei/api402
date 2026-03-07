@@ -4,6 +4,39 @@
 
 ### 本轮目标
 
+- 增加支付后结算状态查询端点，提升 SDK 自动重试与交易追踪能力
+
+### 已完成
+
+- 新增 `GET /api/v1/settlement/{txHash}`，返回 machine-readable 结算状态：`SETTLEMENT_READY` / `SETTLEMENT_PENDING` / `SETTLEMENT_TOO_OLD` / `SETTLEMENT_NOT_FOUND` / `SETTLEMENT_RPC_FAILED`
+- 结算查询响应新增 `X-Settlement-Status`，并在 pending 场景输出 `Retry-After`
+- catalog 新增 `payment.settlementStatusEndpointTemplate`，便于 SDK 自动拼接查询 URL
+- 新增测试覆盖 settlement endpoint 的 pending / ready 两条关键路径
+- README 与 ROADMAP 已同步 settlement 查询能力说明
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 在 catalog 增加 latency / availability 指标字段
+2. 给关键上游代理补统一熔断 / fallback 策略与 machine-readable 错误码
+3. 推进 AI 类接口真实上游替换，继续降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 扩展 settlement policy 机器可读字段，提升支付失败后的自动重试可靠性
 
 ### 已完成
