@@ -58,6 +58,17 @@ export interface PaymentPayload extends PaymentMessage {
   signature: string;
 }
 
+export interface PaymentSettlementContext {
+  txHash: string;
+  chainId: 8453;
+  tokenContract: string;
+  settlementMethod: 'base-usdc-transfer-receipt';
+  requiredConfirmations: number;
+  receiptBlock: number | null;
+  latestBlock: number | null;
+  confirmations: number;
+}
+
 export interface PaymentVerificationResult {
   ok: boolean;
   code:
@@ -83,6 +94,7 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_TX_NOT_CONFIRMED'
     | 'PAYMENT_SIGNATURE_INVALID';
   message: string;
+  settlement?: PaymentSettlementContext;
 }
 
 const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
@@ -450,6 +462,22 @@ async function verifyBaseUsdcSettlement(
   payload: PaymentPayload,
   payTo: string,
 ): Promise<PaymentVerificationResult> {
+  const requiredConfirmations = parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS);
+  const createSettlementContext = (
+    receiptBlock: bigint | null,
+    latestBlock: bigint | null,
+    confirmations: bigint,
+  ): PaymentSettlementContext => ({
+    txHash,
+    chainId: 8453,
+    tokenContract: BASE_USDC_CONTRACT,
+    settlementMethod: 'base-usdc-transfer-receipt',
+    requiredConfirmations,
+    receiptBlock: receiptBlock === null ? null : Number(receiptBlock),
+    latestBlock: latestBlock === null ? null : Number(latestBlock),
+    confirmations: Number(confirmations),
+  });
+
   let receipt: JsonRpcTransactionReceipt | null;
 
   try {
@@ -459,6 +487,7 @@ async function verifyBaseUsdcSettlement(
       ok: false,
       code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
       message: 'Base RPC could not be reached for payment verification.',
+      settlement: createSettlementContext(null, null, 0n),
     };
   }
 
@@ -467,6 +496,7 @@ async function verifyBaseUsdcSettlement(
       ok: false,
       code: 'PAYMENT_TX_NOT_FOUND',
       message: 'Payment transaction hash was not found on Base.',
+      settlement: createSettlementContext(null, null, 0n),
     };
   }
 
@@ -475,6 +505,7 @@ async function verifyBaseUsdcSettlement(
       ok: false,
       code: 'PAYMENT_TX_FAILED',
       message: 'Payment transaction did not succeed on-chain.',
+      settlement: createSettlementContext(parseHexBlockNumber(receipt.blockNumber), null, 0n),
     };
   }
 
@@ -484,10 +515,10 @@ async function verifyBaseUsdcSettlement(
       ok: false,
       code: 'PAYMENT_TX_NOT_CONFIRMED',
       message: 'Payment transaction is not confirmed yet.',
+      settlement: createSettlementContext(null, null, 0n),
     };
   }
 
-  const requiredConfirmations = BigInt(parseMinConfirmations(env.PAYMENT_MIN_CONFIRMATIONS));
   let latestBlock: bigint;
   try {
     const latestBlockHex = await callBaseRpc(env, 'eth_blockNumber', []);
@@ -502,15 +533,17 @@ async function verifyBaseUsdcSettlement(
       ok: false,
       code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
       message: 'Base RPC could not be reached for block confirmation verification.',
+      settlement: createSettlementContext(receiptBlock, null, 0n),
     };
   }
 
   const confirmations = latestBlock >= receiptBlock ? latestBlock - receiptBlock + 1n : 0n;
-  if (confirmations < requiredConfirmations) {
+  if (confirmations < BigInt(requiredConfirmations)) {
     return {
       ok: false,
       code: 'PAYMENT_TX_NOT_CONFIRMED',
       message: `Payment transaction requires at least ${requiredConfirmations.toString()} confirmations on Base before replay.`,
+      settlement: createSettlementContext(receiptBlock, latestBlock, confirmations),
     };
   }
 
@@ -567,6 +600,7 @@ async function verifyBaseUsdcSettlement(
     ok: true,
     code: 'PAYMENT_VALID',
     message: 'Base USDC payment transfer verified successfully.',
+    settlement: createSettlementContext(receiptBlock, latestBlock, confirmations),
   };
 }
 
@@ -798,6 +832,7 @@ function createPaymentRequired(
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof'],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementConfirmationsRequired: minConfirmations,
+      settlement: verification.settlement || null,
       paymentSchema: {
         version: '1',
         scheme: 'exact',
@@ -1067,6 +1102,7 @@ export async function verifyPayment(
     ok: true,
     code: 'PAYMENT_VALID',
     message: 'Payment payload verified successfully.',
+    settlement: settlementVerification.settlement,
   };
 }
 
@@ -1363,6 +1399,7 @@ const worker = {
           timestamp: Date.now(),
           clientIP: getClientIP(request),
           origin: upstreamData ? 'proxied' : 'mock',
+          settlement: verification.settlement || null,
         },
       });
     }

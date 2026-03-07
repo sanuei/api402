@@ -31,6 +31,7 @@
 - 已固定收款地址、USDC 合约和 Base 主网支付范围
 - 已将 nonce / tx hash 防重放迁移到 Durable Objects
 - 已加入 Base 交易确认块数门槛（默认 2 confirmations）以增强结算稳健性
+- 402 challenge 和成功响应已输出结构化 settlement 上下文（txHash、receiptBlock、latestBlock、confirmations）
 - 已将 `whale-positions` 接入 HyperLiquid 实时成交聚合（BTC/ETH）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 
@@ -112,7 +113,7 @@
 
 1. 在 catalog 中增加更明确的延迟/可用性字段
 2. 为关键上游接口补统一超时、熔断与降级策略（含错误码分层）
-3. 为链上结算补“交易证明可观测字段”（receiptBlock、confirmations）
+3. 将 settlement 可观测字段同步暴露到 catalog schema，方便 SDK 静态建模
 4. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
 
 ## Operations

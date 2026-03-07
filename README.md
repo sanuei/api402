@@ -25,6 +25,7 @@
 - 收款地址由 Worker 的 `PAY_TO` 环境变量决定，catalog 和 402 challenge 会对外暴露这个地址
 - 当前支付范围固定为 `Base` 主网原生 `USDC`，不接受其他链上的 USDC
 - 非 demo 请求现在要求提供 `PAYMENT-SIGNATURE` 和 `X-PAYMENT-TX-HASH`，Worker 会回查 Base 链上 USDC 转账回执
+- 支付通过或被 402 拒绝时都会返回结构化 `settlement` 上下文（txHash、receiptBlock、confirmations），便于 SDK 自动重试
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
 
 ## Core Routes

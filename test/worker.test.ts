@@ -266,11 +266,28 @@ test('valid signed payment payload is accepted', async () => {
     },
     async () => {
       const response = await worker.fetch(request, createEnv());
-      const body = (await response.json()) as { _meta: { paymentMode: string; paid: boolean } };
+      const body = (await response.json()) as {
+        _meta: {
+          paymentMode: string;
+          paid: boolean;
+          settlement?: {
+            txHash: string;
+            requiredConfirmations: number;
+            confirmations: number;
+            receiptBlock: number | null;
+            latestBlock: number | null;
+          } | null;
+        };
+      };
 
       assert.equal(response.status, 200);
       assert.equal(body._meta.paid, true);
       assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
+      assert.equal(body._meta.settlement?.txHash, '0x1111111111111111111111111111111111111111111111111111111111111111');
+      assert.equal(body._meta.settlement?.requiredConfirmations, 2);
+      assert.equal(body._meta.settlement?.confirmations, 2);
+      assert.equal(body._meta.settlement?.receiptBlock, 256);
+      assert.equal(body._meta.settlement?.latestBlock, 257);
     },
   );
 });
@@ -327,11 +344,23 @@ test('signed payment requires block confirmations before acceptance', async () =
       const body = (await response.json()) as {
         reason: string;
         settlementConfirmationsRequired?: number;
+        settlement?: {
+          txHash: string;
+          requiredConfirmations: number;
+          confirmations: number;
+          receiptBlock: number | null;
+          latestBlock: number | null;
+        };
       };
 
       assert.equal(response.status, 402);
       assert.equal(body.reason, 'PAYMENT_TX_NOT_CONFIRMED');
       assert.equal(body.settlementConfirmationsRequired, 2);
+      assert.equal(body.settlement?.txHash, '0x3333333333333333333333333333333333333333333333333333333333333333');
+      assert.equal(body.settlement?.requiredConfirmations, 2);
+      assert.equal(body.settlement?.confirmations, 1);
+      assert.equal(body.settlement?.receiptBlock, 256);
+      assert.equal(body.settlement?.latestBlock, 256);
     },
   );
 });

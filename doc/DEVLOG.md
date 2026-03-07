@@ -568,3 +568,38 @@
 1. 给上游代理补统一熔断 / fallback 策略与 machine-readable 错误码
 2. 在 catalog 增加 latency / availability 指标字段
 3. 推进 AI 类接口的真实上游替换，减少 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
+- 继续提升真实支付结算稳健性与可观测性
+- 让调用方在成功/失败两侧都能拿到统一的链上确认上下文，便于自动重试
+
+### 已完成
+
+- 扩展支付验证结果结构，新增 `settlement` 上下文对象
+- Base USDC 结算校验现在会产出 `txHash`、`receiptBlock`、`latestBlock`、`confirmations`、`requiredConfirmations`
+- 402 challenge 在 `PAYMENT_TX_NOT_CONFIRMED` 等结算失败场景下会返回可机器解析的 `settlement`
+- 支付成功响应 `_meta` 现在也包含 `settlement`，便于 SDK 记录结算证据
+- 测试新增断言：验证成功请求和确认块不足请求都返回预期 settlement 字段
+- README 与 ROADMAP 已同步记录结算可观测字段能力
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 10 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 将 settlement 可观测字段同步补入 catalog schema，方便 SDK 静态建模
+2. 给关键上游代理补统一熔断 / 降级策略并提供 machine-readable 错误码
+3. 继续推进 AI 类接口的真实上游替换，减少 demo 占比
