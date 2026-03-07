@@ -4,8 +4,10 @@
   "description": "x402 API Payment Gateway Demo",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "build:static": "mkdir -p dist && cp index.html dist/index.html",
+    "typecheck": "tsc --noEmit",
+    "dev": "npm run build:static && wrangler dev",
+    "deploy": "npm run build:static && wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240620.0",

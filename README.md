@@ -1,101 +1,44 @@
-# 🦞 API Market - x402 支付网关演示
+# API Market
 
-基于 x402 协议的 API 付费网关演示项目。
+一个基于 Cloudflare Workers 的 x402 API Payment Gateway 演示项目。
 
-## 📁 项目结构
+## What It Does
 
-```
-网页项目/
-├── index.html          # 演示网站前端
-├── src/
-│   └── index.ts        # Cloudflare Workers 后端
-├── package.json        # Node.js 依赖
-├── wrangler.toml       # Cloudflare 配置
-├── tsconfig.json       # TypeScript 配置
-└── README.md           # 本文件
-```
+- 用同一个 Worker 提供静态首页和付费 API
+- 免费提供 machine-readable catalog: `/api/v1/catalog`
+- 付费接口先返回 402 challenge，再接受支付头重放请求
+- 当前保留 demo 支付模式，方便前端和 SDK 联调
 
-## 🚀 快速部署
+## Core Routes
 
-### 前端（静态网站）
+- `/`：产品首页
+- `/api/v1/catalog`：免费 catalog
+- `/api/v1/health`：健康检查
+- `/prices`：兼容旧版价格接口
+- `/api/*`：付费 API
 
-**方式 1: Cloudflare Pages**
-```bash
-# 推送到 GitHub，在 Cloudflare Dashboard 创建 Pages 项目
-```
-
-**方式 2: Vercel**
-```bash
-npm i -g vercel
-vercel --prod
-```
-
-**方式 3: 本地运行**
-```bash
-# 简单 HTTP 服务器
-python3 -m http.server 8000
-# 访问 http://localhost:8000
-```
-
-### 后端（Cloudflare Workers）
+## Development
 
 ```bash
-# 1. 安装依赖
 npm install
+npm run typecheck
+npm run dev
+```
 
-# 2. 登录 Cloudflare
-npx wrangler login
+## Deployment
 
-# 3. 部署
+```bash
 npm run deploy
 ```
 
-## 🔧 配置
+`deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。
 
-### 修改 API 定价
+## Current Scope
 
-编辑 `src/index.ts` 中的 `API_PRICES` 对象：
+- BTC / ETH 价格可尝试代理 Binance
+- 其余接口仍然以 demo/mock 数据为主
+- 支付验证仍以 demo token 和简化签名校验为主
 
-```typescript
-const API_PRICES: Record<string, { price: string; description: string; data: any }> = {
-  '/api/your-endpoint': {
-    price: '0.001',  // USDC 数量
-    description: 'API 描述',
-    data: { /* 返回数据 */ }
-  }
-};
-```
+## Next Steps
 
-### 配置收款地址
-
-在生产环境中，需要：
-1. 在 Coinbase Developer Platform 注册
-2. 获取你的收款钱包地址
-3. 更新代码中的 `payTo` 地址
-
-## 💰 价格（演示）
-
-| API | 价格 |
-|-----|------|
-| BTC 价格 | $0.00001 |
-| ETH 价格 | $0.00001 |
-| DeepSeek AI | $0.003 |
-| Qwen3 Max | $0.01 |
-| 大户仓位 | $0.00002 |
-| K线数据 | $0.001 |
-
-## 🔗 线上演示
-
-- **前端**: https://638e11e1.api-market.pages.dev/
-- **后端 API**: https://api-market-x402.sonic980828.workers.dev
-
-## 🔗 相关链接
-
-- [x402 官方文档](https://x402.org)
-- [Coinbase CDP](https://docs.cdp.coinbase.com/x402)
-- [awesome-x402 资源列表](https://github.com/xpaysh/awesome-x402)
-- [Cloudflare Workers](https://workers.cloudflare.com)
-
-## 📝 License
-
-MIT
+详细规划见 [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)。

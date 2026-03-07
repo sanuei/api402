@@ -1,13 +1,15 @@
 /**
  * API Market x402 Payment Gateway
- * 
- * 基于 x402 协议的 API 付费网关
- * 部署到 Cloudflare Workers
+ *
+ * A Cloudflare Worker that serves both:
+ * 1. static assets for the landing page
+ * 2. paid API routes protected by an x402-style payment challenge
  */
 
 export interface Env {
-  // 环境变量
-  PAY_TO?: string;  // 收款地址
+  PAY_TO?: string;
+  APP_NAME?: string;
+  ASSETS?: Fetcher;
 }
 
 declare global {
@@ -15,279 +17,425 @@ declare global {
 }
 
 interface APIEndpoint {
+  path: string;
   price: string;
   description: string;
-  data: any;
+  category: string;
+  upstream?: string;
+  sample: () => unknown;
 }
 
-// API 定价配置
-const API_PRICES: Record<string, APIEndpoint> = {
-  '/api/btc-price': {
-    price: '0.00001',
-    description: 'Bitcoin price feed - Real-time BTC price from multiple exchanges',
-    data: { symbol: 'BTC', price: 67234.56, timestamp: Date.now() }
-  },
-  '/api/eth-price': {
-    price: '0.00001',
-    description: 'Ethereum price feed',
-    data: { symbol: 'ETH', price: 3456.78, timestamp: Date.now() }
-  },
-  '/api/deepseek': {
-    price: '0.003',
-    description: 'DeepSeek AI Chat - V3.2 model',
-    data: { model: 'deepseek-v3', response: 'Hello! How can I help you today?', usage: { tokens: 128 } }
-  },
-  '/api/qwen': {
-    price: '0.01',
-    description: 'Qwen3 Max AI - Alibaba flagship model',
-    data: { model: 'qwen3-max', response: '您好！有什么我可以帮您的？', usage: { tokens: 256 } }
-  },
-  '/api/whale-positions': {
-    price: '0.00002',
-    description: 'HyperLiquid whale positions',
-    data: {
-      positions: [
-        { address: '0x1234...', size: 1250000, pnl: 12.5 },
-        { address: '0x5678...', size: 980000, pnl: 8.2 },
-        { address: '0xabcd...', size: 750000, pnl: -2.1 }
-      ]
-    }
-  },
-  '/api/kline': {
-    price: '0.001',
-    description: 'Binance K-line data',
-    data: {
-      symbol: 'BTC/USDT', interval: '1h', candles: [
-        [1700000000, 67000, 67500, 66500, 67200, 1000],
-        [1700003600, 67200, 67800, 67100, 67650, 1200]
-      ]
-    }
-  }
-};
-
-// 默认收款地址（演示用）
-const DEFAULT_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
-
-/**
- * 生成 x402 Payment Required 响应
- */
-function createPaymentRequired(payTo: string, price: string, description: string, path: string): Response {
-  const body = JSON.stringify({
-    code: 'PAYMENT_REQUIRED',
-    message: 'Payment required to access this API',
-    payTo,
-    price,
-    currency: 'USDC',
-    chain: 'base',
-    scheme: 'exact',
-    path,
-    description,
-    instructions: [
-      '1. Connect your wallet',
-      '2. Sign an EIP-3009 authorization',
-      '3. USDC will be debited automatically on each request'
-    ],
-    x402Spec: 'https://x402.org'
-  });
-
-  return new Response(body, {
-    status: 402,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Payment-Required': 'true',
-      'X-Pay-To': payTo,
-      'X-Price': price,
-      'X-Currency': 'USDC',
-      'X-Chain': 'base',
-      'X-Scheme': 'exact',
-      'Access-Control-Allow-Origin': '*'
-    }
-  });
+interface PaymentPayload {
+  payTo?: string;
+  from?: string;
+  amount?: string | number;
+  signature?: string;
+  data?: unknown;
 }
 
 import { verifyMessage } from 'ethers';
 
-/**
- * 验证 x402 支付
- * 支持 EIP-3009 授权验证和演示模式
- */
-async function verifyPayment(request: Request, price: string, payTo: string): Promise<boolean> {
-  const authorization = request.headers.get('Authorization');
+const DEFAULT_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
+const DEMO_PAYMENT_TOKEN = 'demo';
+const LEGACY_PRICE_PATH = '/prices';
+const CATALOG_PATH = '/api/v1/catalog';
+const HEALTH_PATH = '/api/v1/health';
 
-  // 1. 演示模式：如果有 Authorization: Bearer demo 就认为是已支付
-  if (authorization && authorization.startsWith('Bearer demo')) {
-    return true;
-  }
+const API_ENDPOINTS: APIEndpoint[] = [
+  {
+    path: '/api/btc-price',
+    price: '0.00001',
+    description: 'Real-time BTC price feed aggregated from Binance.',
+    category: 'Market Data',
+    upstream: 'binance',
+    sample: () => ({ symbol: 'BTC', price: 67234.56, timestamp: Date.now() }),
+  },
+  {
+    path: '/api/eth-price',
+    price: '0.00001',
+    description: 'Real-time ETH price feed aggregated from Binance.',
+    category: 'Market Data',
+    upstream: 'binance',
+    sample: () => ({ symbol: 'ETH', price: 3456.78, timestamp: Date.now() }),
+  },
+  {
+    path: '/api/deepseek',
+    price: '0.003',
+    description: 'Demo DeepSeek chat completion response.',
+    category: 'AI',
+    sample: () => ({
+      model: 'deepseek-v3',
+      response: 'Hello! How can I help you today?',
+      usage: { tokens: 128 },
+    }),
+  },
+  {
+    path: '/api/qwen',
+    price: '0.01',
+    description: 'Demo Qwen3 Max chat completion response.',
+    category: 'AI',
+    sample: () => ({
+      model: 'qwen3-max',
+      response: '您好！有什么我可以帮您的？',
+      usage: { tokens: 256 },
+    }),
+  },
+  {
+    path: '/api/whale-positions',
+    price: '0.00002',
+    description: 'Demo HyperLiquid whale position snapshots.',
+    category: 'Onchain Intelligence',
+    sample: () => ({
+      positions: [
+        { address: '0x1234...', size: 1250000, pnl: 12.5 },
+        { address: '0x5678...', size: 980000, pnl: 8.2 },
+        { address: '0xabcd...', size: 750000, pnl: -2.1 },
+      ],
+    }),
+  },
+  {
+    path: '/api/kline',
+    price: '0.001',
+    description: 'Demo BTC/USDT candlestick snapshots.',
+    category: 'Trading',
+    sample: () => ({
+      symbol: 'BTC/USDT',
+      interval: '1h',
+      candles: [
+        [1700000000, 67000, 67500, 66500, 67200, 1000],
+        [1700003600, 67200, 67800, 67100, 67650, 1200],
+      ],
+    }),
+  },
+];
 
-  // 2. 尝试 EIP-3009 / 本地签名验证 (x402 真实协议)
-  // 此处为一个简化验证流程。完整的业务中会去调用链上的 receiveWithAuthorization
-  if (authorization && authorization.startsWith('Bearer ')) {
-    try {
-      // 这里的 x402 token 可能长这样: Bearer base64(json)
-      const tokenStr = authorization.split(' ')[1];
-      const payload = JSON.parse(atob(tokenStr));
+const API_INDEX: Record<string, APIEndpoint> = Object.fromEntries(
+  API_ENDPOINTS.map((endpoint) => [endpoint.path, endpoint]),
+);
 
-      // 验证前面是否有发给我们的 payTo，且金额大于 price
-      if (payload.payTo && payload.payTo.toLowerCase() === payTo.toLowerCase()) {
-        if (payload.signature && payload.from) {
-          const recovered = verifyMessage(JSON.stringify(payload.data), payload.signature);
-          if (recovered.toLowerCase() === payload.from.toLowerCase()) {
-            return true;
-          }
-        }
-      }
-    } catch (e) {
-      console.log('Payment verification failed:', e);
-    }
-  }
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof',
+  'Access-Control-Expose-Headers': 'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme',
+};
 
-  // 3. Fallback: 老的 X-Payment-Proof 头
-  const paymentProof = request.headers.get('X-Payment-Proof');
-  return paymentProof !== null;
+function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  headers.set('Content-Type', 'application/json');
+
+  return new Response(JSON.stringify(body, null, 2), {
+    ...init,
+    headers,
+  });
 }
 
-/**
- * 获取上游真实数据 (代理请求)
- */
-async function fetchUpstreamData(endpointName: string): Promise<any> {
-  try {
-    if (endpointName === '/api/btc-price') {
-      const resp = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
-      const data: any = await resp.json();
-      return { symbol: 'BTC', price: parseFloat(data.price), timestamp: Date.now(), source: 'binance' };
-    }
+function apiResponse(body: unknown, init: ResponseInit = {}): Response {
+  const headers = new Headers(init.headers);
+  Object.entries(corsHeaders).forEach(([key, value]) => headers.set(key, value));
+  return jsonResponse(body, { ...init, headers });
+}
 
-    if (endpointName === '/api/eth-price') {
-      const resp = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT');
-      const data: any = await resp.json();
-      return { symbol: 'ETH', price: parseFloat(data.price), timestamp: Date.now(), source: 'binance' };
-    }
-  } catch (e) {
-    console.error('Upstream fetch failed', e);
+function parseAmount(value: string | number | undefined): number {
+  if (typeof value === 'number') {
+    return value;
   }
+
+  if (typeof value === 'string') {
+    const numeric = Number(value);
+    return Number.isFinite(numeric) ? numeric : 0;
+  }
+
+  return 0;
+}
+
+function getClientIP(request: Request): string {
+  return request.headers.get('CF-Connecting-IP') || 'unknown';
+}
+
+function createCatalog(baseUrl: string, payTo: string) {
+  return {
+    name: 'API Market',
+    appName: 'API Market',
+    version: '1.1.0',
+    payment: {
+      payTo,
+      currency: 'USDC',
+      chain: 'base',
+      scheme: 'exact',
+      demoToken: DEMO_PAYMENT_TOKEN,
+      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
+    },
+    docs: {
+      quickstart: `${baseUrl}/#examples`,
+      health: `${baseUrl}${HEALTH_PATH}`,
+      catalog: `${baseUrl}${CATALOG_PATH}`,
+    },
+    endpoints: API_ENDPOINTS.map((endpoint) => ({
+      path: endpoint.path,
+      url: `${baseUrl}${endpoint.path}`,
+      method: 'GET',
+      price: endpoint.price,
+      currency: 'USDC',
+      category: endpoint.category,
+      description: endpoint.description,
+      access: endpoint.upstream ? 'live_or_fallback' : 'mock_demo',
+      upstream: endpoint.upstream || null,
+    })),
+  };
+}
+
+function createPaymentRequired(payTo: string, endpoint: APIEndpoint): Response {
+  return apiResponse(
+    {
+      code: 'PAYMENT_REQUIRED',
+      message: 'Payment required to access this API.',
+      payTo,
+      price: endpoint.price,
+      currency: 'USDC',
+      chain: 'base',
+      scheme: 'exact',
+      path: endpoint.path,
+      description: endpoint.description,
+      acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
+      examples: {
+        demo: `Authorization: Bearer ${DEMO_PAYMENT_TOKEN}`,
+        signature: 'PAYMENT-SIGNATURE: <base64-encoded signed authorization payload>',
+      },
+      instructions: [
+        'Connect a wallet with Base USDC.',
+        'Sign an authorization payload for the requested amount.',
+        'Replay the request with a payment header.',
+      ],
+      x402Spec: 'https://x402.org',
+    },
+    {
+      status: 402,
+      headers: {
+        'X-Payment-Required': 'true',
+        'X-Pay-To': payTo,
+        'X-Price': endpoint.price,
+        'X-Currency': 'USDC',
+        'X-Chain': 'base',
+        'X-Scheme': 'exact',
+      },
+    },
+  );
+}
+
+function decodeBase64Json(value: string): PaymentPayload | null {
+  try {
+    const normalized = value.startsWith('Bearer ') ? value.slice(7).trim() : value.trim();
+    const decoded = atob(normalized);
+    return JSON.parse(decoded) as PaymentPayload;
+  } catch {
+    return null;
+  }
+}
+
+function extractPaymentPayload(request: Request): PaymentPayload | 'demo' | null {
+  const authorization = request.headers.get('Authorization');
+
+  if (authorization === `Bearer ${DEMO_PAYMENT_TOKEN}`) {
+    return 'demo';
+  }
+
+  if (authorization?.startsWith('Bearer ')) {
+    const payload = decodeBase64Json(authorization);
+    if (payload) {
+      return payload;
+    }
+  }
+
+  const paymentSignature = request.headers.get('PAYMENT-SIGNATURE');
+  if (paymentSignature) {
+    const payload = decodeBase64Json(paymentSignature);
+    if (payload) {
+      return payload;
+    }
+  }
+
   return null;
 }
 
-/**
- * 获取客户端 IP
- */
-function getClientIP(request: Request): string {
-  const forwarded = request.headers.get('CF-Connecting-IP');
-  return forwarded || 'unknown';
+async function verifyPayment(request: Request, price: string, payTo: string): Promise<boolean> {
+  const payload = extractPaymentPayload(request);
+
+  if (payload === 'demo') {
+    return true;
+  }
+
+  if (payload && payload.payTo?.toLowerCase() === payTo.toLowerCase()) {
+    const amount = parseAmount(payload.amount);
+    const expected = parseAmount(price);
+
+    if (amount >= expected && payload.signature && payload.from) {
+      try {
+        const recovered = verifyMessage(JSON.stringify(payload.data ?? {}), payload.signature);
+        if (recovered.toLowerCase() === payload.from.toLowerCase()) {
+          return true;
+        }
+      } catch (error) {
+        console.log('Payment verification failed:', error);
+      }
+    }
+  }
+
+  return request.headers.has('X-Payment-Proof');
+}
+
+async function fetchUpstreamData(path: string): Promise<unknown | null> {
+  try {
+    if (path === '/api/btc-price') {
+      const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+      const data = (await response.json()) as { price?: string };
+
+      return {
+        symbol: 'BTC',
+        price: data.price ? Number(data.price) : null,
+        timestamp: Date.now(),
+        source: 'binance',
+      };
+    }
+
+    if (path === '/api/eth-price') {
+      const response = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT');
+      const data = (await response.json()) as { price?: string };
+
+      return {
+        symbol: 'ETH',
+        price: data.price ? Number(data.price) : null,
+        timestamp: Date.now(),
+        source: 'binance',
+      };
+    }
+  } catch (error) {
+    console.error('Upstream fetch failed:', error);
+  }
+
+  return null;
+}
+
+function enforceRateLimit(request: Request): Response | null {
+  if (!globalThis.rateLimiter) {
+    globalThis.rateLimiter = new Map<string, number[]>();
+  }
+
+  const clientIP = getClientIP(request);
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxRequests = 30;
+
+  let requests = globalThis.rateLimiter.get(clientIP) || [];
+  requests = requests.filter((timestamp) => now - timestamp < windowMs);
+
+  if (requests.length >= maxRequests) {
+    return apiResponse(
+      {
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Please try again later.',
+      },
+      {
+        status: 429,
+        headers: { 'Retry-After': '60' },
+      },
+    );
+  }
+
+  requests.push(now);
+  globalThis.rateLimiter.set(clientIP, requests);
+
+  return null;
+}
+
+async function serveStaticAsset(request: Request, env: Env): Promise<Response> {
+  if (env.ASSETS) {
+    return env.ASSETS.fetch(request);
+  }
+
+  return new Response('Static assets binding is not available.', { status: 404 });
 }
 
 export default {
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
-    const clientIP = getClientIP(request);
+    const origin = `${url.protocol}//${url.host}`;
+    const payTo = env.PAY_TO || DEFAULT_PAY_TO;
 
-    // 简易限流记录器 (基于单个 Worker 实例内存)
-    // 生产环境中推荐用 Cloudflare Rate Limiting 或 Durable Objects 实现分布式限流
-    if (!globalThis.rateLimiter) {
-      globalThis.rateLimiter = new Map<string, number[]>();
-    }
-
-    const now = Date.now();
-    const WINDOW_MS = 60 * 1000; // 1 分钟
-    const MAX_REQUESTS = 30; // 限制每个 IP 每分钟 30 次请求
-
-    let requests = globalThis.rateLimiter.get(clientIP) || [];
-    requests = requests.filter(time => now - time < WINDOW_MS);
-
-    if (requests.length >= MAX_REQUESTS) {
-      return new Response(JSON.stringify({ error: 'Too Many Requests', message: 'Rate limit exceeded. Please try again later.' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json', 'Retry-After': '60' }
-      });
-    }
-    requests.push(now);
-    globalThis.rateLimiter.set(clientIP, requests);
-
-    // CORS 头
-    const corsHeaders = {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, X-Payment-Proof, Authorization',
-    };
-
-    // 处理预检请求
-    if (request.method === 'OPTIONS') {
+    if (request.method === 'OPTIONS' && (path.startsWith('/api/') || path === LEGACY_PRICE_PATH)) {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // 获取收款地址
-    const payTo = env.PAY_TO || DEFAULT_PAY_TO;
-
-    // 根路径 - 返回 API 列表
-    if (path === '/' || path === '/index.html') {
-      return new Response(JSON.stringify({
-        name: 'API Market',
-        version: '1.0.0',
-        description: 'x402 Payment Gateway - Pay with USDC',
-        endpoints: Object.entries(API_PRICES).map(([path, config]) => ({
-          path,
-          price: config.price,
-          description: config.description
-        }))
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+    if (path === HEALTH_PATH) {
+      return apiResponse({
+        status: 'ok',
+        service: env.APP_NAME || 'API Market',
+        timestamp: new Date().toISOString(),
+        payTo,
+        endpoints: API_ENDPOINTS.length,
       });
     }
 
-    // 获取定价信息
-    if (path === '/prices') {
-      return new Response(JSON.stringify(API_PRICES), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    if (path === CATALOG_PATH) {
+      return apiResponse(createCatalog(origin, payTo));
     }
 
-    // API 端点
-    const apiEndpoint = API_PRICES[path];
-
-    if (!apiEndpoint) {
-      return new Response(JSON.stringify({
-        error: 'Endpoint not found',
-        availableEndpoints: Object.keys(API_PRICES)
-      }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      });
+    if (path === LEGACY_PRICE_PATH) {
+      return apiResponse(
+        Object.fromEntries(
+          API_ENDPOINTS.map((endpoint) => [
+            endpoint.path,
+            {
+              price: endpoint.price,
+              description: endpoint.description,
+              category: endpoint.category,
+            },
+          ]),
+        ),
+      );
     }
 
-    // 检查支付
-    const isPaid = await verifyPayment(request, apiEndpoint.price, payTo);
-
-    if (!isPaid) {
-      // 返回 402 Payment Required
-      return createPaymentRequired(payTo, apiEndpoint.price, apiEndpoint.description, path);
-    }
-
-    // 返回 API 数据（已支付）
-    let realData = null;
-    try {
-      realData = await fetchUpstreamData(path);
-    } catch (e) {
-      console.error('Failed to get upstream data for', path);
-    }
-
-    const baseData = realData || apiEndpoint.data;
-
-    // 添加一些随机变化或元数据使数据更完整
-    const responseData = {
-      ...baseData,
-      _meta: {
-        paid: true,
-        price: apiEndpoint.price,
-        payTo: payTo,
-        timestamp: Date.now(),
-        clientIP: getClientIP(request),
-        origin: realData ? 'proxied' : 'mock'
+    const endpoint = API_INDEX[path];
+    if (endpoint) {
+      const rateLimitResponse = enforceRateLimit(request);
+      if (rateLimitResponse) {
+        return rateLimitResponse;
       }
-    };
 
-    return new Response(JSON.stringify(responseData), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    });
-  }
+      const isPaid = await verifyPayment(request, endpoint.price, payTo);
+      if (!isPaid) {
+        return createPaymentRequired(payTo, endpoint);
+      }
+
+      const upstreamData = await fetchUpstreamData(path);
+      const baseData = (upstreamData || endpoint.sample()) as Record<string, unknown>;
+
+      return apiResponse({
+        ...baseData,
+        _meta: {
+          paid: true,
+          price: endpoint.price,
+          payTo,
+          category: endpoint.category,
+          timestamp: Date.now(),
+          clientIP: getClientIP(request),
+          origin: upstreamData ? 'proxied' : 'mock',
+        },
+      });
+    }
+
+    if (path.startsWith('/api/')) {
+      return apiResponse(
+        {
+          error: 'Endpoint not found',
+          availableEndpoints: API_ENDPOINTS.map((endpoint) => endpoint.path),
+          catalog: `${origin}${CATALOG_PATH}`,
+        },
+        { status: 404 },
+      );
+    }
+
+    return serveStaticAsset(request, env);
+  },
 };
