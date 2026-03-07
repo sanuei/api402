@@ -31,6 +31,7 @@ declare global {
   var usedPaymentNonces: Map<string, number>;
   var usedPaymentTransactions: Map<string, number>;
   var upstreamCircuitState: Map<string, { failures: number; openUntil: number; lastErrorCode?: string }>;
+  var upstreamTelemetryState: Map<string, UpstreamTelemetryEvent[]>;
 }
 
 export interface APIEndpoint {
@@ -157,6 +158,8 @@ const REMEDIATION_COMPATIBILITY = 'semver-minor-backward-compatible';
 const UPSTREAM_TIMEOUT_MS = 8000;
 const UPSTREAM_FAILURE_THRESHOLD = 3;
 const UPSTREAM_CIRCUIT_COOLDOWN_MS = 30_000;
+const UPSTREAM_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
+const UPSTREAM_TELEMETRY_MAX_EVENTS = 120;
 
 
 const SETTLEMENT_REMEDIATION_MAP: Record<SettlementStatusResult['code'], RemediationHint> = {
@@ -911,6 +914,9 @@ function findLargestTransferAmountTo(
 }
 
 function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoint) {
+  const upstreamTelemetry = endpoint.upstream
+    ? getUpstreamTelemetrySummary(endpoint.upstream, Date.now())
+    : null;
   const samplePayload = buildPaymentMessage({
     version: '1',
     scheme: 'exact',
@@ -975,6 +981,7 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
             'UPSTREAM_FETCH_FAILED',
             'UPSTREAM_CIRCUIT_OPEN',
           ],
+          telemetry: upstreamTelemetry,
         }
       : null,
   };
@@ -1775,6 +1782,25 @@ type UpstreamFailure = {
   retryable: boolean;
 };
 
+type UpstreamTelemetryEvent = {
+  at: number;
+  ok: boolean;
+  latencyMs: number;
+  code: 'OK' | UpstreamErrorCode;
+};
+
+type UpstreamTelemetrySummary = {
+  windowMs: number;
+  sampleSize: number;
+  successRate: number;
+  avgLatencyMs: number | null;
+  p95LatencyMs: number | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  lastErrorCode: UpstreamErrorCode | null;
+  updatedAt: string | null;
+};
+
 type UpstreamMeta = {
   source: string;
   status: 'live' | 'fallback';
@@ -1795,6 +1821,69 @@ function getUpstreamCircuitState(): Map<string, { failures: number; openUntil: n
   return globalThis.upstreamCircuitState;
 }
 
+function getUpstreamTelemetryState(): Map<string, UpstreamTelemetryEvent[]> {
+  if (!globalThis.upstreamTelemetryState) {
+    globalThis.upstreamTelemetryState = new Map();
+  }
+
+  return globalThis.upstreamTelemetryState;
+}
+
+function pruneTelemetryEvents(events: UpstreamTelemetryEvent[], now: number): UpstreamTelemetryEvent[] {
+  const windowStart = now - UPSTREAM_TELEMETRY_WINDOW_MS;
+  const inWindow = events.filter((event) => event.at >= windowStart);
+  return inWindow.slice(-UPSTREAM_TELEMETRY_MAX_EVENTS);
+}
+
+function recordUpstreamTelemetry(source: string, event: UpstreamTelemetryEvent): void {
+  const store = getUpstreamTelemetryState();
+  const existing = store.get(source) || [];
+  const next = pruneTelemetryEvents([...existing, event], event.at);
+  store.set(source, next);
+}
+
+function getUpstreamTelemetrySummary(source: string, now: number): UpstreamTelemetrySummary {
+  const events = pruneTelemetryEvents(getUpstreamTelemetryState().get(source) || [], now);
+  const sampleSize = events.length;
+
+  if (sampleSize === 0) {
+    return {
+      windowMs: UPSTREAM_TELEMETRY_WINDOW_MS,
+      sampleSize: 0,
+      successRate: 1,
+      avgLatencyMs: null,
+      p95LatencyMs: null,
+      lastSuccessAt: null,
+      lastFailureAt: null,
+      lastErrorCode: null,
+      updatedAt: null,
+    };
+  }
+
+  const successEvents = events.filter((event) => event.ok);
+  const successRate = Number((successEvents.length / sampleSize).toFixed(4));
+  const avgLatencyMs = Math.round(events.reduce((sum, event) => sum + event.latencyMs, 0) / sampleSize);
+  const sortedLatency = [...events].map((event) => event.latencyMs).sort((a, b) => a - b);
+  const p95Index = Math.max(0, Math.ceil(sortedLatency.length * 0.95) - 1);
+  const p95LatencyMs = sortedLatency[p95Index] ?? null;
+
+  const lastSuccess = [...successEvents].sort((a, b) => b.at - a.at)[0];
+  const failureEvents = events.filter((event) => !event.ok);
+  const lastFailure = [...failureEvents].sort((a, b) => b.at - a.at)[0];
+
+  return {
+    windowMs: UPSTREAM_TELEMETRY_WINDOW_MS,
+    sampleSize,
+    successRate,
+    avgLatencyMs,
+    p95LatencyMs,
+    lastSuccessAt: lastSuccess ? new Date(lastSuccess.at).toISOString() : null,
+    lastFailureAt: lastFailure ? new Date(lastFailure.at).toISOString() : null,
+    lastErrorCode: lastFailure && lastFailure.code !== 'OK' ? lastFailure.code : null,
+    updatedAt: new Date(events[events.length - 1].at).toISOString(),
+  };
+}
+
 function getUpstreamCircuitSnapshot(source: string, now: number): { open: boolean; openUntil: number } {
   const state = getUpstreamCircuitState().get(source);
   if (!state) {
@@ -1804,12 +1893,13 @@ function getUpstreamCircuitSnapshot(source: string, now: number): { open: boolea
   return { open: state.openUntil > now, openUntil: state.openUntil };
 }
 
-function recordUpstreamSuccess(source: string): void {
+function recordUpstreamSuccess(source: string, now: number, latencyMs: number): void {
   const store = getUpstreamCircuitState();
   store.set(source, { failures: 0, openUntil: 0 });
+  recordUpstreamTelemetry(source, { at: now, ok: true, latencyMs, code: 'OK' });
 }
 
-function recordUpstreamFailure(source: string, code: UpstreamErrorCode, now: number): void {
+function recordUpstreamFailure(source: string, code: UpstreamErrorCode, now: number, latencyMs: number): void {
   const store = getUpstreamCircuitState();
   const state = store.get(source) || { failures: 0, openUntil: 0 };
   const failures = state.failures + 1;
@@ -1820,6 +1910,7 @@ function recordUpstreamFailure(source: string, code: UpstreamErrorCode, now: num
     openUntil,
     lastErrorCode: code,
   });
+  recordUpstreamTelemetry(source, { at: now, ok: false, latencyMs, code });
 }
 
 async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
@@ -1898,11 +1989,14 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
   const now = Date.now();
   const circuit = getUpstreamCircuitSnapshot(source, now);
   if (circuit.open) {
+    recordUpstreamTelemetry(source, { at: now, ok: false, latencyMs: 0, code: 'UPSTREAM_CIRCUIT_OPEN' });
     return {
       data: null,
       meta: { source, status: 'fallback', reasonCode: 'UPSTREAM_CIRCUIT_OPEN', retryable: true },
     };
   }
+
+  const startedAt = Date.now();
 
   try {
     if (path === '/api/btc-price') {
@@ -1914,7 +2008,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source);
+      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           symbol: 'BTC',
@@ -1935,7 +2029,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source);
+      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           symbol: 'ETH',
@@ -2026,7 +2120,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'no positions', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source);
+      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           source: 'hyperliquid',
@@ -2050,7 +2144,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing candles', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source);
+      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           symbol: 'BTCUSDT',
@@ -2073,7 +2167,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
     throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'unsupported path', retryable: false } as UpstreamFailure;
   } catch (error) {
     const failure = (error || { code: 'UPSTREAM_FETCH_FAILED', message: 'unknown upstream error', retryable: true }) as UpstreamFailure;
-    recordUpstreamFailure(source, failure.code || 'UPSTREAM_FETCH_FAILED', now);
+    recordUpstreamFailure(source, failure.code || 'UPSTREAM_FETCH_FAILED', Date.now(), Date.now() - startedAt);
     console.error('Upstream fetch failed:', source, failure.code, failure.message);
 
     return {

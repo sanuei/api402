@@ -4,6 +4,38 @@
 
 ### 本轮目标
 
+- 在 catalog 暴露 endpoint 级 latency / availability 遥测字段，提升 SDK 选路与开发者接入可观测性
+
+### 已完成
+
+- 新增上游遥测窗口（15 分钟 + 最多 120 个样本）并对每次 live/fallback 结果记录 latency 与错误码
+- `catalog.endpoints[].upstreamPolicy` 新增 `telemetry` 字段，输出：`windowMs`、`sampleSize`、`successRate`、`avgLatencyMs`、`p95LatencyMs`、`lastSuccessAt`、`lastFailureAt`、`lastErrorCode`、`updatedAt`
+- 熔断打开时（`UPSTREAM_CIRCUIT_OPEN`）也会进入 telemetry 统计，便于观察降级占比
+- 测试已补 catalog telemetry 字段断言，并重置测试态 telemetry store
+- ROADMAP 已同步“已完成能力”与下一步建议
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 20 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
+2. 为 remediation 字段补 changelog / deprecation 公告地址
+3. 补 `doc/DEPLOYMENT.md`，明确生产发布、回滚和故障诊断路径
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为 live 上游代理补统一 machine-readable 错误码与熔断降级策略，提升支付后数据交付可靠性与 SDK 自动恢复能力
 
 ### 已完成

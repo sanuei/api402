@@ -42,6 +42,7 @@
 - Base 结算证明已加入最大区块年龄限制（默认 7200 blocks），可拦截历史交易延迟重放
 - 已将 `whale-positions` 接入 HyperLiquid 实时成交聚合（BTC/ETH）
 - 已为 live 上游接口补统一错误码、熔断冷却与 machine-readable fallback 元信息（`_meta.upstream` + catalog `upstreamPolicy`）
+- catalog `upstreamPolicy` 已补 15 分钟窗口的可用性/延迟遥测字段（successRate、avg/p95 latency、last error）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 
 ## Phase 1
@@ -120,10 +121,10 @@
 
 建议下一轮直接做下面 4 项:
 
-1. 在 catalog 中增加更明确的延迟/可用性字段（含统计窗口与更新时间）
-2. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
-3. 为 remediation 字段补 changelog / deprecation 公告地址，完善 SDK 自动兼容升级路径
-4. 补 `doc/DEPLOYMENT.md`，明确生产发布、回滚和故障诊断路径
+1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
+2. 为 remediation 字段补 changelog / deprecation 公告地址，完善 SDK 自动兼容升级路径
+3. 补 `doc/DEPLOYMENT.md`，明确生产发布、回滚和故障诊断路径
+4. 将 upstream 遥测扩展为持久化时间序列（避免冷启动丢失窗口）
 
 ## Operations
 

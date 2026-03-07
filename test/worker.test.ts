@@ -182,6 +182,7 @@ test.beforeEach(() => {
   globalThis.usedPaymentNonces = new Map();
   globalThis.usedPaymentTransactions = new Map();
   globalThis.upstreamCircuitState = new Map();
+  globalThis.upstreamTelemetryState = new Map();
   replayGuardStore = new Map();
 });
 
@@ -224,6 +225,17 @@ test('catalog exposes enriched endpoint metadata', async () => {
         failureThreshold: number;
         circuitCooldownMs: number;
         errorCodes: string[];
+        telemetry?: {
+          windowMs: number;
+          sampleSize: number;
+          successRate: number;
+          avgLatencyMs: number | null;
+          p95LatencyMs: number | null;
+          lastSuccessAt: string | null;
+          lastFailureAt: string | null;
+          lastErrorCode: string | null;
+          updatedAt: string | null;
+        } | null;
       } | null;
     }>;
   };
@@ -265,6 +277,11 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.failureThreshold, 3);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.circuitCooldownMs, 30000);
   assert.ok(firstLiveEndpoint?.upstreamPolicy?.errorCodes.includes('UPSTREAM_CIRCUIT_OPEN'));
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.windowMs, 900000);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.sampleSize, 0);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.successRate, 1);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.avgLatencyMs, null);
+  assert.equal(firstLiveEndpoint?.upstreamPolicy?.telemetry?.p95LatencyMs, null);
 });
 
 test('health endpoint returns status information', async () => {
