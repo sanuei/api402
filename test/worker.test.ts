@@ -14,6 +14,7 @@ const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const ERC20_TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 let replayGuardStore = new Map<string, number>();
+let metricsStore = new Map<string, unknown>();
 
 class FakeReplayGuardStub {
   async fetch(request: Request | string, init?: RequestInit): Promise<Response> {
@@ -67,11 +68,86 @@ function createReplayGuardNamespace(): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
+class FakeMetricsStoreStub {
+  async fetch(request: Request | string, init?: RequestInit): Promise<Response> {
+    const resolvedRequest =
+      typeof request === 'string' ? new Request(request, init) : request;
+    const url = new URL(resolvedRequest.url);
+
+    if (resolvedRequest.method === 'POST' && url.pathname === '/append') {
+      const payload = (await resolvedRequest.json()) as {
+        kind?: 'upstream' | 'endpoint';
+        key?: string;
+        event?: unknown;
+      };
+      if (!payload.kind || !payload.key || !payload.event) {
+        return Response.json({ error: 'invalid' }, { status: 400 });
+      }
+
+      const storageKey = `${payload.kind}:${payload.key}`;
+      const existing = (metricsStore.get(storageKey) as unknown[] | undefined) || [];
+      metricsStore.set(storageKey, [...existing, payload.event]);
+      return Response.json({ ok: true });
+    }
+
+    if (resolvedRequest.method === 'POST' && url.pathname === '/snapshot') {
+      const nowPayload = (await resolvedRequest.json().catch(() => ({}))) as { now?: number };
+      const now = Number(nowPayload.now) || Date.now();
+      const upstreamTelemetry: Record<string, Array<{ at: number }>> = {};
+      const endpointMetrics: Record<string, Array<{ at: number }>> = {};
+
+      for (const [key, value] of metricsStore.entries()) {
+        if (!Array.isArray(value)) {
+          continue;
+        }
+
+        if (key.startsWith('upstream:')) {
+          const filtered = value.filter((event) => typeof (event as { at?: number }).at === 'number' && (event as { at: number }).at >= now - 15 * 60 * 1000);
+          upstreamTelemetry[key.slice('upstream:'.length)] = filtered as Array<{ at: number }>;
+        }
+
+        if (key.startsWith('endpoint:')) {
+          const filtered = value.filter((event) => typeof (event as { at?: number }).at === 'number' && (event as { at: number }).at >= now - 60 * 60 * 1000);
+          endpointMetrics[key.slice('endpoint:'.length)] = filtered as Array<{ at: number }>;
+        }
+      }
+
+      return Response.json({ upstreamTelemetry, endpointMetrics });
+    }
+
+    return Response.json({ error: 'not found' }, { status: 404 });
+  }
+}
+
+function createMetricsStoreNamespace(): DurableObjectNamespace {
+  return {
+    idFromName(name: string) {
+      return { name } as unknown as DurableObjectId;
+    },
+    idFromString(name: string) {
+      return { name } as unknown as DurableObjectId;
+    },
+    newUniqueId() {
+      return { name: crypto.randomUUID() } as unknown as DurableObjectId;
+    },
+    get() {
+      return new FakeMetricsStoreStub() as unknown as DurableObjectStub;
+    },
+    getByName() {
+      return new FakeMetricsStoreStub() as unknown as DurableObjectStub;
+    },
+    jurisdiction() {
+      return undefined;
+    },
+  } as unknown as DurableObjectNamespace;
+}
+
 function createEnv(): Env {
   return {
     APP_NAME: 'API Market',
     PAY_TO: TEST_PAY_TO,
     REPLAY_GUARD: createReplayGuardNamespace(),
+    METRICS_STORE: createMetricsStoreNamespace(),
     ASSETS: {
       fetch: async () => new Response('<html>ok</html>', { headers: { 'Content-Type': 'text/html' } }),
     } as unknown as Fetcher,
@@ -185,6 +261,7 @@ test.beforeEach(() => {
   globalThis.upstreamTelemetryState = new Map();
   globalThis.endpointRequestMetricsState = new Map();
   replayGuardStore = new Map();
+  metricsStore = new Map();
 });
 
 test('catalog exposes enriched endpoint metadata', async () => {

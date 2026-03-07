@@ -13,6 +13,10 @@ routes = [
 name = "REPLAY_GUARD"
 class_name = "ReplayGuardDurableObject"
 
+[[durable_objects.bindings]]
+name = "METRICS_STORE"
+class_name = "MetricsStoreDurableObject"
+
 [vars]
 APP_NAME = "API Market"
 PAY_TO = "0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18"
@@ -26,3 +30,7 @@ PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS = "7200"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["ReplayGuardDurableObject"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["MetricsStoreDurableObject"]

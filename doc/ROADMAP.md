@@ -48,6 +48,7 @@
 - catalog endpoint 已补 `lastUpdatedAt` 与 `freshness`（`status` / `ageSeconds` / `maxAgeSeconds` / `signal`），用于数据新鲜度判断
 - 前端 API 卡片与接口详情已展示 freshness 状态和更新时间，提升接入前的数据可用性判断效率
 - 402 challenge、成功响应与 settlement 查询均支持 `requestId` 回传（`X-Request-Id`），payment funnel 现基于 requestId 做 challenge→replay 精确归因
+- upstream telemetry 与 endpoint requestMetrics 已持久化到 Durable Objects，并用于 catalog snapshot 聚合（降低冷启动窗口丢失）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 
@@ -128,8 +129,8 @@
 建议下一轮直接做下面 4 项:
 
 1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
-2. 将 upstream 遥测与 requestMetrics 扩展为持久化时间序列（避免冷启动丢失窗口）
-3. 将 requestId 关联漏斗与 upstream telemetry 持久化到 Durable Objects / KV，支持跨冷启动长期归因分析
+2. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
+3. 基于持久化 requestId 漏斗补长期归因导出接口（例如 24h / 7d 聚合视图）
 4. 在前端 API 卡片增加 `requestMetrics` 核心字段（recent requests / 402 rate / replay conversion）可视化，直接提升转化优化效率
 
 ## Operations

@@ -4,6 +4,45 @@
 
 ### 本轮目标
 
+- 将 catalog 的 upstream telemetry + endpoint requestMetrics 持久化到 Durable Objects，避免冷启动窗口丢失（payment reliability + conversion diagnostics）
+
+### 已完成
+
+- 新增 `MetricsStoreDurableObject`：
+  - 记录 upstream telemetry 事件
+  - 记录 endpoint requestMetrics 事件
+  - 提供 snapshot 读取接口用于 catalog 聚合
+  - 定时清理窗口外历史事件，控制存储增长
+- catalog 构建流程改为优先读取持久化 snapshot（不可用时自动回退内存态）
+- 请求路径埋点升级为“内存 + Durable Object”双写：
+  - endpoint 402/429/200 指标
+  - upstream success/failure/circuit-open 遥测
+- `wrangler.toml` 新增 `METRICS_STORE` Durable Object binding 与 `v2` migration
+- 测试环境新增 fake `METRICS_STORE` namespace，确保 catalog 指标测试继续覆盖持久化路径
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 在前端 API 卡片增加 `requestMetrics` 核心字段可视化（recent requests / 402 rate / replay conversion）
+2. 提供 AI 上游凭据后推进 `/api/deepseek`、`/api/qwen` 真实上游替换
+3. 评估将 metrics DO 从单实例升级为分片策略（按 endpoint/source hash）
+
+## 2026-03-08
+
+### 本轮目标
+
 - 在前端直接展示 catalog 的 freshness 状态与更新时间，提升开发者接入判断效率（conversion + developer adoption）
 
 ### 已完成

@@ -18,6 +18,7 @@ export interface Env {
   PAYMENT_MAX_FUTURE_SKEW_SECONDS?: string;
   PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS?: string;
   REPLAY_GUARD?: DurableObjectNamespace;
+  METRICS_STORE?: DurableObjectNamespace;
   ASSETS?: Fetcher;
 }
 
@@ -823,6 +824,106 @@ export class ReplayGuardDurableObject {
   }
 }
 
+export class MetricsStoreDurableObject {
+  constructor(
+    private readonly state: DurableObjectState,
+    private readonly env: Env,
+  ) {}
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (request.method === 'POST' && url.pathname === '/append') {
+      const payload = (await request.json()) as
+        | { kind?: 'upstream'; key?: string; event?: UpstreamTelemetryEvent }
+        | { kind?: 'endpoint'; key?: string; event?: EndpointRequestMetricEvent };
+
+      if (!payload || typeof payload !== 'object' || !payload.kind || !payload.key || !payload.event) {
+        return jsonResponse({ error: 'Invalid metrics payload' }, { status: 400 });
+      }
+
+      const storageKey = `${payload.kind}:${payload.key}`;
+      if (payload.kind === 'upstream') {
+        const existing = ((await this.state.storage.get<UpstreamTelemetryEvent[]>(storageKey)) || []).filter(Boolean);
+        const next = pruneTelemetryEvents([...existing, payload.event as UpstreamTelemetryEvent], Date.now());
+        await this.state.storage.put(storageKey, next);
+      } else {
+        const existing = ((await this.state.storage.get<EndpointRequestMetricEvent[]>(storageKey)) || []).filter(Boolean);
+        const next = pruneEndpointRequestEvents([...existing, payload.event as EndpointRequestMetricEvent], Date.now());
+        await this.state.storage.put(storageKey, next);
+      }
+
+      await this.state.storage.setAlarm(Date.now() + ENDPOINT_METRICS_WINDOW_MS);
+      return jsonResponse({ ok: true });
+    }
+
+    if (request.method === 'POST' && url.pathname === '/snapshot') {
+      const payload = (await request.json().catch(() => ({}))) as { now?: number };
+      const now = Number(payload.now) || Date.now();
+      const entries = await this.state.storage.list<UpstreamTelemetryEvent[] | EndpointRequestMetricEvent[]>();
+      const upstreamTelemetry: Record<string, UpstreamTelemetryEvent[]> = {};
+      const endpointMetrics: Record<string, EndpointRequestMetricEvent[]> = {};
+
+      for (const [key, value] of entries.entries()) {
+        if (!Array.isArray(value)) {
+          continue;
+        }
+
+        if (key.startsWith('upstream:')) {
+          upstreamTelemetry[key.slice('upstream:'.length)] = pruneTelemetryEvents(
+            value as UpstreamTelemetryEvent[],
+            now,
+          );
+          continue;
+        }
+
+        if (key.startsWith('endpoint:')) {
+          endpointMetrics[key.slice('endpoint:'.length)] = pruneEndpointRequestEvents(
+            value as EndpointRequestMetricEvent[],
+            now,
+          );
+        }
+      }
+
+      return jsonResponse({ upstreamTelemetry, endpointMetrics });
+    }
+
+    return jsonResponse({ error: 'Not found' }, { status: 404 });
+  }
+
+  async alarm(): Promise<void> {
+    const now = Date.now();
+    const entries = await this.state.storage.list<UpstreamTelemetryEvent[] | EndpointRequestMetricEvent[]>();
+
+    for (const [key, value] of entries.entries()) {
+      if (!Array.isArray(value)) {
+        continue;
+      }
+
+      if (key.startsWith('upstream:')) {
+        const next = pruneTelemetryEvents(value as UpstreamTelemetryEvent[], now);
+        if (next.length === 0) {
+          await this.state.storage.delete(key);
+        } else {
+          await this.state.storage.put(key, next);
+        }
+        continue;
+      }
+
+      if (key.startsWith('endpoint:')) {
+        const next = pruneEndpointRequestEvents(value as EndpointRequestMetricEvent[], now);
+        if (next.length === 0) {
+          await this.state.storage.delete(key);
+        } else {
+          await this.state.storage.put(key, next);
+        }
+      }
+    }
+
+    await this.state.storage.setAlarm(Date.now() + ENDPOINT_METRICS_WINDOW_MS);
+  }
+}
+
 export function buildPaymentMessage(input: Omit<PaymentPayload, 'signature'>): PaymentMessage {
   return {
     version: '1',
@@ -931,12 +1032,17 @@ function findLargestTransferAmountTo(
   return largest;
 }
 
-function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoint) {
+function getCatalogEndpoint(
+  baseUrl: string,
+  payTo: string,
+  endpoint: APIEndpoint,
+  snapshot: MetricsSnapshot | null,
+) {
   const now = Date.now();
   const upstreamTelemetry = endpoint.upstream
-    ? getUpstreamTelemetrySummary(endpoint.upstream, now)
+    ? getUpstreamTelemetrySummary(endpoint.upstream, now, snapshot)
     : null;
-  const requestMetrics = getEndpointRequestMetricSummary(endpoint.path, now, Boolean(endpoint.upstream));
+  const requestMetrics = getEndpointRequestMetricSummary(endpoint.path, now, Boolean(endpoint.upstream), snapshot);
   const { lastUpdatedAt, freshness } = computeEndpointFreshness(now, requestMetrics, upstreamTelemetry);
   const samplePayload = buildPaymentMessage({
     version: '1',
@@ -1072,8 +1178,23 @@ function recordEndpointRequestMetric(path: string, event: EndpointRequestMetricE
   store.set(path, pruneEndpointRequestEvents([...existing, event], event.at));
 }
 
-function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream: boolean): EndpointRequestMetricSummary {
-  const events = pruneEndpointRequestEvents(getEndpointRequestMetricsState().get(path) || [], now);
+async function recordEndpointRequestMetricWithDurable(
+  env: Env,
+  path: string,
+  event: EndpointRequestMetricEvent,
+): Promise<void> {
+  recordEndpointRequestMetric(path, event);
+  await appendDurableMetric(env, { kind: 'endpoint', key: path, event });
+}
+
+function getEndpointRequestMetricSummary(
+  path: string,
+  now: number,
+  hasUpstream: boolean,
+  snapshot: MetricsSnapshot | null = null,
+): EndpointRequestMetricSummary {
+  const sourceEvents = snapshot ? snapshot.endpointMetrics[path] || [] : getEndpointRequestMetricsState().get(path) || [];
+  const events = pruneEndpointRequestEvents(sourceEvents, now);
   const totalRequests = events.length;
 
   const recentBuckets = Array.from({ length: ENDPOINT_METRICS_BUCKET_COUNT }, (_, index) => {
@@ -1299,15 +1420,17 @@ async function getSettlementStatus(
 }
 
 
-export function createCatalog(
+export async function createCatalog(
   baseUrl: string,
   payTo: string,
+  env: Env,
   minConfirmations = DEFAULT_PAYMENT_MIN_CONFIRMATIONS,
   maxAgeSeconds = DEFAULT_PAYMENT_MAX_AGE_SECONDS,
   futureSkewSeconds = DEFAULT_PAYMENT_MAX_FUTURE_SKEW_SECONDS,
   maxSettlementAgeBlocks = DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
 ) {
   const remediationRefs = buildRemediationRefs(baseUrl);
+  const snapshot = await getDurableMetricsSnapshot(env, Date.now());
 
   return {
     name: 'API Market',
@@ -1356,7 +1479,7 @@ export function createCatalog(
       health: `${baseUrl}${HEALTH_PATH}`,
       catalog: `${baseUrl}${CATALOG_PATH}`,
     },
-    endpoints: API_ENDPOINTS.map((endpoint) => getCatalogEndpoint(baseUrl, payTo, endpoint)),
+    endpoints: API_ENDPOINTS.map((endpoint) => getCatalogEndpoint(baseUrl, payTo, endpoint, snapshot)),
   };
 }
 
@@ -2029,6 +2152,59 @@ type EndpointRequestMetricSummary = {
   requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
 };
 
+type MetricsSnapshot = {
+  upstreamTelemetry: Record<string, UpstreamTelemetryEvent[]>;
+  endpointMetrics: Record<string, EndpointRequestMetricEvent[]>;
+};
+
+async function appendDurableMetric(
+  env: Env,
+  payload:
+    | { kind: 'upstream'; key: string; event: UpstreamTelemetryEvent }
+    | { kind: 'endpoint'; key: string; event: EndpointRequestMetricEvent },
+): Promise<void> {
+  if (!env.METRICS_STORE) {
+    return;
+  }
+
+  try {
+    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
+    const response = await stub.fetch('https://metrics-store/append', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(`metrics store ${response.status}`);
+    }
+  } catch (error) {
+    console.error('metrics store append failed', error);
+  }
+}
+
+async function getDurableMetricsSnapshot(env: Env, now: number): Promise<MetricsSnapshot | null> {
+  if (!env.METRICS_STORE) {
+    return null;
+  }
+
+  try {
+    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
+    const response = await stub.fetch('https://metrics-store/snapshot', {
+      method: 'POST',
+      body: JSON.stringify({ now }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`metrics store ${response.status}`);
+    }
+
+    return (await response.json()) as MetricsSnapshot;
+  } catch (error) {
+    console.error('metrics store snapshot failed', error);
+    return null;
+  }
+}
+
 type EndpointFreshness = {
   status: 'fresh' | 'stale' | 'unknown';
   ageSeconds: number | null;
@@ -2110,8 +2286,22 @@ function recordUpstreamTelemetry(source: string, event: UpstreamTelemetryEvent):
   store.set(source, next);
 }
 
-function getUpstreamTelemetrySummary(source: string, now: number): UpstreamTelemetrySummary {
-  const events = pruneTelemetryEvents(getUpstreamTelemetryState().get(source) || [], now);
+async function recordUpstreamTelemetryWithDurable(
+  env: Env,
+  source: string,
+  event: UpstreamTelemetryEvent,
+): Promise<void> {
+  recordUpstreamTelemetry(source, event);
+  await appendDurableMetric(env, { kind: 'upstream', key: source, event });
+}
+
+function getUpstreamTelemetrySummary(
+  source: string,
+  now: number,
+  snapshot: MetricsSnapshot | null = null,
+): UpstreamTelemetrySummary {
+  const sourceEvents = snapshot ? snapshot.upstreamTelemetry[source] || [] : getUpstreamTelemetryState().get(source) || [];
+  const events = pruneTelemetryEvents(sourceEvents, now);
   const sampleSize = events.length;
 
   if (sampleSize === 0) {
@@ -2161,13 +2351,19 @@ function getUpstreamCircuitSnapshot(source: string, now: number): { open: boolea
   return { open: state.openUntil > now, openUntil: state.openUntil };
 }
 
-function recordUpstreamSuccess(source: string, now: number, latencyMs: number): void {
+async function recordUpstreamSuccess(env: Env, source: string, now: number, latencyMs: number): Promise<void> {
   const store = getUpstreamCircuitState();
   store.set(source, { failures: 0, openUntil: 0 });
-  recordUpstreamTelemetry(source, { at: now, ok: true, latencyMs, code: 'OK' });
+  await recordUpstreamTelemetryWithDurable(env, source, { at: now, ok: true, latencyMs, code: 'OK' });
 }
 
-function recordUpstreamFailure(source: string, code: UpstreamErrorCode, now: number, latencyMs: number): void {
+async function recordUpstreamFailure(
+  env: Env,
+  source: string,
+  code: UpstreamErrorCode,
+  now: number,
+  latencyMs: number,
+): Promise<void> {
   const store = getUpstreamCircuitState();
   const state = store.get(source) || { failures: 0, openUntil: 0 };
   const failures = state.failures + 1;
@@ -2178,7 +2374,7 @@ function recordUpstreamFailure(source: string, code: UpstreamErrorCode, now: num
     openUntil,
     lastErrorCode: code,
   });
-  recordUpstreamTelemetry(source, { at: now, ok: false, latencyMs, code });
+  await recordUpstreamTelemetryWithDurable(env, source, { at: now, ok: false, latencyMs, code });
 }
 
 async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
@@ -2238,7 +2434,7 @@ async function fetchHyperliquidRecentTrades(coin: string): Promise<HyperliquidTr
   return Array.isArray(payload) ? (payload as HyperliquidTrade[]) : [];
 }
 
-async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
+async function fetchUpstreamData(path: string, env: Env): Promise<UpstreamResult> {
   const sourceByPath: Record<string, string | undefined> = {
     '/api/btc-price': 'binance',
     '/api/eth-price': 'binance',
@@ -2257,7 +2453,12 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
   const now = Date.now();
   const circuit = getUpstreamCircuitSnapshot(source, now);
   if (circuit.open) {
-    recordUpstreamTelemetry(source, { at: now, ok: false, latencyMs: 0, code: 'UPSTREAM_CIRCUIT_OPEN' });
+    await recordUpstreamTelemetryWithDurable(env, source, {
+      at: now,
+      ok: false,
+      latencyMs: 0,
+      code: 'UPSTREAM_CIRCUIT_OPEN',
+    });
     return {
       data: null,
       meta: { source, status: 'fallback', reasonCode: 'UPSTREAM_CIRCUIT_OPEN', retryable: true },
@@ -2276,7 +2477,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
+      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           symbol: 'BTC',
@@ -2297,7 +2498,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
+      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           symbol: 'ETH',
@@ -2388,7 +2589,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'no positions', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
+      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           source: 'hyperliquid',
@@ -2412,7 +2613,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing candles', retryable: true } as UpstreamFailure;
       }
 
-      recordUpstreamSuccess(source, Date.now(), Date.now() - startedAt);
+      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
       return {
         data: {
           symbol: 'BTCUSDT',
@@ -2435,7 +2636,7 @@ async function fetchUpstreamData(path: string): Promise<UpstreamResult> {
     throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'unsupported path', retryable: false } as UpstreamFailure;
   } catch (error) {
     const failure = (error || { code: 'UPSTREAM_FETCH_FAILED', message: 'unknown upstream error', retryable: true }) as UpstreamFailure;
-    recordUpstreamFailure(source, failure.code || 'UPSTREAM_FETCH_FAILED', Date.now(), Date.now() - startedAt);
+    await recordUpstreamFailure(env, source, failure.code || 'UPSTREAM_FETCH_FAILED', Date.now(), Date.now() - startedAt);
     console.error('Upstream fetch failed:', source, failure.code, failure.message);
 
     return {
@@ -2523,14 +2724,15 @@ const worker = {
         DEFAULT_PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS,
       );
 
-      const catalog = createCatalog(
+      const catalog = await createCatalog(
         origin,
         payTo,
+        env,
         minConfirmations,
         maxAgeSeconds,
         maxFutureSkewSeconds,
         maxSettlementAgeBlocks,
-      ) as ReturnType<typeof createCatalog> & { payment: Record<string, unknown> };
+      ) as Awaited<ReturnType<typeof createCatalog>> & { payment: Record<string, unknown> };
       catalog.payment.settlementStatusEndpointTemplate = `${origin}${SETTLEMENT_PATH_PREFIX}{txHash}`;
       catalog.payment.settlementStatusProofHeaders = ['PAYMENT-SIGNATURE'];
       catalog.payment.settlementStatusFilters = ['payer', 'resource', 'payTo', 'minAmount'];
@@ -2571,7 +2773,7 @@ const worker = {
       if (rateLimitResponse) {
         const limitedHeaders = new Headers(rateLimitResponse.headers);
         limitedHeaders.set(REQUEST_ID_HEADER, requestId);
-        recordEndpointRequestMetric(path, {
+        await recordEndpointRequestMetricWithDurable(env, path, {
           at: now,
           statusCode: 429,
           requestId,
@@ -2602,7 +2804,7 @@ const worker = {
           requestId,
         );
 
-        recordEndpointRequestMetric(path, {
+        await recordEndpointRequestMetricWithDurable(env, path, {
           at: Date.now(),
           statusCode: response.status,
           requestId,
@@ -2612,7 +2814,7 @@ const worker = {
         return response;
       }
 
-      const upstreamResult = await fetchUpstreamData(path);
+      const upstreamResult = await fetchUpstreamData(path, env);
       const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
 
       const response = apiResponse(
@@ -2635,7 +2837,7 @@ const worker = {
         { headers: { [REQUEST_ID_HEADER]: requestId } },
       );
 
-      recordEndpointRequestMetric(path, {
+      await recordEndpointRequestMetricWithDurable(env, path, {
         at: Date.now(),
         statusCode: response.status,
         requestId,
