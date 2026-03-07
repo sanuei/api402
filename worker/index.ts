@@ -14,6 +14,11 @@ export interface Env {
   ASSETS?: Fetcher;
 }
 
+export interface LocalizedText {
+  zh: string;
+  en: string;
+}
+
 declare global {
   var rateLimiter: Map<string, number[]>;
   var usedPaymentNonces: Map<string, number>;
@@ -22,8 +27,9 @@ declare global {
 export interface APIEndpoint {
   path: string;
   price: string;
-  description: string;
-  category: string;
+  label: LocalizedText;
+  description: LocalizedText;
+  category: LocalizedText;
   upstream?: string;
   tags: string[];
   status: 'live' | 'demo';
@@ -76,8 +82,12 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/btc-price',
     price: '0.00001',
-    description: 'Real-time BTC price feed aggregated from Binance.',
-    category: 'Market Data',
+    label: { zh: 'BTC 价格', en: 'BTC Price' },
+    description: {
+      zh: '聚合自 Binance 的 BTC 实时价格。',
+      en: 'Real-time BTC price feed aggregated from Binance.',
+    },
+    category: { zh: '市场数据', en: 'Market Data' },
     upstream: 'binance',
     tags: ['btc', 'market-data', 'realtime'],
     status: 'live',
@@ -86,8 +96,12 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/eth-price',
     price: '0.00001',
-    description: 'Real-time ETH price feed aggregated from Binance.',
-    category: 'Market Data',
+    label: { zh: 'ETH 价格', en: 'ETH Price' },
+    description: {
+      zh: '聚合自 Binance 的 ETH 实时价格。',
+      en: 'Real-time ETH price feed aggregated from Binance.',
+    },
+    category: { zh: '市场数据', en: 'Market Data' },
     upstream: 'binance',
     tags: ['eth', 'market-data', 'realtime'],
     status: 'live',
@@ -96,8 +110,12 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/deepseek',
     price: '0.003',
-    description: 'Demo DeepSeek chat completion response.',
-    category: 'AI',
+    label: { zh: 'DeepSeek 对话', en: 'DeepSeek Chat' },
+    description: {
+      zh: 'DeepSeek 对话响应示例。',
+      en: 'Demo DeepSeek chat completion response.',
+    },
+    category: { zh: '人工智能', en: 'AI' },
     tags: ['ai', 'chat', 'demo'],
     status: 'demo',
     sample: () => ({
@@ -109,8 +127,12 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/qwen',
     price: '0.01',
-    description: 'Demo Qwen3 Max chat completion response.',
-    category: 'AI',
+    label: { zh: 'Qwen 对话', en: 'Qwen Chat' },
+    description: {
+      zh: 'Qwen Max 对话响应示例。',
+      en: 'Demo Qwen3 Max chat completion response.',
+    },
+    category: { zh: '人工智能', en: 'AI' },
     tags: ['ai', 'chat', 'demo'],
     status: 'demo',
     sample: () => ({
@@ -122,8 +144,12 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/whale-positions',
     price: '0.00002',
-    description: 'Demo HyperLiquid whale position snapshots.',
-    category: 'Onchain Intelligence',
+    label: { zh: '巨鲸仓位', en: 'Whale Positions' },
+    description: {
+      zh: 'HyperLiquid 巨鲸仓位快照示例。',
+      en: 'Demo HyperLiquid whale position snapshots.',
+    },
+    category: { zh: '链上情报', en: 'Onchain Intelligence' },
     tags: ['onchain', 'whale', 'demo'],
     status: 'demo',
     sample: () => ({
@@ -137,8 +163,12 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/kline',
     price: '0.001',
-    description: 'BTC/USDT candlestick snapshots sourced from Binance.',
-    category: 'Trading',
+    label: { zh: 'K 线数据', en: 'Candlestick Data' },
+    description: {
+      zh: '来自 Binance 的 BTC/USDT K 线快照。',
+      en: 'BTC/USDT candlestick snapshots sourced from Binance.',
+    },
+    category: { zh: '交易', en: 'Trading' },
     upstream: 'binance',
     tags: ['trading', 'candles', 'binance'],
     status: 'live',
@@ -292,14 +322,27 @@ function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoin
     path: endpoint.path,
     url: `${baseUrl}${endpoint.path}`,
     method: 'GET',
+    label: endpoint.label.en,
     price: endpoint.price,
     currency: 'USDC',
-    category: endpoint.category,
-    description: endpoint.description,
+    category: endpoint.category.en,
+    description: endpoint.description.en,
     access: endpoint.upstream ? 'live_or_fallback' : 'mock_demo',
     upstream: endpoint.upstream || null,
     status: endpoint.status,
     tags: endpoint.tags,
+    locales: {
+      zh: {
+        label: endpoint.label.zh,
+        category: endpoint.category.zh,
+        description: endpoint.description.zh,
+      },
+      en: {
+        label: endpoint.label.en,
+        category: endpoint.category.en,
+        description: endpoint.description.en,
+      },
+    },
     exampleRequest: {
       curl: `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" ${baseUrl}${endpoint.path}`,
       paymentPayload: samplePayload,
@@ -362,7 +405,7 @@ function createPaymentRequired(
       chain: 'base',
       scheme: 'exact',
       path: endpoint.path,
-      description: endpoint.description,
+      description: endpoint.description.en,
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
       paymentSchema: {
         version: '1',
@@ -717,8 +760,8 @@ const worker = {
             endpoint.path,
             {
               price: endpoint.price,
-              description: endpoint.description,
-              category: endpoint.category,
+              description: endpoint.description.en,
+              category: endpoint.category.en,
               status: endpoint.status,
               tags: endpoint.tags,
             },
@@ -749,7 +792,7 @@ const worker = {
           paymentMode: verification.code,
           price: endpoint.price,
           payTo,
-          category: endpoint.category,
+          category: endpoint.category.en,
           timestamp: Date.now(),
           clientIP: getClientIP(request),
           origin: upstreamData ? 'proxied' : 'mock',

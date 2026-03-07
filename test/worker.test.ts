@@ -54,7 +54,13 @@ test('catalog exposes enriched endpoint metadata', async () => {
   const response = await worker.fetch(new Request('https://api-402.com/api/v1/catalog'), createEnv());
   const body = (await response.json()) as {
     payment: { payloadSchema: { requiredFields: string[] } };
-    endpoints: Array<{ exampleRequest: unknown; exampleResponse: unknown; status: string; tags: string[] }>;
+    endpoints: Array<{
+      exampleRequest: unknown;
+      exampleResponse: unknown;
+      status: string;
+      tags: string[];
+      locales?: { zh?: { label?: string }; en?: { label?: string } };
+    }>;
   };
 
   assert.equal(response.status, 200);
@@ -64,6 +70,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(Array.isArray(body.endpoints[0].tags), true);
   assert.ok(body.endpoints[0].exampleRequest);
   assert.ok(body.endpoints[0].exampleResponse);
+  assert.equal(typeof body.endpoints[0].locales?.zh?.label, 'string');
+  assert.equal(typeof body.endpoints[0].locales?.en?.label, 'string');
 });
 
 test('health endpoint returns status information', async () => {

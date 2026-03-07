@@ -240,3 +240,47 @@
 1. 把双语字段下沉到 catalog，减少前端本地文案映射
 2. 补 `hreflang` 与多语言 sitemap 策略
 3. 继续把前端拆成 `i18n`、`wallet`、`catalog` 等模块
+
+## 2026-03-08
+
+### 本轮目标
+
+- 把接口双语字段正式下沉到 Worker catalog
+- 补 `hreflang`、多语言 canonical 和 sitemap
+- 让前端直接消费 catalog 的多语言字段，减少本地写死映射
+
+### 已完成
+
+- Worker catalog 现在输出接口 `label` 与 `locales.zh/en`
+- 前端改为直接读取 catalog 里的中英文字段渲染卡片和详情
+- 首页支持通过 `?lang=zh` / `?lang=en` 切换语言
+- 补 canonical、`hreflang`、`og:locale` 和运行时 JSON-LD 同步
+- sitemap 已增加中英文入口与 alternate 关系
+- Worker 测试新增对 catalog 双语字段的断言
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [public/sitemap.xml](/Users/yangshangwei/Desktop/网页项目/api402/public/sitemap.xml)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 7 个测试全部通过
+
+### 遗留问题
+
+- 目前中英文还是共用同一条页面路由，`?lang` 方案更偏轻量，不是独立静态路由
+- 搜索引擎是否完全执行前端运行时切换，仍取决于抓取端渲染能力
+
+### 下一步建议
+
+1. 把 `/en` 和 `/zh` 做成明确的静态入口路由
+2. 给 catalog 增加延迟、可用性和更新时间字段
+3. 把 `whale-positions` 接成真实上游代理

@@ -3,14 +3,34 @@ import './styles.css';
 import type { CatalogEndpoint, CatalogResponse, HealthResponse } from './types';
 
 const REMOTE_API_BASE = 'https://api-market-x402.sonic980828.workers.dev';
+const SITE_URL = 'https://api-402.com/';
 const SAME_ORIGIN_HOST_PATTERNS = [/api-402\.com$/, /workers\.dev$/];
 type Language = 'zh' | 'en';
 const LANGUAGE_STORAGE_KEY = 'api-market-language';
 
+function normalizeLanguage(value: string | null | undefined): Language | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value.toLowerCase();
+  if (normalized.startsWith('zh')) {
+    return 'zh';
+  }
+
+  if (normalized.startsWith('en')) {
+    return 'en';
+  }
+
+  return null;
+}
+
 const DEFAULT_LANGUAGE: Language =
   typeof window !== 'undefined'
-    ? ((window.localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language | null) ||
-        (navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en'))
+    ? (normalizeLanguage(new URLSearchParams(window.location.search).get('lang')) ||
+        normalizeLanguage(window.localStorage.getItem(LANGUAGE_STORAGE_KEY)) ||
+        normalizeLanguage(navigator.language) ||
+        'en')
     : 'en';
 
 const translations: Record<Language, Record<string, string>> = {
@@ -323,49 +343,67 @@ function shortenAddress(value: string): string {
   return value.length <= 14 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
 }
 
-function getLocalizedEndpointLabel(endpoint: CatalogEndpoint): string {
-  const zhMap: Record<string, string> = {
-    '/api/btc-price': 'BTC 价格',
-    '/api/eth-price': 'ETH 价格',
-    '/api/deepseek': 'DeepSeek 对话',
-    '/api/qwen': 'Qwen 对话',
-    '/api/whale-positions': '巨鲸仓位',
-    '/api/kline': 'K 线数据',
-  };
-
-  return currentLanguage === 'zh'
-    ? zhMap[endpoint.path] || endpoint.path.replace('/api/', '').replaceAll('-', ' ')
-    : endpoint.path.replace('/api/', '').replaceAll('-', ' ');
+function getLocalizedFields(endpoint: CatalogEndpoint) {
+  return (
+    endpoint.locales?.[currentLanguage] ||
+    endpoint.locales?.en || {
+      label: endpoint.label || endpoint.path.replace('/api/', '').replaceAll('-', ' '),
+      category: endpoint.category,
+      description: endpoint.description,
+    }
+  );
 }
 
-function getLocalizedCategory(category: string): string {
-  if (currentLanguage === 'en') return category;
-
-  const categoryMap: Record<string, string> = {
-    'Market Data': '市场数据',
-    AI: '人工智能',
-    'Onchain Intelligence': '链上情报',
-    Trading: '交易',
-  };
-
-  return categoryMap[category] || category;
+function getLanguageUrl(language: Language): string {
+  return `${SITE_URL}?lang=${language}`;
 }
 
-function getLocalizedDescription(endpoint: CatalogEndpoint): string {
-  if (currentLanguage === 'en') {
-    return endpoint.description;
+function syncLanguageUrl(language: Language) {
+  const url = new URL(window.location.href);
+  url.searchParams.set('lang', language);
+  const next = `${url.pathname}${url.search}${url.hash}`;
+  window.history.replaceState({}, '', next);
+}
+
+function updateStructuredData() {
+  const websiteSchema = document.getElementById('websiteSchema');
+  const webApiSchema = document.getElementById('webApiSchema');
+  const description = t('meta.description');
+
+  if (websiteSchema) {
+    websiteSchema.textContent = JSON.stringify(
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        name: 'API Market',
+        url: getLanguageUrl(currentLanguage),
+        inLanguage: currentLanguage === 'zh' ? 'zh-CN' : 'en',
+        description,
+      },
+      null,
+      2,
+    );
   }
 
-  const descriptionMap: Record<string, string> = {
-    '/api/btc-price': '聚合自 Binance 的 BTC 实时价格。',
-    '/api/eth-price': '聚合自 Binance 的 ETH 实时价格。',
-    '/api/deepseek': 'DeepSeek 对话响应示例。',
-    '/api/qwen': 'Qwen Max 对话响应示例。',
-    '/api/whale-positions': 'HyperLiquid 巨鲸仓位快照示例。',
-    '/api/kline': '来自 Binance 的 BTC/USDT K 线快照。',
-  };
-
-  return descriptionMap[endpoint.path] || endpoint.description;
+  if (webApiSchema) {
+    webApiSchema.textContent = JSON.stringify(
+      {
+        '@context': 'https://schema.org',
+        '@type': 'WebAPI',
+        name: 'API Market Gateway',
+        url: getLanguageUrl(currentLanguage),
+        documentation: `${SITE_URL}#examples`,
+        provider: {
+          '@type': 'Organization',
+          name: 'API Market',
+        },
+        inLanguage: currentLanguage === 'zh' ? 'zh-CN' : 'en',
+        description,
+      },
+      null,
+      2,
+    );
+  }
 }
 
 function applyStaticTranslations() {
@@ -375,13 +413,28 @@ function applyStaticTranslations() {
   const description = document.querySelector<HTMLMetaElement>('meta[name="description"]');
   if (description) description.content = t('meta.description');
 
+  const canonicalLink = document.getElementById('canonicalLink') as HTMLLinkElement | null;
+  if (canonicalLink) canonicalLink.href = getLanguageUrl(currentLanguage);
+  const alternateZh = document.getElementById('alternateZh') as HTMLLinkElement | null;
+  if (alternateZh) alternateZh.href = getLanguageUrl('zh');
+  const alternateEn = document.getElementById('alternateEn') as HTMLLinkElement | null;
+  if (alternateEn) alternateEn.href = getLanguageUrl('en');
+
+  const ogTitle = document.querySelector<HTMLMetaElement>('meta[property="og:title"]');
+  if (ogTitle) ogTitle.content = t('meta.title');
   const ogDescription = document.querySelector<HTMLMetaElement>('meta[property="og:description"]');
-  if (ogDescription) ogDescription.content = currentLanguage === 'zh' ? translations.zh['meta.description'] : translations.en['meta.description'];
+  if (ogDescription) ogDescription.content = t('meta.description');
+  const ogUrl = document.querySelector<HTMLMetaElement>('meta[property="og:url"]');
+  if (ogUrl) ogUrl.content = getLanguageUrl(currentLanguage);
+  const ogLocale = document.querySelector<HTMLMetaElement>('meta[property="og:locale"]');
+  if (ogLocale) ogLocale.content = currentLanguage === 'zh' ? 'zh_CN' : 'en_US';
+  const ogLocaleAlternate = document.querySelector<HTMLMetaElement>('meta[property="og:locale:alternate"]');
+  if (ogLocaleAlternate) ogLocaleAlternate.content = currentLanguage === 'zh' ? 'en_US' : 'zh_CN';
+
+  const twitterTitle = document.querySelector<HTMLMetaElement>('meta[name="twitter:title"]');
+  if (twitterTitle) twitterTitle.content = t('meta.title');
   const twitterDescription = document.querySelector<HTMLMetaElement>('meta[name="twitter:description"]');
-  if (twitterDescription) {
-    twitterDescription.content =
-      currentLanguage === 'zh' ? translations.zh['meta.description'] : translations.en['meta.description'];
-  }
+  if (twitterDescription) twitterDescription.content = t('meta.description');
 
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
     const key = element.dataset.i18n;
@@ -389,6 +442,7 @@ function applyStaticTranslations() {
     element.textContent = t(key);
   });
 
+  updateStructuredData();
   getElement<HTMLButtonElement>('languageToggle').textContent = currentLanguage === 'zh' ? 'EN' : '中文';
 }
 
@@ -427,12 +481,13 @@ function setHeroTerminal(endpoint: CatalogEndpoint | null) {
 function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
   selectedEndpoint = endpoint;
   if (!endpoint) return;
+  const localized = getLocalizedFields(endpoint);
 
-  getElement<HTMLHeadingElement>('selectedName').textContent = getLocalizedEndpointLabel(endpoint);
+  getElement<HTMLHeadingElement>('selectedName').textContent = localized.label;
   getElement<HTMLSpanElement>('selectedPrice').textContent = `${endpoint.price} USDC`;
-  getElement<HTMLParagraphElement>('selectedDescription').textContent = getLocalizedDescription(endpoint);
+  getElement<HTMLParagraphElement>('selectedDescription').textContent = localized.description;
   getElement<HTMLDivElement>('selectedPath').textContent = endpoint.url;
-  getElement<HTMLDivElement>('selectedCategory').textContent = getLocalizedCategory(endpoint.category);
+  getElement<HTMLDivElement>('selectedCategory').textContent = localized.category;
   getElement<HTMLDivElement>('selectedAccess').textContent = `${endpoint.access} / ${endpoint.status || t('dynamic.selectedUnknown')}`;
   getElement<HTMLAnchorElement>('openSelectedApi').href = endpoint.url;
 
@@ -476,19 +531,21 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
   const grid = getElement<HTMLDivElement>('catalogGrid');
   grid.innerHTML = endpoints
     .map(
-      (endpoint, index) => `
+      (endpoint, index) => {
+        const localized = getLocalizedFields(endpoint);
+        return `
         <button
           type="button"
           class="api-card soft-card rounded-[28px] p-6 text-left transition-all duration-300"
           data-endpoint-path="${escapeHtml(endpoint.path)}"
         >
           <div class="flex items-start justify-between gap-4">
-            <div class="badge-blue rounded-full px-3 py-1 text-xs mono">${escapeHtml(getLocalizedCategory(endpoint.category))}</div>
+            <div class="badge-blue rounded-full px-3 py-1 text-xs mono">${escapeHtml(localized.category)}</div>
             <div class="badge-green rounded-full px-3 py-1 text-xs mono">${escapeHtml(endpoint.price)} USDC</div>
           </div>
           <div class="mt-5">
-            <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(getLocalizedEndpointLabel(endpoint))}</h3>
-            <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(getLocalizedDescription(endpoint))}</p>
+            <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(localized.label)}</h3>
+            <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(localized.description)}</p>
           </div>
           <div class="mt-6 flex items-center justify-between text-sm">
             <span class="${endpoint.access === 'mock_demo' ? 'badge-amber' : 'badge-green'} rounded-full px-3 py-1 text-xs mono">
@@ -497,7 +554,8 @@ function renderCatalog(endpoints: CatalogEndpoint[]) {
             <span class="text-slate-500 mono">${String(index + 1).padStart(2, '0')}</span>
           </div>
         </button>
-      `,
+      `;
+      },
     )
     .join('');
 }
@@ -677,6 +735,7 @@ function closeModal() {
 function setLanguage(language: Language) {
   currentLanguage = language;
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+  syncLanguageUrl(language);
   applyStaticTranslations();
   if (catalog) {
     renderCatalog(catalog.endpoints);

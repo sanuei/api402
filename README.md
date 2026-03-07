@@ -19,7 +19,9 @@
 - 当前保留 demo 支付模式，方便前端和 SDK 联调
 - 支持 MetaMask、Coinbase Wallet、Rabby Wallet 地址连接
 - 支持首页中英文一键切换，并记住用户语言选择
+- catalog 已输出中英文字段，前端直接消费 Worker 返回的多语言文案
 - 提供基础 SEO 资源，包括 favicon、OG 图、robots 和 sitemap
+- 已补 `hreflang`、多语言 canonical 和双语 sitemap
 
 ## Core Routes
 

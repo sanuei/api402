@@ -25,7 +25,9 @@
 - 已加入 nonce 防重放逻辑
 - 已支持 Rabby Wallet 地址连接
 - 已支持首页中英文切换与语言记忆
+- 已把 catalog 的名称/分类/描述下沉为中英文字段
 - 已补 logo、favicon、Open Graph、robots 和 sitemap
+- 已补 `hreflang`、多语言 canonical 与双语 sitemap
 
 ## Phase 1
 

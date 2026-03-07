@@ -9,14 +9,19 @@
     <meta name="keywords" content="x402, API payment gateway, USDC API, Base micropayments, AI agent API, Rabby wallet, crypto API market">
     <meta name="author" content="API Market">
     <meta name="robots" content="index,follow">
-    <link rel="canonical" href="https://api-402.com/">
+    <link rel="canonical" id="canonicalLink" href="https://api-402.com/?lang=zh">
+    <link rel="alternate" id="alternateZh" hreflang="zh-CN" href="https://api-402.com/?lang=zh">
+    <link rel="alternate" id="alternateEn" hreflang="en" href="https://api-402.com/?lang=en">
+    <link rel="alternate" hreflang="x-default" href="https://api-402.com/">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="apple-touch-icon" href="/logo-mark.svg">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="API Market">
+    <meta property="og:locale" content="zh_CN">
+    <meta property="og:locale:alternate" content="en_US">
     <meta property="og:title" content="API Market | Pay per API call with USDC">
     <meta property="og:description" content="An x402 API gateway for developers and AI agents. Pay only when you call, on Base with USDC.">
-    <meta property="og:url" content="https://api-402.com/">
+    <meta property="og:url" content="https://api-402.com/?lang=zh">
     <meta property="og:image" content="https://api-402.com/og-card.svg">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="API Market | x402 API Payment Gateway">
@@ -29,26 +34,28 @@
         href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <script type="application/ld+json">
+    <script id="websiteSchema" type="application/ld+json">
         {
           "@context": "https://schema.org",
           "@type": "WebSite",
           "name": "API Market",
-          "url": "https://api-402.com/",
+          "url": "https://api-402.com/?lang=zh",
+          "inLanguage": "zh-CN",
           "description": "x402 API Payment Gateway on Base for developers and AI agents."
         }
     </script>
-    <script type="application/ld+json">
+    <script id="webApiSchema" type="application/ld+json">
         {
           "@context": "https://schema.org",
           "@type": "WebAPI",
           "name": "API Market Gateway",
-          "url": "https://api-402.com/",
+          "url": "https://api-402.com/?lang=zh",
           "documentation": "https://api-402.com/#examples",
           "provider": {
             "@type": "Organization",
             "name": "API Market"
           },
+          "inLanguage": "zh-CN",
           "description": "Machine-readable API marketplace using x402-style micropayments with USDC on Base."
         }
     </script>

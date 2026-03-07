@@ -1,7 +1,14 @@
+export interface CatalogEndpointLocale {
+  label: string;
+  category: string;
+  description: string;
+}
+
 export interface CatalogEndpoint {
   path: string;
   url: string;
   method: string;
+  label: string;
   price: string;
   currency: string;
   category: string;
@@ -10,6 +17,10 @@ export interface CatalogEndpoint {
   upstream: string | null;
   status: 'live' | 'demo' | string;
   tags: string[];
+  locales?: {
+    zh: CatalogEndpointLocale;
+    en: CatalogEndpointLocale;
+  };
   exampleRequest?: {
     curl?: string;
     paymentPayload?: Record<string, unknown>;
