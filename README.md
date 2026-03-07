@@ -56,25 +56,22 @@ npm run dev
 
 ## Deployment
 
+发布与回滚请直接按运行手册执行：
+
+- [doc/DEPLOYMENT.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/DEPLOYMENT.md)
+
+快速发布命令：
+
 ```bash
 npm run deploy
 ```
 
-生产环境需要在 Cloudflare Worker 中配置 `PAY_TO`，它就是用户调用付费 API 后应该支付到的钱包地址。
-当前仓库默认已配置为 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`。
-支付资产固定为 `Base` 主网原生 `USDC`，合约地址为 `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`。
-默认 Base RPC 为 `https://mainnet.base.org`，可通过 `BASE_RPC_URL` 覆盖。
-生产建议配置 `BASE_RPC_URLS`（逗号分隔）提供主备 RPC，Worker 会按顺序自动回退，提高结算校验可用性。
-`PAYMENT_MIN_CONFIRMATIONS` 用于控制交易回执最少确认块数，默认值为 `2`。
-`PAYMENT_MAX_AGE_SECONDS` 用于限制支付 payload 的最大有效时间窗（默认 `900` 秒）。
-`PAYMENT_MAX_FUTURE_SKEW_SECONDS` 用于限制 `issuedAt` 允许的未来时钟偏差（默认 `120` 秒）。
-`PAYMENT_MAX_SETTLEMENT_AGE_BLOCKS` 用于限制链上结算证明允许的最大区块年龄（默认 `7200` 块）。
-`REPLAY_GUARD` Durable Object 负责持久化 nonce / tx hash 防重放状态。
+说明：
 
-`deploy` 会先同步 `index.html` 到 `dist/index.html`，再执行 `wrangler deploy`。
-
-另外，`wrangler.toml` 已配置 `[build] command = "npm run build:static"`。
-这意味着即使部署平台直接执行 `npx wrangler deploy`，也会先生成 `dist/`，不会再因为缺少静态目录而失败。
+- 生产收款地址由 `PAY_TO` 指定（当前默认 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`）
+- 支付资产固定为 Base 主网原生 USDC（`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`）
+- 建议使用 `BASE_RPC_URLS`（逗号分隔）配置主备 RPC
+- 防重放依赖 `REPLAY_GUARD` Durable Object
 
 ## Current Scope
 

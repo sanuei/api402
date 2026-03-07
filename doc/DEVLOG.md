@@ -2,6 +2,39 @@
 
 ## 2026-03-08
 
+### 本轮目标
+
+- 在 AI 上游凭据缺失导致 live integration 阻塞时，优先补齐生产部署清晰度（发布/回滚/排障 runbook）
+
+### 已完成
+
+- 新增 [doc/DEPLOYMENT.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/DEPLOYMENT.md)
+  - 明确唯一正式部署目标：`api-market-x402`
+  - 明确发布前检查、生产必备配置、发布步骤、发布后 smoke checks
+  - 明确回滚路径与只读故障诊断顺序（health → catalog → 402/remediation → settlement → upstream meta）
+- README 的 Deployment 章节改为引用 runbook，避免发布流程散落
+- ROADMAP 同步“部署清晰度已完成”状态，并替换下一轮任务列表
+
+### 涉及文件
+
+- [doc/DEPLOYMENT.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/DEPLOYMENT.md)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 提供 AI 上游凭据后，优先把 `/api/deepseek`、`/api/qwen` 切到真实上游
+2. 为 remediation 增加 changelog / deprecation 公告地址
+3. 将 upstream 遥测扩展为持久化时间序列
+
+## 2026-03-08
+
 ### 本轮状态
 
 - 阻塞（未实施代码变更）

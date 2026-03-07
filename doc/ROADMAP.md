@@ -44,6 +44,7 @@
 - 已为 live 上游接口补统一错误码、熔断冷却与 machine-readable fallback 元信息（`_meta.upstream` + catalog `upstreamPolicy`）
 - catalog `upstreamPolicy` 已补 15 分钟窗口的可用性/延迟遥测字段（successRate、avg/p95 latency、last error）
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
+- 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 
 ## Phase 1
 
@@ -123,8 +124,8 @@
 
 1. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
 2. 为 remediation 字段补 changelog / deprecation 公告地址，完善 SDK 自动兼容升级路径
-3. 补 `doc/DEPLOYMENT.md`，明确生产发布、回滚和故障诊断路径
-4. 将 upstream 遥测扩展为持久化时间序列（避免冷启动丢失窗口）
+3. 将 upstream 遥测扩展为持久化时间序列（避免冷启动丢失窗口）
+4. 增加 endpoint 级请求量统计与最近错误趋势，支撑转化与可靠性运营
 
 ## Operations
 
