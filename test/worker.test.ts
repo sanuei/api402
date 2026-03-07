@@ -206,6 +206,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
         averageBlockSeconds: number;
         recommendedRetryAfterSeconds: number;
       };
+      settlementStatusFilters?: string[];
     };
     endpoints: Array<{
       exampleRequest: unknown;
@@ -232,6 +233,7 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.payment.settlementPolicy?.maxSettlementAgeBlocks, 7200);
   assert.equal(body.payment.settlementPolicy?.averageBlockSeconds, 2);
   assert.equal(body.payment.settlementPolicy?.recommendedRetryAfterSeconds, 4);
+  assert.deepEqual(body.payment.settlementStatusFilters, ['payer', 'resource', 'payTo', 'minAmount']);
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
@@ -699,6 +701,62 @@ test('settlement status endpoint rejects proof when resource filter mismatches',
             'PAYMENT-SIGNATURE': encodeBase64(payload),
           },
         }),
+        createEnv(),
+      );
+      const body = (await response.json()) as { code: string };
+
+      assert.equal(response.status, 409);
+      assert.equal(body.code, 'SETTLEMENT_PROOF_MISMATCH');
+    },
+  );
+});
+
+test('settlement status endpoint supports payTo and minAmount filters without signature proof', async () => {
+  const txHash = '0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(TEST_PAY_TO, TEST_PAY_TO, '0.005', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request(`https://api-402.com/api/v1/settlement/${txHash}?payTo=${TEST_PAY_TO}&minAmount=0.004`),
+        createEnv(),
+      );
+      const body = (await response.json()) as {
+        code: string;
+        settlementProof?: {
+          verified: boolean;
+          payTo: string;
+          minAmountFilter: string;
+          transferredAmount: string;
+          mode: string;
+        } | null;
+      };
+
+      assert.equal(response.status, 200);
+      assert.equal(body.code, 'SETTLEMENT_READY');
+      assert.equal(body.settlementProof?.verified, true);
+      assert.equal(body.settlementProof?.payTo, TEST_PAY_TO.toLowerCase());
+      assert.equal(body.settlementProof?.minAmountFilter, '0.004');
+      assert.equal(body.settlementProof?.transferredAmount, '5000');
+      assert.equal(body.settlementProof?.mode, 'receipt-log-filter');
+    },
+  );
+});
+
+test('settlement status endpoint rejects when minAmount filter is not satisfied', async () => {
+  const txHash = '0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc';
+
+  await withMockedFetch(
+    {
+      eth_getTransactionReceipt: () => createTransferReceipt(TEST_PAY_TO, TEST_PAY_TO, '0.002', '0x100'),
+      eth_blockNumber: () => createBlockNumberResponse('0x101'),
+    },
+    async () => {
+      const response = await worker.fetch(
+        new Request(`https://api-402.com/api/v1/settlement/${txHash}?payTo=${TEST_PAY_TO}&minAmount=0.003`),
         createEnv(),
       );
       const body = (await response.json()) as { code: string };

@@ -4,6 +4,41 @@
 
 ### 本轮目标
 
+- 为 settlement 状态查询补齐 `payTo` / `minAmount` 过滤，提升多商户归因与支付核验可靠性
+
+### 已完成
+
+- `GET /api/v1/settlement/{txHash}` 新增 `payTo` / `minAmount` 过滤参数，支持不带签名证明时的回执日志过滤校验
+- settlement proof 校验从固定网关收款地址改为“请求中的目标收款地址（payTo filter）”绑定校验，兼容多商户归因
+- catalog 的 `settlementStatusFilters` 已扩展为 `payer` / `resource` / `payTo` / `minAmount`
+- 新增测试覆盖：
+  - 无签名证明时 `payTo` + `minAmount` 过滤成功
+  - `minAmount` 不满足时返回 `SETTLEMENT_PROOF_MISMATCH`
+- README 与 ROADMAP 已同步新的 settlement 过滤能力说明
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 给关键上游接口补统一熔断 / fallback 策略与 machine-readable 错误码
+2. 在 catalog 增加 latency / availability 指标字段
+3. 推进 AI 类接口真实上游替换，继续降低 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为 settlement 查询补可选签名证明校验（payer/resource 维度），降低第三方归因误判
 
 ### 已完成

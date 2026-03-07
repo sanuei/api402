@@ -34,7 +34,7 @@
 - 402 challenge 和成功响应已输出结构化 settlement 上下文（txHash、receiptBlock、latestBlock、confirmations）
 - catalog 和 402 challenge 已输出 settlementPolicy（确认目标、平均区块时间、推荐重试间隔）；确认数不足时会返回 Retry-After
 - 已新增 `GET /api/v1/settlement/{txHash}` 结算状态查询接口，支持 machine-readable 状态和 Retry-After 建议
-- settlement 查询已支持可选 `PAYMENT-SIGNATURE` 证明绑定校验，并支持 `payer` / `resource` 过滤归因
+- settlement 查询已支持可选 `PAYMENT-SIGNATURE` 证明绑定校验，并支持 `payer` / `resource` / `payTo` / `minAmount` 过滤归因
 - 支付签名已加入时间窗约束（`issuedAt` 最大年龄与未来时钟偏差限制），降低延迟重放风险
 - Base 结算校验已支持 `BASE_RPC_URLS` 主备 RPC 自动回退（含请求超时控制）
 - Base 结算证明已加入最大区块年龄限制（默认 7200 blocks），可拦截历史交易延迟重放
@@ -120,7 +120,7 @@
 1. 在 catalog 中增加更明确的延迟/可用性字段
 2. 为关键上游接口补统一超时、熔断与降级策略（含错误码分层）
 3. 继续把 AI 类接口从 demo 替换为真实上游并评估成本控制
-4. 给 settlement 查询增加可选 `minAmount` / `payTo` 过滤能力，补全多商户和分账场景归因
+4. 为 settlement 查询增加 `code` 到可操作补救动作的 machine-readable 映射，提升 SDK 自动恢复成功率
 
 ## Operations
 

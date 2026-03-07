@@ -469,6 +469,10 @@ function isTransactionHash(value: string): boolean {
   return /^0x[0-9a-fA-F]{64}$/.test(value);
 }
 
+function isHexAddress(value: string): boolean {
+  return /^0x[0-9a-fA-F]{40}$/.test(value);
+}
+
 type JsonRpcReceiptLog = {
   address?: string;
   topics?: string[];
@@ -803,6 +807,43 @@ function findMatchingTransferAmount(
   }
 
   return BigInt(amountHex);
+}
+
+function findLargestTransferAmountTo(
+  receipt: JsonRpcTransactionReceipt | null,
+  to: string,
+): bigint | null {
+  if (!receipt) {
+    return null;
+  }
+
+  let largest: bigint | null = null;
+  for (const log of receipt.logs || []) {
+    if (!log.address || log.address.toLowerCase() !== BASE_USDC_CONTRACT.toLowerCase()) {
+      continue;
+    }
+
+    if (!log.topics || log.topics[0]?.toLowerCase() !== ERC20_TRANSFER_TOPIC) {
+      continue;
+    }
+
+    const toAddress = normalizeTopicAddress(log.topics[2]);
+    if (toAddress !== to.toLowerCase()) {
+      continue;
+    }
+
+    const amountHex = log.data;
+    if (!amountHex || !/^0x[0-9a-fA-F]+$/.test(amountHex)) {
+      continue;
+    }
+
+    const amount = BigInt(amountHex);
+    if (largest === null || amount > largest) {
+      largest = amount;
+    }
+  }
+
+  return largest;
 }
 
 function getCatalogEndpoint(baseUrl: string, payTo: string, endpoint: APIEndpoint) {
@@ -1186,7 +1227,32 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
   const proofHeader = request.headers.get('PAYMENT-SIGNATURE');
   const payerFilter = url.searchParams.get('payer')?.toLowerCase() || null;
   const resourceFilter = url.searchParams.get('resource') || null;
+  const payToFilterRaw = url.searchParams.get('payTo');
+  const payToFilter = payToFilterRaw ? payToFilterRaw.toLowerCase() : null;
+  const minAmountFilterRaw = url.searchParams.get('minAmount');
+  const minAmountFilter = minAmountFilterRaw ? parseTokenAmount(minAmountFilterRaw, 6) : null;
+  const expectedPayTo = payToFilter || payTo.toLowerCase();
   let settlementProof: Record<string, unknown> | null = null;
+
+  if (payToFilter && !isHexAddress(payToFilter)) {
+    return apiResponse(
+      {
+        code: 'INVALID_SETTLEMENT_FILTER',
+        message: 'payTo filter must be a valid 20-byte hex address.',
+      },
+      { status: 400 },
+    );
+  }
+
+  if (minAmountFilterRaw && minAmountFilter === null) {
+    return apiResponse(
+      {
+        code: 'INVALID_SETTLEMENT_FILTER',
+        message: 'minAmount filter must be a valid USDC decimal string.',
+      },
+      { status: 400 },
+    );
+  }
 
   if (proofHeader) {
     const proofPayload = decodeBase64Json(proofHeader);
@@ -1222,11 +1288,11 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
       );
     }
 
-    if (proofPayload.payTo.toLowerCase() !== payTo.toLowerCase()) {
+    if (proofPayload.payTo.toLowerCase() !== expectedPayTo) {
       return apiResponse(
         {
           code: 'SETTLEMENT_PROOF_MISMATCH',
-          message: 'Settlement proof payTo does not match the current gateway receiver.',
+          message: 'Settlement proof payTo does not match the requested payTo filter.',
         },
         { status: 409 },
       );
@@ -1263,22 +1329,53 @@ async function createSettlementStatusResponse(request: Request, env: Env): Promi
       );
     }
 
-    const transferredAmount = findMatchingTransferAmount(statusResult.receipt, proofPayload.from, payTo);
+    const transferredAmount = findMatchingTransferAmount(statusResult.receipt, proofPayload.from, expectedPayTo);
     const amountSatisfied = transferredAmount !== null && transferredAmount >= minimumAmount;
+    const minAmountSatisfied = minAmountFilter === null || (transferredAmount !== null && transferredAmount >= minAmountFilter);
+
+    settlementProof = {
+      verified: amountSatisfied && minAmountSatisfied,
+      payer: proofPayload.from,
+      resource: proofPayload.resource,
+      payTo: expectedPayTo,
+      requestedAmount: proofPayload.amount,
+      minAmountFilter: minAmountFilterRaw,
+      transferredAmount: transferredAmount === null ? null : transferredAmount.toString(),
+    };
+
+    if (!amountSatisfied || !minAmountSatisfied) {
+      return apiResponse(
+        {
+          code: 'SETTLEMENT_PROOF_MISMATCH',
+          message: 'Settlement transaction does not include a matching Base USDC transfer for this proof.',
+          txHash,
+          settlement: statusResult.settlement,
+          settlementPolicy,
+          settlementProof,
+          settlementEndpoint: `${url.origin}${SETTLEMENT_PATH_PREFIX}${txHash}`,
+        },
+        { status: 409, headers },
+      );
+    }
+  }
+
+  if (!proofHeader && (payToFilter || minAmountFilter !== null)) {
+    const transferredAmount = findLargestTransferAmountTo(statusResult.receipt, expectedPayTo);
+    const amountSatisfied = minAmountFilter === null || (transferredAmount !== null && transferredAmount >= minAmountFilter);
 
     settlementProof = {
       verified: amountSatisfied,
-      payer: proofPayload.from,
-      resource: proofPayload.resource,
-      requestedAmount: proofPayload.amount,
+      payTo: expectedPayTo,
+      minAmountFilter: minAmountFilterRaw,
       transferredAmount: transferredAmount === null ? null : transferredAmount.toString(),
+      mode: 'receipt-log-filter',
     };
 
     if (!amountSatisfied) {
       return apiResponse(
         {
           code: 'SETTLEMENT_PROOF_MISMATCH',
-          message: 'Settlement transaction does not include a matching Base USDC transfer for this proof.',
+          message: 'Settlement transaction does not satisfy the requested payTo/minAmount filters.',
           txHash,
           settlement: statusResult.settlement,
           settlementPolicy,
@@ -1818,7 +1915,7 @@ const worker = {
       ) as ReturnType<typeof createCatalog> & { payment: Record<string, unknown> };
       catalog.payment.settlementStatusEndpointTemplate = `${origin}${SETTLEMENT_PATH_PREFIX}{txHash}`;
       catalog.payment.settlementStatusProofHeaders = ['PAYMENT-SIGNATURE'];
-      catalog.payment.settlementStatusFilters = ['payer', 'resource'];
+      catalog.payment.settlementStatusFilters = ['payer', 'resource', 'payTo', 'minAmount'];
 
       return apiResponse(catalog);
     }
