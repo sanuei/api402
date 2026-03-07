@@ -11,3 +11,4 @@ routes = [
 
 [vars]
 APP_NAME = "API Market"
+PAY_TO = "0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18"

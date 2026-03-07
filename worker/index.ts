@@ -72,7 +72,8 @@ export interface PaymentVerificationResult {
   message: string;
 }
 
-const DEFAULT_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
+const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
+const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const DEMO_PAYMENT_TOKEN = 'demo';
 const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
@@ -360,7 +361,11 @@ export function createCatalog(baseUrl: string, payTo: string) {
       payTo,
       currency: 'USDC',
       chain: 'base',
+      chainId: 8453,
       scheme: 'exact',
+      tokenContract: BASE_USDC_CONTRACT,
+      acceptance: 'base-mainnet-usdc-only',
+      note: 'Only Base mainnet native USDC is accepted. USDC bridged or sent on any other chain is not valid.',
       demoToken: DEMO_PAYMENT_TOKEN,
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
       payloadSchema: {
@@ -403,7 +408,10 @@ function createPaymentRequired(
       price: endpoint.price,
       currency: 'USDC',
       chain: 'base',
+      chainId: 8453,
       scheme: 'exact',
+      tokenContract: BASE_USDC_CONTRACT,
+      acceptance: 'base-mainnet-usdc-only',
       path: endpoint.path,
       description: endpoint.description.en,
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', 'X-Payment-Proof'],
@@ -443,6 +451,8 @@ function createPaymentRequired(
         })}`,
       },
       instructions: [
+        'Only Base mainnet native USDC is accepted.',
+        `Use the USDC contract ${BASE_USDC_CONTRACT} on Base mainnet.`,
         'Connect a wallet with Base USDC.',
         'Build a payment payload for the requested resource.',
         'Sign the canonical JSON string of the payload without the signature field.',

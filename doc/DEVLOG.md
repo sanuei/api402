@@ -311,7 +311,9 @@
 
 ### 验证结果
 
-- 待本轮命令验证并部署
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 7 个测试全部通过
+- `npm run build:frontend` 通过
 
 ### 遗留问题
 
@@ -323,3 +325,46 @@
 1. 做真实支付确认和链上状态回查
 2. 支持不同 API 或不同商户配置不同收款地址
 3. 把 `whale-positions` 接成真实上游代理
+
+## 2026-03-08
+
+### 本轮目标
+
+- 把正式收款地址切到你的 Rabby 地址
+- 明确限制为仅接受 Base 主网原生 USDC
+- 把链、合约、接受范围一起暴露给调用方
+
+### 已完成
+
+- Worker 默认收款地址改为 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`
+- `wrangler.toml` 已同步配置 `PAY_TO`
+- catalog 和 402 challenge 现在返回 `chainId`、`tokenContract`、`acceptance`、`note`
+- 首页支付模块新增 USDC 合约地址和接受范围展示
+- 页面文案明确说明只接受 `Base` 主网原生 `USDC`
+
+### 涉及文件
+
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 7 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 遗留问题
+
+- 目前只做了支付范围声明，尚未实现链上入账验证
+- 还没有校验付款是否来自指定代币合约的真实转账事件
+
+### 下一步建议
+
+1. 做 Base USDC 入账校验
+2. 把支付证明和链上交易哈希关联起来
+3. 再考虑多链或多商户扩展

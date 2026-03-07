@@ -4,7 +4,8 @@ import type { CatalogEndpoint, CatalogResponse, HealthResponse } from './types';
 
 const REMOTE_API_BASE = 'https://api-market-x402.sonic980828.workers.dev';
 const SITE_URL = 'https://api-402.com/';
-const DEFAULT_GATEWAY_PAY_TO = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
+const DEFAULT_GATEWAY_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
+const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const SAME_ORIGIN_HOST_PATTERNS = [/api-402\.com$/, /workers\.dev$/];
 type Language = 'zh' | 'en';
 const LANGUAGE_STORAGE_KEY = 'api-market-language';
@@ -81,12 +82,14 @@ const translations: Record<Language, Record<string, string>> = {
     'payment.kicker': '结算配置',
     'payment.title': '收款地址与支付参数',
     'payment.description':
-      '如果别人调用你的付费 API，网关必须明确告诉对方把钱打到哪个地址。这里展示当前 Worker 对外暴露的收款地址和支付参数。',
+      '当前网关只接受 Base 主网原生 USDC。这里展示当前 Worker 对外暴露的收款地址、USDC 合约和支付约束，避免调用方打到错误链。',
     'payment.receiver': '网关收款地址',
     'payment.asset': '资产',
     'payment.network': '网络',
     'payment.scheme': '方案',
     'payment.headers': '接受的支付头',
+    'payment.tokenContract': 'USDC 合约',
+    'payment.acceptance': '接受范围',
     'payment.copy': '复制地址',
     'payment.copied': '已复制',
     'payment.openExplorer': '在区块浏览器打开',
@@ -144,6 +147,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.walletLabel': '钱包',
     'dynamic.walletNotConnected': '未连接',
     'dynamic.gatewayReceiver': '收款地址',
+    'dynamic.baseUsdcOnly': '仅接受 Base 主网原生 USDC',
     'dynamic.replayMode': '重放模式',
     'dynamic.replayDemo': 'Authorization: Bearer demo',
     'dynamic.replayManual': '需要手动签名',
@@ -215,12 +219,14 @@ const translations: Record<Language, Record<string, string>> = {
     'payment.kicker': 'Settlement Config',
     'payment.title': 'Receiver address and payment parameters',
     'payment.description':
-      'If someone calls your paid API, the gateway has to tell them exactly where to send funds. This section exposes the current receiver address and payment parameters from the Worker.',
+      'This gateway only accepts native USDC on Base mainnet. This section exposes the receiver address, USDC contract, and payment constraints so payers do not send funds on the wrong chain.',
     'payment.receiver': 'Gateway Receiver',
     'payment.asset': 'Asset',
     'payment.network': 'Network',
     'payment.scheme': 'Scheme',
     'payment.headers': 'Accepted Headers',
+    'payment.tokenContract': 'USDC Contract',
+    'payment.acceptance': 'Accepted Scope',
     'payment.copy': 'Copy Address',
     'payment.copied': 'Copied',
     'payment.openExplorer': 'Open In Explorer',
@@ -280,6 +286,7 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.walletLabel': 'Wallet',
     'dynamic.walletNotConnected': 'Not connected',
     'dynamic.gatewayReceiver': 'Gateway receiver',
+    'dynamic.baseUsdcOnly': 'Only Base mainnet native USDC is accepted',
     'dynamic.replayMode': 'Replay mode',
     'dynamic.replayDemo': 'Authorization: Bearer demo',
     'dynamic.replayManual': 'Manual signature required',
@@ -604,10 +611,16 @@ function updatePaymentModule() {
 
   getElement<HTMLDivElement>('receiverAddress').textContent = payTo;
   getElement<HTMLDivElement>('receiverAsset').textContent = payment?.currency || 'USDC';
-  getElement<HTMLDivElement>('receiverNetwork').textContent = payment?.chain || 'base';
+  getElement<HTMLDivElement>('receiverNetwork').textContent = payment?.chainId
+    ? `${payment.chain} (${payment.chainId})`
+    : payment?.chain || 'base';
   getElement<HTMLDivElement>('receiverScheme').textContent = payment?.scheme || 'exact';
   getElement<HTMLDivElement>('receiverHeaders').textContent =
     payment?.acceptedHeaders?.join(', ') || 'Authorization, PAYMENT-SIGNATURE';
+  getElement<HTMLDivElement>('receiverTokenContract').textContent =
+    payment?.tokenContract || BASE_USDC_CONTRACT;
+  getElement<HTMLDivElement>('receiverAcceptance').textContent =
+    payment?.note || t('dynamic.baseUsdcOnly');
   getElement<HTMLAnchorElement>('openReceiverButton').href = getGatewayExplorerUrl(payTo);
 }
 

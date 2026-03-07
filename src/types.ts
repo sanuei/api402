@@ -8,7 +8,11 @@ export interface CatalogPaymentConfig {
   payTo: string;
   currency: string;
   chain: string;
+  chainId?: number;
   scheme: string;
+  tokenContract?: string;
+  acceptance?: string;
+  note?: string;
   demoToken: string;
   acceptedHeaders?: string[];
 }

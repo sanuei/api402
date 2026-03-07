@@ -53,7 +53,14 @@ test.beforeEach(() => {
 test('catalog exposes enriched endpoint metadata', async () => {
   const response = await worker.fetch(new Request('https://api-402.com/api/v1/catalog'), createEnv());
   const body = (await response.json()) as {
-    payment: { payTo: string; currency: string; payloadSchema: { requiredFields: string[] } };
+    payment: {
+      payTo: string;
+      currency: string;
+      chainId: number;
+      tokenContract: string;
+      acceptance: string;
+      payloadSchema: { requiredFields: string[] };
+    };
     endpoints: Array<{
       exampleRequest: unknown;
       exampleResponse: unknown;
@@ -66,6 +73,9 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(response.status, 200);
   assert.equal(body.payment.payTo, TEST_PAY_TO);
   assert.equal(body.payment.currency, 'USDC');
+  assert.equal(body.payment.chainId, 8453);
+  assert.equal(body.payment.tokenContract, '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913');
+  assert.equal(body.payment.acceptance, 'base-mainnet-usdc-only');
   assert.ok(body.payment.payloadSchema.requiredFields.includes('signature'));
   assert.ok(body.endpoints.length >= API_ENDPOINTS.length);
   assert.equal(body.endpoints[0].status !== undefined, true);
