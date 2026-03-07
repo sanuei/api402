@@ -2,6 +2,21 @@
 
 ## 2026-03-08
 
+### 本轮状态
+
+- 阻塞（未实施代码变更）
+
+### Blocker（API402 Autopilot）
+
+- **阻塞项**: 按优先级当前最高任务仍是把 `/api/deepseek`、`/api/qwen` 从 demo 切到真实付费上游（live upstream integration）。
+- **阻塞原因**: 真实上游接入需要生产可用凭据（DeepSeek / DashScope / OpenRouter / Cloudflare AI 之一）；当前仓库与环境未提供可用 key 或绑定，无法完成安全联调与可验证发布。
+- **需要你提供的精确信息**:
+  1. 目标上游（`deepseek` / `dashscope-qwen` / `openrouter` / `cloudflare-ai`）
+  2. 对应生产凭据（如 `DEEPSEEK_API_KEY` / `DASHSCOPE_API_KEY` / `OPENROUTER_API_KEY`，或 Cloudflare AI 绑定）
+  3. 目标模型与成本上限（每请求 token 上限 / 预算阈值）
+
+## 2026-03-08
+
 ### 本轮目标
 
 - 为 remediation 能力增加稳定 changelog / deprecation 公告地址，提升 SDK 自动兼容升级能力与开发者接入确定性
