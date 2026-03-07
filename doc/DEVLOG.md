@@ -4,6 +4,42 @@
 
 ### 本轮目标
 
+- 补齐 endpoint `requestMetrics` 的支付阶段漏斗统计（402 / settled / replayed），直接支撑转化率优化
+
+### 已完成
+
+- `catalog.endpoints[].requestMetrics` 新增 `paymentFunnel` 字段：
+  - `challenged402`
+  - `settled`
+  - `replayed`
+  - `challengeToReplayConversionRate`
+- 漏斗统计与既有 60 分钟窗口保持一致，默认空窗口返回 0，避免 SDK 分支处理
+- 测试已新增/扩展断言，覆盖空窗口与真实请求序列（2 次 402 + 1 次 replay）
+- README / ROADMAP 已同步能力说明与下一步任务
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 21 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 将 upstream 遥测与 requestMetrics 持久化到 Durable Objects / KV，避免冷启动丢失
+2. 在 settlement / 402 流中引入 requestId，做 challenge→replay 精确归因
+3. 提供 AI 上游凭据后继续推进 `/api/deepseek`、`/api/qwen` 真实上游替换
+
+## 2026-03-08
+
+### 本轮目标
+
 - 在不依赖新增外部凭据的前提下，补齐 endpoint 级请求量与错误趋势统计，提升 monetization/可靠性运营可观测性
 
 ### 已完成

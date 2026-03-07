@@ -229,6 +229,12 @@ test('catalog exposes enriched endpoint metadata', async () => {
         paymentRequiredRate: number;
         rateLimitedRate: number;
         upstreamFallbackRate: number | null;
+        paymentFunnel?: {
+          challenged402: number;
+          settled: number;
+          replayed: number;
+          challengeToReplayConversionRate: number;
+        };
         errorsByCode: Array<{ code: string; count: number }>;
         requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
       };
@@ -295,6 +301,10 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(body.endpoints[0].requestMetrics?.windowMs, 3600000);
   assert.equal(body.endpoints[0].requestMetrics?.totalRequests, 0);
   assert.equal(body.endpoints[0].requestMetrics?.successRate, 1);
+  assert.equal(body.endpoints[0].requestMetrics?.paymentFunnel?.challenged402, 0);
+  assert.equal(body.endpoints[0].requestMetrics?.paymentFunnel?.settled, 0);
+  assert.equal(body.endpoints[0].requestMetrics?.paymentFunnel?.replayed, 0);
+  assert.equal(body.endpoints[0].requestMetrics?.paymentFunnel?.challengeToReplayConversionRate, 0);
   assert.equal(body.endpoints[0].requestMetrics?.requestTrend.length, 6);
   const firstLiveEndpoint = body.endpoints.find((endpoint) => endpoint.upstreamPolicy);
   assert.equal(firstLiveEndpoint?.upstreamPolicy?.timeoutMs, 8000);
@@ -379,6 +389,12 @@ test('catalog requestMetrics expose endpoint request volume and error trend', as
         totalRequests: number;
         successRate: number;
         paymentRequiredRate: number;
+        paymentFunnel?: {
+          challenged402: number;
+          settled: number;
+          replayed: number;
+          challengeToReplayConversionRate: number;
+        };
         errorsByCode: Array<{ code: string; count: number }>;
         requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
       };
@@ -389,6 +405,10 @@ test('catalog requestMetrics expose endpoint request volume and error trend', as
   assert.equal(deepseek?.requestMetrics?.totalRequests, 3);
   assert.equal(deepseek?.requestMetrics?.successRate, 0.3333);
   assert.equal(deepseek?.requestMetrics?.paymentRequiredRate, 0.6667);
+  assert.equal(deepseek?.requestMetrics?.paymentFunnel?.challenged402, 2);
+  assert.equal(deepseek?.requestMetrics?.paymentFunnel?.settled, 0);
+  assert.equal(deepseek?.requestMetrics?.paymentFunnel?.replayed, 1);
+  assert.equal(deepseek?.requestMetrics?.paymentFunnel?.challengeToReplayConversionRate, 0.5);
   assert.equal(deepseek?.requestMetrics?.errorsByCode[0]?.code, 'PAYMENT_MISSING');
   assert.equal(deepseek?.requestMetrics?.errorsByCode[0]?.count, 2);
   assert.equal(deepseek?.requestMetrics?.requestTrend.length, 6);

@@ -1097,6 +1097,12 @@ function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream:
       paymentRequiredRate: 0,
       rateLimitedRate: 0,
       upstreamFallbackRate: hasUpstream ? 0 : null,
+      paymentFunnel: {
+        challenged402: 0,
+        settled: 0,
+        replayed: 0,
+        challengeToReplayConversionRate: 0,
+      },
       lastRequestAt: null,
       lastErrorAt: null,
       errorsByCode: [],
@@ -1111,6 +1117,10 @@ function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream:
   const successCount = events.filter((event) => event.statusCode < 400).length;
   const paymentRequiredCount = events.filter((event) => event.statusCode === 402).length;
   const rateLimitedCount = events.filter((event) => event.statusCode === 429).length;
+  const settledCount = events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
+  const replayedCount = events.filter(
+    (event) => event.statusCode < 400 && ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || ''),
+  ).length;
   const upstreamFallbackCount = hasUpstream
     ? events.filter((event) => event.statusCode < 400 && event.upstreamReasonCode && event.upstreamReasonCode !== 'OK').length
     : 0;
@@ -1139,6 +1149,13 @@ function getEndpointRequestMetricSummary(path: string, now: number, hasUpstream:
     paymentRequiredRate: Number((paymentRequiredCount / totalRequests).toFixed(4)),
     rateLimitedRate: Number((rateLimitedCount / totalRequests).toFixed(4)),
     upstreamFallbackRate: hasUpstream ? Number((upstreamFallbackCount / totalRequests).toFixed(4)) : null,
+    paymentFunnel: {
+      challenged402: paymentRequiredCount,
+      settled: settledCount,
+      replayed: replayedCount,
+      challengeToReplayConversionRate:
+        paymentRequiredCount > 0 ? Number((replayedCount / paymentRequiredCount).toFixed(4)) : 0,
+    },
     lastRequestAt: new Date(events[events.length - 1].at).toISOString(),
     lastErrorAt: lastError ? new Date(lastError.at).toISOString() : null,
     errorsByCode,
@@ -1966,6 +1983,12 @@ type EndpointRequestMetricSummary = {
   paymentRequiredRate: number;
   rateLimitedRate: number;
   upstreamFallbackRate: number | null;
+  paymentFunnel: {
+    challenged402: number;
+    settled: number;
+    replayed: number;
+    challengeToReplayConversionRate: number;
+  };
   lastRequestAt: string | null;
   lastErrorAt: string | null;
   errorsByCode: Array<{ code: string; count: number }>;
