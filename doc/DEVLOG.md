@@ -37,3 +37,27 @@
 2. 为支付验证逻辑增加最小集成测试
 3. 在 catalog 中加入 `exampleRequest`、`exampleResponse`、`status`
 4. 把更多 mock API 替换成真实上游代理
+
+## 2026-03-08
+
+### 本轮目标
+
+- 清理 Cloudflare 中未被当前仓库使用的历史 Pages / Workers 资源
+
+### 已完成
+
+- 确认当前仓库唯一正式部署目标是 `api-market-x402`
+- 确认 `api-market` 为独立 Pages 项目，且无 Git 连接
+- 确认 `api-market-x402-production` 为独立旧 Worker，不在当前部署链路内
+- 删除历史 Pages 项目 `api-market`
+- 删除历史 Worker `api-market-x402-production`
+
+### 遗留状态
+
+- 当前保留的正式部署资源为 `api-market-x402`
+- 主域名路由仍由 `api-market-x402` 承载
+
+### 下一步建议
+
+1. 补充 `doc/DEPLOYMENT.md`，明确唯一主部署路径
+2. 后续所有发布都只对 `api-market-x402` 操作
