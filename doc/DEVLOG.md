@@ -104,3 +104,48 @@
 1. 做 nonce 去重和更严格的时间窗
 2. 把 `kline` 或 `whale-positions` 接成真实上游
 3. 把前端示例区改成直接消费 catalog 的 `exampleRequest` / `exampleResponse`
+
+## 2026-03-08
+
+### 本轮目标
+
+- 把前端迁移到 `Vite + TypeScript`
+- 把 Worker 和前端目录拆开，形成可扩展结构
+
+### 已完成
+
+- 新增 `Vite` 前端构建链路，`dist/` 现在由 `vite build` 产出
+- Worker 迁移到 `worker/` 目录
+- 前端逻辑迁移到 `src/main.ts`
+- 自定义样式迁移到 `src/styles.css`
+- 补前端类型定义 `src/types.ts`
+- 拆分 TypeScript 配置为 app / worker 两套
+- 保持现有 Worker、测试和部署链路可用
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [src/styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [vite.config.ts](/Users/yangshangwei/Desktop/网页项目/api402/vite.config.ts)
+- [tsconfig.app.json](/Users/yangshangwei/Desktop/网页项目/api402/tsconfig.app.json)
+- [tsconfig.worker.json](/Users/yangshangwei/Desktop/网页项目/api402/tsconfig.worker.json)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过
+- `npm run build:frontend` 通过
+
+### 遗留问题
+
+- 前端现在已经脱离单文件 HTML，但还没有继续细拆为更小的 UI / API 模块
+- 仍然使用 Tailwind CDN，后续可以再决定是否切到本地 Tailwind 构建
+
+### 下一步建议
+
+1. 继续把前端逻辑拆成 `catalog`、`wallet`、`modal` 模块
+2. 做 nonce 去重和防重放
+3. 选择一个 mock API 接成真实上游

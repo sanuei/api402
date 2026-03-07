@@ -13,223 +13,7 @@
         href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-    <style>
-        :root {
-            --bg-0: #040506;
-            --bg-1: #0b1016;
-            --panel: rgba(10, 14, 20, 0.78);
-            --panel-strong: #0b1118;
-            --text: #e7edf4;
-            --muted: #8b97a7;
-            --line: rgba(255, 255, 255, 0.08);
-            --blue: #3c7dff;
-            --green: #33f0b2;
-            --cyan: #8de7ff;
-            --amber: #ffcf66;
-            --shadow-blue: rgba(60, 125, 255, 0.28);
-            --shadow-green: rgba(51, 240, 178, 0.18);
-        }
-
-        * {
-            box-sizing: border-box;
-        }
-
-        html {
-            scroll-behavior: smooth;
-        }
-
-        body {
-            margin: 0;
-            font-family: 'Space Grotesk', sans-serif;
-            color: var(--text);
-            background:
-                radial-gradient(circle at top left, rgba(60, 125, 255, 0.18), transparent 30%),
-                radial-gradient(circle at 85% 12%, rgba(51, 240, 178, 0.12), transparent 24%),
-                linear-gradient(180deg, #05070a 0%, #05070b 30%, #030406 100%);
-            min-height: 100vh;
-            overflow-x: hidden;
-        }
-
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            background-image:
-                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-            background-size: 42px 42px;
-            mask-image: linear-gradient(180deg, rgba(255, 255, 255, 0.8), transparent 95%);
-            z-index: -2;
-        }
-
-        body::after {
-            content: '';
-            position: fixed;
-            inset: 0;
-            pointer-events: none;
-            background:
-                radial-gradient(circle at 20% 20%, rgba(60, 125, 255, 0.18), transparent 24%),
-                radial-gradient(circle at 80% 30%, rgba(51, 240, 178, 0.12), transparent 18%),
-                radial-gradient(circle at 50% 100%, rgba(60, 125, 255, 0.08), transparent 20%);
-            filter: blur(40px);
-            z-index: -3;
-        }
-
-        .mono {
-            font-family: 'JetBrains Mono', monospace;
-        }
-
-        .glass {
-            background: var(--panel);
-            backdrop-filter: blur(18px);
-            border: 1px solid var(--line);
-        }
-
-        .soft-card {
-            background: linear-gradient(180deg, rgba(9, 13, 19, 0.95), rgba(7, 10, 15, 0.95));
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
-        }
-
-        .soft-card:hover {
-            border-color: rgba(60, 125, 255, 0.28);
-            box-shadow: 0 18px 50px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(60, 125, 255, 0.12);
-            transform: translateY(-2px);
-        }
-
-        .hero-chip {
-            background: rgba(255, 255, 255, 0.04);
-            border: 1px solid rgba(255, 255, 255, 0.09);
-        }
-
-        .hero-chip strong {
-            color: var(--green);
-        }
-
-        .primary-btn {
-            background: linear-gradient(135deg, var(--blue), #2251ff);
-            box-shadow: 0 18px 40px var(--shadow-blue);
-        }
-
-        .primary-btn:hover {
-            transform: translateY(-1px);
-            box-shadow: 0 22px 54px rgba(60, 125, 255, 0.35);
-        }
-
-        .secondary-btn {
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            background: rgba(255, 255, 255, 0.03);
-        }
-
-        .secondary-btn:hover {
-            border-color: rgba(51, 240, 178, 0.4);
-            color: var(--green);
-        }
-
-        .kicker {
-            letter-spacing: 0.16em;
-            text-transform: uppercase;
-            color: var(--muted);
-            font-size: 12px;
-        }
-
-        .terminal {
-            position: relative;
-            background: linear-gradient(180deg, rgba(10, 13, 17, 0.98), rgba(6, 8, 11, 0.98));
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            overflow: hidden;
-        }
-
-        .terminal::before {
-            content: '';
-            position: absolute;
-            inset: auto 18% -30% 18%;
-            height: 140px;
-            background: radial-gradient(circle, rgba(60, 125, 255, 0.22), transparent 70%);
-            filter: blur(28px);
-            pointer-events: none;
-        }
-
-        .terminal-line {
-            opacity: 0;
-            transform: translateY(6px);
-            animation: terminal-in 0.55s ease forwards;
-        }
-
-        @keyframes terminal-in {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .api-card.active {
-            border-color: rgba(51, 240, 178, 0.55);
-            box-shadow: 0 0 0 1px rgba(51, 240, 178, 0.18), 0 18px 50px rgba(0, 0, 0, 0.28);
-        }
-
-        .signal-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 999px;
-            background: var(--green);
-            box-shadow: 0 0 16px rgba(51, 240, 178, 0.7);
-        }
-
-        .status-pill {
-            border: 1px solid rgba(51, 240, 178, 0.24);
-            background: rgba(51, 240, 178, 0.08);
-            color: var(--green);
-        }
-
-        .metric-value {
-            font-size: clamp(2rem, 4vw, 3rem);
-            line-height: 1;
-        }
-
-        .log-box {
-            background: rgba(2, 5, 8, 0.88);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-        }
-
-        .faq-item summary {
-            list-style: none;
-            cursor: pointer;
-        }
-
-        .faq-item summary::-webkit-details-marker {
-            display: none;
-        }
-
-        .faq-item[open] {
-            border-color: rgba(60, 125, 255, 0.24);
-        }
-
-        .badge-blue {
-            color: var(--cyan);
-            background: rgba(141, 231, 255, 0.08);
-            border: 1px solid rgba(141, 231, 255, 0.18);
-        }
-
-        .badge-green {
-            color: var(--green);
-            background: rgba(51, 240, 178, 0.08);
-            border: 1px solid rgba(51, 240, 178, 0.18);
-        }
-
-        .badge-amber {
-            color: var(--amber);
-            background: rgba(255, 207, 102, 0.08);
-            border: 1px solid rgba(255, 207, 102, 0.18);
-        }
-
-        @media (max-width: 768px) {
-            .metric-grid {
-                grid-template-columns: 1fr 1fr;
-            }
-        }
-    </style>
+    <script type="module" src="/src/main.ts"></script>
 </head>
 
 <body>
@@ -561,7 +345,7 @@
                 <h3 class="text-3xl font-bold text-center">Connect Wallet</h3>
                 <p class="text-slate-500 text-center mt-2">当前仍然以 demo 联调为主，真实钱包接入仅做地址读取。</p>
                 <div class="mt-8 space-y-3">
-                    <button onclick="connectWallet('coinbase')"
+                    <button data-wallet-type="coinbase"
                         class="w-full secondary-btn rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
                         <span class="flex items-center gap-3">
                             <i class="fas fa-wallet text-[#3c7dff]"></i>
@@ -569,7 +353,7 @@
                         </span>
                         <i class="fas fa-chevron-right text-slate-600"></i>
                     </button>
-                    <button onclick="connectWallet('metamask')"
+                    <button data-wallet-type="metamask"
                         class="w-full secondary-btn rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
                         <span class="flex items-center gap-3">
                             <i class="fab fa-ethereum text-[#ffcf66]"></i>
@@ -577,7 +361,7 @@
                         </span>
                         <i class="fas fa-chevron-right text-slate-600"></i>
                     </button>
-                    <button onclick="connectDemo()"
+                    <button data-demo-connect="true"
                         class="w-full primary-btn rounded-2xl px-5 py-4 text-left font-semibold transition text-white flex items-center justify-between">
                         <span class="flex items-center gap-3">
                             <i class="fas fa-bolt"></i>
@@ -586,7 +370,7 @@
                         <span class="mono text-xs">instant</span>
                     </button>
                 </div>
-                <button onclick="closeWalletModal()"
+                <button data-close-wallet-modal="true"
                     class="mt-5 w-full text-slate-500 hover:text-white transition-colors py-3 text-sm">
                     Cancel
                 </button>
@@ -601,7 +385,7 @@
                     <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono">Live Test</div>
                     <h3 class="text-2xl font-bold mt-1" id="modalTitle">API Test</h3>
                 </div>
-                <button onclick="closeModal()" class="text-slate-500 hover:text-white transition-colors">
+                <button data-close-api-modal="true" class="text-slate-500 hover:text-white transition-colors">
                     <i class="fas fa-xmark text-xl"></i>
                 </button>
             </div>
@@ -619,7 +403,7 @@
                         class="primary-btn rounded-full px-5 py-3 text-sm font-semibold transition text-white">
                         Execute Request
                     </button>
-                    <button onclick="closeModal()"
+                    <button data-close-api-modal="true"
                         class="secondary-btn rounded-full px-5 py-3 text-sm font-semibold transition">
                         Close
                     </button>
@@ -628,340 +412,6 @@
         </div>
     </div>
 
-    <script>
-        const REMOTE_API_BASE = 'https://api-market-x402.sonic980828.workers.dev';
-        const SAME_ORIGIN_HOST_PATTERNS = [/api-402\.com$/, /workers\.dev$/];
-
-        let walletConnected = false;
-        let walletAddress = '';
-        let walletType = '';
-        let currentAPI = '';
-        let catalog = null;
-        let selectedEndpoint = null;
-
-        function resolveApiBase() {
-            const host = window.location.hostname;
-            const canUseSameOrigin = SAME_ORIGIN_HOST_PATTERNS.some((pattern) => pattern.test(host));
-            return canUseSameOrigin ? window.location.origin : REMOTE_API_BASE;
-        }
-
-        const API_BASE = resolveApiBase();
-
-        function escapeHtml(value) {
-            return String(value)
-                .replaceAll('&', '&amp;')
-                .replaceAll('<', '&lt;')
-                .replaceAll('>', '&gt;')
-                .replaceAll('"', '&quot;')
-                .replaceAll("'", '&#39;');
-        }
-
-        function shortenAddress(value) {
-            if (!value) return '';
-            return value.length <= 14 ? value : `${value.slice(0, 8)}...${value.slice(-4)}`;
-        }
-
-        function logLine(message, tone = 'default') {
-            const palette = {
-                default: 'text-slate-300',
-                info: 'text-[#8de7ff]',
-                success: 'text-[#33f0b2]',
-                warning: 'text-[#ffcf66]',
-                danger: 'text-[#ff8f8f]'
-            };
-
-            return `<div class="${palette[tone] || palette.default}">${escapeHtml(message)}</div>`;
-        }
-
-        function setHeroTerminal(endpoint) {
-            const terminal = document.getElementById('heroTerminal');
-            const path = endpoint ? endpoint.path : '/api/btc-price';
-            const price = endpoint ? endpoint.price : '0.00001';
-            const lines = [
-                `$ curl -i ${API_BASE}${path}`,
-                'HTTP/1.1 402 Payment Required',
-                `{ "payTo": "0x742d...", "price": "' + price + '", "currency": "USDC" }`,
-                '$ curl -H "Authorization: Bearer demo" ' + API_BASE + path,
-                '{ "data": "...", "_meta": { "paid": true } }'
-            ];
-
-            terminal.innerHTML = lines
-                .map((line, index) => `<div class="terminal-line ${index === 1 ? 'text-[#ffcf66]' : index >= 3 ? 'text-[#33f0b2]' : 'text-slate-300'}" style="animation-delay:${index * 120}ms">${escapeHtml(line)}</div>`)
-                .join('');
-        }
-
-        function setSelectedEndpoint(endpoint) {
-            selectedEndpoint = endpoint;
-            if (!endpoint) return;
-
-            document.getElementById('selectedName').textContent = endpoint.path.replace('/api/', '').replaceAll('-', ' ');
-            document.getElementById('selectedPrice').textContent = `${endpoint.price} USDC`;
-            document.getElementById('selectedDescription').textContent = endpoint.description;
-            document.getElementById('selectedPath').textContent = endpoint.url;
-            document.getElementById('selectedCategory').textContent = endpoint.category;
-            document.getElementById('selectedAccess').textContent = `${endpoint.access} / ${endpoint.status || 'unknown'}`;
-            document.getElementById('openSelectedApi').href = endpoint.url;
-            document.getElementById('trySelected').onclick = () => testAPI(endpoint.path);
-
-            const curlExample = endpoint.exampleRequest?.curl || [
-                `curl -i ${endpoint.url}`,
-                '',
-                '# replay in demo mode',
-                `curl -H "Authorization: Bearer demo" \\`,
-                `  ${endpoint.url}`
-            ].join('\n');
-
-            const jsExample = [
-                `const response = await fetch("${endpoint.url}");`,
-                'if (response.status === 402) {',
-                '  const challenge = await response.json();',
-                '  const paid = await fetch(challenge.path, {',
-                '    headers: { Authorization: "Bearer demo" }',
-                '  });',
-                '  const data = await paid.json();',
-                '  console.log(data);',
-                '}',
-                '',
-                '// example response',
-                JSON.stringify(endpoint.exampleResponse || {}, null, 2)
-            ].join('\n');
-
-            document.getElementById('curlExample').textContent = curlExample;
-            document.getElementById('jsExample').textContent = jsExample;
-            setHeroTerminal(endpoint);
-
-            document.querySelectorAll('.api-card').forEach((card) => {
-                card.classList.toggle('active', card.dataset.path === endpoint.path);
-            });
-        }
-
-        function renderCatalog(endpoints) {
-            const grid = document.getElementById('catalogGrid');
-            grid.innerHTML = endpoints.map((endpoint, index) => `
-                <button type="button"
-                    class="api-card soft-card rounded-[28px] p-6 text-left transition-all duration-300"
-                    data-path="${escapeHtml(endpoint.path)}"
-                    onclick="selectEndpointByPath('${escapeHtml(endpoint.path)}')">
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="badge-blue rounded-full px-3 py-1 text-xs mono">${escapeHtml(endpoint.category)}</div>
-                        <div class="badge-green rounded-full px-3 py-1 text-xs mono">${escapeHtml(endpoint.price)} USDC</div>
-                    </div>
-                    <div class="mt-5">
-                        <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(endpoint.path.replace('/api/', ''))}</h3>
-                        <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(endpoint.description)}</p>
-                    </div>
-                    <div class="mt-6 flex items-center justify-between text-sm">
-                        <span class="${endpoint.access === 'mock_demo' ? 'badge-amber' : 'badge-green'} rounded-full px-3 py-1 text-xs mono">
-                            ${escapeHtml(endpoint.access)}
-                        </span>
-                        <span class="text-slate-500 mono">${String(index + 1).padStart(2, '0')}</span>
-                    </div>
-                </button>
-            `).join('');
-        }
-
-        function selectEndpointByPath(path) {
-            if (!catalog) return;
-            const endpoint = catalog.endpoints.find((item) => item.path === path);
-            setSelectedEndpoint(endpoint || catalog.endpoints[0]);
-        }
-
-        async function loadHealth() {
-            try {
-                const response = await fetch(`${API_BASE}/api/v1/health`);
-                if (!response.ok) throw new Error(`health ${response.status}`);
-                const data = await response.json();
-                document.getElementById('healthStatus').textContent = `${data.status.toUpperCase()} / ${data.endpoints} endpoints`;
-                document.getElementById('heroStatus').textContent = 'LIVE';
-            } catch (error) {
-                document.getElementById('healthStatus').textContent = 'Degraded';
-                document.getElementById('heroStatus').textContent = 'REMOTE';
-            }
-        }
-
-        async function loadCatalog() {
-            try {
-                const response = await fetch(`${API_BASE}/api/v1/catalog`);
-                if (!response.ok) throw new Error(`catalog ${response.status}`);
-                catalog = await response.json();
-
-                document.getElementById('metricCount').textContent = String(catalog.endpoints.length).padStart(2, '0');
-                document.getElementById('catalogJsonLink').href = `${API_BASE}/api/v1/catalog`;
-                document.getElementById('healthLink').href = `${API_BASE}/api/v1/health`;
-                document.getElementById('catalogLink').href = `${API_BASE}/api/v1/catalog`;
-
-                renderCatalog(catalog.endpoints);
-                setSelectedEndpoint(catalog.endpoints[0]);
-            } catch (error) {
-                document.getElementById('metricCount').textContent = '00';
-                document.getElementById('catalogGrid').innerHTML = `
-                    <div class="soft-card rounded-[28px] p-8 md:col-span-2 xl:col-span-3">
-                        <div class="text-[#ffcf66] font-semibold">Catalog load failed</div>
-                        <p class="mt-3 text-slate-400 leading-7">
-                            无法从 ${escapeHtml(API_BASE)} 读取 catalog。请确认 Worker 已部署，或继续使用远端联调环境。
-                        </p>
-                    </div>
-                `;
-                setHeroTerminal(null);
-            }
-        }
-
-        document.getElementById('connectWallet').addEventListener('click', () => {
-            if (walletConnected) {
-                alert(`已连接地址: ${walletAddress}\n连接类型: ${walletType}\n\n当前仍以 demo 支付流为主。`);
-                return;
-            }
-
-            document.getElementById('walletModal').classList.remove('hidden');
-            document.getElementById('walletModal').classList.add('flex');
-        });
-
-        function closeWalletModal() {
-            document.getElementById('walletModal').classList.add('hidden');
-            document.getElementById('walletModal').classList.remove('flex');
-        }
-
-        async function connectWallet(type) {
-            closeWalletModal();
-
-            let address = '';
-            try {
-                if (window.ethereum && typeof window.ethereum.request === 'function') {
-                    const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    address = accounts[0] || '';
-                    walletType = type === 'coinbase' ? 'Coinbase Wallet' : 'MetaMask';
-                }
-            } catch (error) {
-                console.log('wallet connect failed, fallback to demo', error);
-            }
-
-            if (!address) {
-                address = `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`;
-                walletType = 'Demo';
-            }
-
-            walletConnected = true;
-            walletAddress = address;
-            updateWalletUI();
-        }
-
-        function connectDemo() {
-            walletConnected = true;
-            walletType = 'Demo';
-            walletAddress = '0x742d35Cc6634C0532925a3b844Bc9e7595f4f8E1';
-            closeWalletModal();
-            updateWalletUI();
-        }
-
-        function updateWalletUI() {
-            const button = document.getElementById('connectWallet');
-            button.innerHTML = `<i class="fas fa-check-circle mr-2"></i>${escapeHtml(shortenAddress(walletAddress))}`;
-            document.getElementById('paymentDetails').innerHTML = `
-                <div>Wallet: <span class="text-white">${escapeHtml(walletType || 'Not connected')}</span></div>
-                <div>Replay mode: <span class="text-[#33f0b2]">${walletType === 'Demo' ? 'Authorization: Bearer demo' : 'Manual signature required'}</span></div>
-            `;
-        }
-
-        function testAPI(endpointPath) {
-            currentAPI = endpointPath;
-            const endpoint = catalog?.endpoints.find((item) => item.path === endpointPath);
-
-            document.getElementById('modalTitle').textContent = endpoint ? endpoint.path : 'API Test';
-            document.getElementById('paymentDetails').innerHTML = `
-                <div>Endpoint: <span class="text-white">${escapeHtml(endpointPath)}</span></div>
-                <div>Price: <span class="text-[#33f0b2]">${escapeHtml(endpoint?.price || '--')} USDC</span></div>
-                <div>Flow: first request challenge, second request replay</div>
-            `;
-            document.getElementById('apiResult').innerHTML = logLine(`Ready to call ${endpointPath}`, 'info');
-            document.getElementById('apiModal').classList.remove('hidden');
-            document.getElementById('apiModal').classList.add('flex');
-        }
-
-        async function executeRequest() {
-            const resultEl = document.getElementById('apiResult');
-            const button = document.getElementById('sendRequest');
-            const requestUrl = `${API_BASE}${currentAPI}`;
-
-            button.disabled = true;
-            button.textContent = 'Executing...';
-
-            const requestHeaders = { 'Content-Type': 'application/json' };
-            resultEl.innerHTML = [
-                logLine(`GET ${requestUrl}`, 'info'),
-                logLine('Sending initial request without payment header...', 'default')
-            ].join('');
-
-            try {
-                const response = await fetch(requestUrl, { headers: requestHeaders });
-
-                if (response.status === 402) {
-                    const challenge = await response.json();
-                    resultEl.innerHTML += [
-                        logLine('Received 402 Payment Required', 'warning'),
-                        logLine(`payTo => ${challenge.payTo}`, 'default'),
-                        logLine(`price => ${challenge.price} ${challenge.currency}`, 'success')
-                    ].join('');
-
-                    if (walletType === 'Demo') {
-                        resultEl.innerHTML += logLine('Replaying request with demo authorization...', 'success');
-                        const paid = await fetch(requestUrl, {
-                            headers: { Authorization: 'Bearer demo' }
-                        });
-
-                        if (!paid.ok) {
-                            resultEl.innerHTML += logLine(`Replay failed with status ${paid.status}`, 'danger');
-                        } else {
-                            const data = await paid.json();
-                            resultEl.innerHTML += logLine('Replay succeeded. Response body:', 'success');
-                            resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
-                        }
-                    } else {
-                        resultEl.innerHTML += logLine('Connect Demo Mode to complete the full request loop inside the browser.', 'warning');
-                    }
-                } else if (response.ok) {
-                    const data = await response.json();
-                    resultEl.innerHTML += logLine('Request succeeded without replay.', 'success');
-                    resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
-                } else {
-                    resultEl.innerHTML += logLine(`Unexpected status ${response.status}`, 'danger');
-                }
-            } catch (error) {
-                resultEl.innerHTML += logLine(`Network error: ${error.message}`, 'danger');
-            } finally {
-                button.disabled = false;
-                button.textContent = 'Execute Request';
-            }
-        }
-
-        function closeModal() {
-            document.getElementById('apiModal').classList.add('hidden');
-            document.getElementById('apiModal').classList.remove('flex');
-            currentAPI = '';
-        }
-
-        document.getElementById('sendRequest').addEventListener('click', executeRequest);
-        document.getElementById('apiModal').addEventListener('click', function (event) {
-            if (event.target === this) {
-                closeModal();
-            }
-        });
-        document.getElementById('walletModal').addEventListener('click', function (event) {
-            if (event.target === this) {
-                closeWalletModal();
-            }
-        });
-
-        window.selectEndpointByPath = selectEndpointByPath;
-        window.connectWallet = connectWallet;
-        window.connectDemo = connectDemo;
-        window.closeWalletModal = closeWalletModal;
-        window.testAPI = testAPI;
-        window.closeModal = closeModal;
-
-        setHeroTerminal(null);
-        loadHealth();
-        loadCatalog();
-    </script>
-</body>
+    </body>
 
 </html>

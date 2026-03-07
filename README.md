@@ -2,6 +2,14 @@
 
 一个基于 Cloudflare Workers 的 x402 API Payment Gateway 演示项目。
 
+## Project Structure
+
+- `index.html`：Vite 入口 HTML
+- `src/`：前端 TypeScript 和样式
+- `worker/`：Cloudflare Worker 后端
+- `test/`：Worker 集成测试
+- `dist/`：Vite 构建产物
+
 ## What It Does
 
 - 用同一个 Worker 提供静态首页和付费 API
@@ -23,6 +31,7 @@
 npm install
 npm run typecheck
 npm test
+npm run build:frontend
 npm run dev
 ```
 

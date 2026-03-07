@@ -16,6 +16,7 @@
 当前仓库已经完成第一轮统一化改造：
 
 - Worker 同时负责静态站、catalog、health、付费 API
+- 前端已迁移到 `Vite + TypeScript` 结构，Worker 已迁移到独立目录
 - 首页从 catalog 动态渲染，不再完全硬编码
 - 页面结构和开发者入口更贴近 `claw402.ai` 的产品表达方式
 - 保留 demo 支付流，方便完整演示 402 -> replay -> data

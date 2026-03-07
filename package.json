@@ -2,18 +2,25 @@
   "name": "api-market-x402",
   "version": "1.0.0",
   "description": "x402 API Payment Gateway Demo",
-  "main": "src/index.ts",
+  "main": "worker/index.ts",
   "scripts": {
-    "build:static": "mkdir -p dist && cp index.html dist/index.html",
-    "typecheck": "tsc --noEmit",
+    "build:frontend": "vite build",
+    "build:static": "npm run build:frontend",
+    "typecheck:app": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck:worker": "tsc --noEmit -p tsconfig.worker.json",
+    "typecheck": "npm run typecheck:app && npm run typecheck:worker",
     "test": "node --import tsx --test test/**/*.test.ts",
+    "dev:frontend": "vite",
+    "preview": "vite preview",
     "dev": "npm run build:static && wrangler dev",
     "deploy": "npm run build:static && wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240620.0",
+    "@types/node": "^24.6.0",
     "typescript": "^5.0.0",
     "tsx": "^4.20.6",
+    "vite": "^7.1.9",
     "wrangler": "^4.71.0"
   },
   "dependencies": {
