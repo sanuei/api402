@@ -629,7 +629,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers':
     'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof, X-PAYMENT-TX-HASH, X-Request-Id',
   'Access-Control-Expose-Headers':
-    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason, X-Request-Id, X-Quota-Reason',
+    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason, X-Request-Id, X-Quota-Reason, PAYMENT-REQUIRED, PAYMENT-RESPONSE',
 };
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -646,6 +646,99 @@ function apiResponse(body: unknown, init: ResponseInit = {}): Response {
   const headers = new Headers(init.headers);
   Object.entries(corsHeaders).forEach(([key, value]) => headers.set(key, value));
   return jsonResponse(body, { ...init, headers });
+}
+
+type X402Requirement = {
+  scheme: 'exact';
+  network: 'eip155:8453';
+  amount: string;
+  maxAmountRequired: string;
+  asset: string;
+  payTo: string;
+  resource: string;
+  description: string;
+  mimeType: 'application/json';
+  outputSchema: null;
+  extra: {
+    currency: 'USDC';
+    chain: 'base';
+    chainId: 8453;
+    settlementMethod: 'base-usdc-transfer-receipt';
+    settlementProofHeader: string;
+    settlementConfirmationsRequired: number;
+    maxSettlementAgeBlocks: number;
+    maxPaymentAgeSeconds: number;
+    maxFutureSkewSeconds: number;
+    requestId: string;
+  };
+};
+
+function buildX402Requirement(
+  endpoint: APIEndpoint,
+  payTo: string,
+  requestId: string,
+  minConfirmations: number,
+  maxAgeSeconds: number,
+  futureSkewSeconds: number,
+  maxSettlementAgeBlocks: number,
+): X402Requirement {
+  return {
+    scheme: 'exact',
+    network: 'eip155:8453',
+    amount: endpoint.price,
+    maxAmountRequired: endpoint.price,
+    asset: BASE_USDC_CONTRACT,
+    payTo,
+    resource: endpoint.path,
+    description: endpoint.description.en,
+    mimeType: 'application/json',
+    outputSchema: null,
+    extra: {
+      currency: 'USDC',
+      chain: 'base',
+      chainId: 8453,
+      settlementMethod: 'base-usdc-transfer-receipt',
+      settlementProofHeader: PAYMENT_TX_HASH_HEADER,
+      settlementConfirmationsRequired: minConfirmations,
+      maxSettlementAgeBlocks,
+      maxPaymentAgeSeconds: maxAgeSeconds,
+      maxFutureSkewSeconds: futureSkewSeconds,
+      requestId,
+    },
+  };
+}
+
+function buildX402PaymentResponse(
+  endpoint: APIEndpoint,
+  payTo: string,
+  requestId: string,
+  verification: PaymentVerificationResult,
+): string | null {
+  if (!verification.ok || verification.code !== 'PAYMENT_VALID' || !verification.settlement) {
+    return null;
+  }
+
+  return encodeJsonBase64({
+    x402Version: 1,
+    success: true,
+    scheme: 'exact',
+    network: 'eip155:8453',
+    payTo,
+    resource: endpoint.path,
+    amount: endpoint.price,
+    asset: BASE_USDC_CONTRACT,
+    requestId,
+    settlement: {
+      txHash: verification.settlement.txHash,
+      chainId: verification.settlement.chainId,
+      tokenContract: verification.settlement.tokenContract,
+      settlementMethod: verification.settlement.settlementMethod,
+      requiredConfirmations: verification.settlement.requiredConfirmations,
+      confirmations: verification.settlement.confirmations,
+      receiptBlock: verification.settlement.receiptBlock,
+      latestBlock: verification.settlement.latestBlock,
+    },
+  });
 }
 
 function getClientIP(request: Request): string {
@@ -1676,6 +1769,21 @@ function createPaymentRequired(
     [REQUEST_ID_HEADER]: requestId,
   };
 
+  const x402Requirement = buildX402Requirement(
+    endpoint,
+    payTo,
+    requestId,
+    minConfirmations,
+    maxAgeSeconds,
+    futureSkewSeconds,
+    maxSettlementAgeBlocks,
+  );
+  responseHeaders['PAYMENT-REQUIRED'] = encodeJsonBase64({
+    x402Version: 1,
+    error: 'PAYMENT_REQUIRED',
+    accepts: [x402Requirement],
+  });
+
   if (verification.code === 'PAYMENT_TX_NOT_CONFIRMED') {
     responseHeaders['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
   }
@@ -1702,6 +1810,8 @@ function createPaymentRequired(
       acceptance: 'base-mainnet-usdc-only',
       path: endpoint.path,
       description: endpoint.description.en,
+      x402Version: 1,
+      accepts: [x402Requirement],
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof', REQUEST_ID_HEADER],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
       settlementConfirmationsRequired: minConfirmations,
@@ -3145,6 +3255,7 @@ const worker = {
         recordAIUsage: (metricPath, event) => recordAIUsageWithDurable(env, metricPath, event),
       });
       const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
+      const paymentResponseHeader = buildX402PaymentResponse(endpoint, payTo, requestId, verification);
 
       const response = apiResponse(
         {
@@ -3163,7 +3274,12 @@ const worker = {
             settlement: verification.settlement || null,
           },
         },
-        { headers: { [REQUEST_ID_HEADER]: requestId } },
+        {
+          headers: {
+            [REQUEST_ID_HEADER]: requestId,
+            ...(paymentResponseHeader ? { 'PAYMENT-RESPONSE': paymentResponseHeader } : {}),
+          },
+        },
       );
 
       await recordEndpointRequestMetricWithDurable(env, path, {

@@ -330,6 +330,14 @@ function encodeBase64(value: unknown): string {
   return Buffer.from(JSON.stringify(value), 'utf8').toString('base64');
 }
 
+function decodeBase64Header<T>(value: string | null): T | null {
+  if (!value) {
+    return null;
+  }
+
+  return JSON.parse(Buffer.from(value, 'base64').toString('utf8')) as T;
+}
+
 async function createSignedPayload(
   path: string,
   amount: string,
@@ -654,16 +662,50 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
     code: string;
     reason: string;
     requestId?: string;
+    x402Version?: number;
+    accepts?: Array<{
+      scheme: string;
+      network: string;
+      amount: string;
+      maxAmountRequired: string;
+      asset: string;
+      payTo: string;
+      resource: string;
+    }>;
     remediationSchemaVersion?: string;
     remediationCompatibility?: string;
     remediationRefs?: { changelog: string; deprecations: string };
   };
+  const paymentRequired = decodeBase64Header<{
+    x402Version: number;
+    error: string;
+    accepts: Array<{
+      scheme: string;
+      network: string;
+      amount: string;
+      maxAmountRequired: string;
+      asset: string;
+      payTo: string;
+      resource: string;
+    }>;
+  }>(response.headers.get('PAYMENT-REQUIRED'));
 
   assert.equal(response.status, 402);
   assert.equal(body.code, 'PAYMENT_REQUIRED');
   assert.equal(body.reason, 'PAYMENT_MISSING');
   assert.equal(body.requestId, 'req-402-test');
+  assert.equal(body.x402Version, 1);
+  assert.equal(body.accepts?.[0]?.network, 'eip155:8453');
+  assert.equal(body.accepts?.[0]?.resource, '/api/deepseek');
   assert.equal(response.headers.get('X-Request-Id'), 'req-402-test');
+  assert.equal(paymentRequired?.x402Version, 1);
+  assert.equal(paymentRequired?.error, 'PAYMENT_REQUIRED');
+  assert.equal(paymentRequired?.accepts[0]?.scheme, 'exact');
+  assert.equal(paymentRequired?.accepts[0]?.network, 'eip155:8453');
+  assert.equal(paymentRequired?.accepts[0]?.amount, '0.003');
+  assert.equal(paymentRequired?.accepts[0]?.maxAmountRequired, '0.003');
+  assert.equal(paymentRequired?.accepts[0]?.asset, BASE_USDC_CONTRACT);
+  assert.equal(paymentRequired?.accepts[0]?.payTo, TEST_PAY_TO);
   assert.equal(body.remediationSchemaVersion, '1.0.0');
   assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
   assert.equal(
@@ -2086,6 +2128,27 @@ test('valid signed payment payload is accepted', async () => {
       assert.equal(body._meta.settlement?.confirmations, 2);
       assert.equal(body._meta.settlement?.receiptBlock, 256);
       assert.equal(body._meta.settlement?.latestBlock, 257);
+      const paymentResponse = decodeBase64Header<{
+        x402Version: number;
+        success: boolean;
+        scheme: string;
+        network: string;
+        amount: string;
+        resource: string;
+        asset: string;
+        settlement: { txHash: string; confirmations: number };
+      }>(response.headers.get('PAYMENT-RESPONSE'));
+      assert.equal(paymentResponse?.x402Version, 1);
+      assert.equal(paymentResponse?.success, true);
+      assert.equal(paymentResponse?.scheme, 'exact');
+      assert.equal(paymentResponse?.network, 'eip155:8453');
+      assert.equal(paymentResponse?.amount, '0.003');
+      assert.equal(paymentResponse?.resource, '/api/deepseek');
+      assert.equal(paymentResponse?.asset, BASE_USDC_CONTRACT);
+      assert.equal(
+        paymentResponse?.settlement.txHash,
+        '0x1111111111111111111111111111111111111111111111111111111111111111',
+      );
     },
   );
 });

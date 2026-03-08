@@ -2000,6 +2000,38 @@
 
 ### 本轮目标
 
+- 修复真实 x402 自动支付客户端在 challenge 发现阶段报 `Invalid request` 的兼容性问题
+
+### 已完成
+
+- 复现并确认当前生产环境对 `/api/btc-price` 和 `/api/deepseek` 都会返回 `402`，排除了“服务端免费放行”的误判
+- 对照 x402 v2 transport 约定补齐 `PAYMENT-REQUIRED` 响应头，challenge 现在会返回 Base64 编码的标准 `accepts` 结构
+- 在 402 JSON body 中同步增加 `x402Version` 和 `accepts`，避免客户端只认标准字段时丢失支付要求
+- 成功支付后的 `200` 响应新增 `PAYMENT-RESPONSE` 头，方便自动支付客户端做 replay 后确认
+- 补充测试锁定 challenge/success transport 兼容层，避免后续再回归成“只有自定义 body、没有标准 header”
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+
+### 验证结果
+
+- `curl -i https://api-402.com/api/btc-price` 确认生产环境当前返回 `402`
+- `curl -i -X POST https://api-402.com/api/deepseek -H 'Content-Type: application/json' -d '{"prompt":"hi"}'` 确认生产环境当前返回 `402`
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `47/47`
+
+### 下一步建议
+
+1. 重新用 `awal x402 pay` 做一次真实支付测试，验证客户端是否已能正确发现 challenge
+2. 如果客户端仍失败，下一步抓它实际解析的 header/body 预期，继续做更细的 x402 v2 兼容
+3. 一旦首次真实结算跑通，就把这套支付验证步骤沉淀成一份最短操作文档
+
+## 2026-03-08
+
+### 本轮目标
+
 - 优化首页的移动端体验，重点处理导航、统计卡片、目录侧栏和示例区在手机上的拥挤问题
 
 ### 已完成
