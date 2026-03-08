@@ -4,6 +4,43 @@
 
 ### 本轮目标
 
+- 继续做后端结构优化，把 settlement/status 查询与证明校验路由从 `worker/index.ts` 中抽离出去
+
+### 已完成
+
+- 新增独立结算模块 [settlement.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/settlement.ts)，承接：
+  - `GET /api/v1/settlement/{txHash}` 路由响应组装
+  - 结算状态查询
+  - `PAYMENT-SIGNATURE` 证明绑定校验
+  - `payTo` / `minAmount` 等过滤条件校验
+- `worker/index.ts` 现在只在 settlement 路由处分发请求并注入公共依赖：
+  - `apiResponse`
+  - `callBaseRpc`
+  - `getRequestId`
+- 当前后端主文件规模已从 `2800` 行进一步降到 `2521` 行
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [settlement.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/settlement.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 27 个测试全部通过
+
+### 下一步建议
+
+1. 继续拆 `worker/index.ts`，优先分出 `metrics` 聚合与 DO snapshot 逻辑
+2. 然后再做 metrics Durable Object 分片
+3. 结构清完后开始第一组高价值新接口：`Web Search`
+
+## 2026-03-08
+
+### 本轮目标
+
 - 继续做后端结构优化，把实时上游代理和 AI provider 逻辑从 `worker/index.ts` 中抽离出去
 
 ### 已完成
