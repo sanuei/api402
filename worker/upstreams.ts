@@ -29,6 +29,7 @@ export const UPSTREAM_FAILURE_THRESHOLD = 3;
 export const UPSTREAM_CIRCUIT_COOLDOWN_MS = 30_000;
 export const UPSTREAM_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 export const UPSTREAM_TELEMETRY_MAX_EVENTS = 120;
+const POLYMARKET_GAMMA_API_BASE = 'https://gamma-api.polymarket.com';
 
 export type UpstreamErrorCode =
   | 'UPSTREAM_TIMEOUT'
@@ -292,6 +293,9 @@ export async function fetchUpstreamData(
     '/api/gpt-5.4': 'openrouter',
     '/api/gpt-5.4-pro': 'openrouter',
     '/api/claude-4.6': 'openrouter',
+    '/api/polymarket/trending': 'polymarket',
+    '/api/polymarket/search': 'polymarket',
+    '/api/polymarket/event': 'polymarket',
     '/api/wallet-risk': 'blockscout',
     '/api/whale-positions': 'hyperliquid',
     '/api/kline': 'binance',
@@ -462,6 +466,102 @@ export async function fetchUpstreamData(
           markets: ['BTC', 'ETH'],
           sampledTrades: trades.length,
           positions,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/trending') {
+      const payload = (await fetchJsonWithTimeout(
+        `${POLYMARKET_GAMMA_API_BASE}/markets?limit=12&closed=false&active=true`,
+        { method: 'GET' },
+      )) as PolymarketMarket[];
+
+      if (!Array.isArray(payload) || payload.length === 0) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket markets', retryable: true } as UpstreamFailure;
+      }
+
+      const markets = payload
+        .map((market) => summarizePolymarketMarket(market))
+        .filter((market): market is PolymarketMarketSummary => market !== null)
+        .sort((left, right) => {
+          if (right.volume !== left.volume) {
+            return right.volume - left.volume;
+          }
+          return right.liquidity - left.liquidity;
+        })
+        .slice(0, 8);
+
+      if (markets.length === 0) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'empty polymarket market summary', retryable: true } as UpstreamFailure;
+      }
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          mode: 'trending',
+          markets,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/search') {
+      const query = requestUrl.searchParams.get('q')?.trim();
+      if (!query) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket query', retryable: false } as UpstreamFailure;
+      }
+
+      const payload = (await fetchJsonWithTimeout(
+        `${POLYMARKET_GAMMA_API_BASE}/public-search?q=${encodeURIComponent(query)}`,
+        { method: 'GET' },
+      )) as PolymarketSearchResponse;
+
+      const events = Array.isArray(payload.events)
+        ? payload.events
+            .map((event) => summarizePolymarketEvent(event))
+            .filter((event): event is PolymarketEventSummary => event !== null)
+            .slice(0, 10)
+        : [];
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          mode: 'search',
+          query,
+          events,
+          total: events.length,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/event') {
+      const slug = requestUrl.searchParams.get('slug')?.trim();
+      if (!slug) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket slug', retryable: false } as UpstreamFailure;
+      }
+
+      const payload = (await fetchJsonWithTimeout(
+        `${POLYMARKET_GAMMA_API_BASE}/events/slug/${encodeURIComponent(slug)}`,
+        { method: 'GET' },
+      )) as PolymarketEvent;
+
+      const event = summarizePolymarketEventDetail(payload);
+      if (!event) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket event detail', retryable: true } as UpstreamFailure;
+      }
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          ...event,
           timestamp: Date.now(),
         },
         meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
@@ -652,6 +752,70 @@ type BlockscoutAddressEntity = {
   public_tags?: Array<{ name?: string }>;
 };
 
+type PolymarketMarket = {
+  id?: string | number;
+  question?: string;
+  slug?: string;
+  eventSlug?: string;
+  endDate?: string;
+  volume?: string | number;
+  liquidity?: string | number;
+  image?: string;
+  icon?: string;
+  active?: boolean;
+  closed?: boolean;
+  outcomes?: string;
+  outcomePrices?: string;
+};
+
+type PolymarketEvent = {
+  id?: string | number;
+  slug?: string;
+  title?: string;
+  description?: string;
+  startDate?: string;
+  endDate?: string;
+  image?: string;
+  icon?: string;
+  volume?: string | number;
+  liquidity?: string | number;
+  active?: boolean;
+  closed?: boolean;
+  markets?: PolymarketMarket[];
+};
+
+type PolymarketSearchResponse = {
+  events?: PolymarketEvent[];
+};
+
+type PolymarketMarketSummary = {
+  id: string | null;
+  question: string;
+  slug: string;
+  eventSlug: string | null;
+  volume: number;
+  liquidity: number;
+  endDate: string | null;
+  image: string | null;
+  active: boolean;
+  closed: boolean;
+  outcomes: string[];
+  outcomePrices: number[];
+};
+
+type PolymarketEventSummary = {
+  id: string | null;
+  slug: string;
+  title: string;
+  endDate: string | null;
+  volume: number;
+  liquidity: number;
+  image: string | null;
+  active: boolean;
+  closed: boolean;
+  markets: PolymarketMarketSummary[];
+};
+
 type BlockscoutAddressDetails = BlockscoutAddressEntity & {
   token?: {
     symbol?: string | null;
@@ -697,6 +861,112 @@ type BlockscoutTokenTransferItem = {
 function parseCount(value: string | number | undefined | null): number {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function parsePolymarketStringArray(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.map((entry) => String(entry || '').trim()).filter((entry) => entry.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function parsePolymarketNumberArray(value: string | undefined): number[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed
+      .map((entry) => Number(entry))
+      .filter((entry) => Number.isFinite(entry))
+      .map((entry) => Number(entry.toFixed(4)));
+  } catch {
+    return [];
+  }
+}
+
+function summarizePolymarketMarket(market: PolymarketMarket): PolymarketMarketSummary | null {
+  const question = (market.question || '').trim();
+  const slug = (market.slug || '').trim();
+  if (!question || !slug) {
+    return null;
+  }
+
+  return {
+    id: market.id != null ? String(market.id) : null,
+    question,
+    slug,
+    eventSlug: market.eventSlug?.trim() || null,
+    volume: Number(parseCount(market.volume).toFixed(2)),
+    liquidity: Number(parseCount(market.liquidity).toFixed(2)),
+    endDate: market.endDate || null,
+    image: market.image || market.icon || null,
+    active: Boolean(market.active),
+    closed: Boolean(market.closed),
+    outcomes: parsePolymarketStringArray(market.outcomes),
+    outcomePrices: parsePolymarketNumberArray(market.outcomePrices),
+  };
+}
+
+function summarizePolymarketEvent(event: PolymarketEvent): PolymarketEventSummary | null {
+  const title = (event.title || '').trim();
+  const slug = (event.slug || '').trim();
+  if (!title || !slug) {
+    return null;
+  }
+
+  return {
+    id: event.id != null ? String(event.id) : null,
+    slug,
+    title,
+    endDate: event.endDate || null,
+    volume: Number(parseCount(event.volume).toFixed(2)),
+    liquidity: Number(parseCount(event.liquidity).toFixed(2)),
+    image: event.image || event.icon || null,
+    active: Boolean(event.active),
+    closed: Boolean(event.closed),
+    markets: Array.isArray(event.markets)
+      ? event.markets
+          .map((market) => summarizePolymarketMarket(market))
+          .filter((market): market is PolymarketMarketSummary => market !== null)
+          .slice(0, 6)
+      : [],
+  };
+}
+
+function summarizePolymarketEventDetail(event: PolymarketEvent) {
+  const summary = summarizePolymarketEvent(event);
+  if (!summary) {
+    return null;
+  }
+
+  return {
+    id: summary.id,
+    slug: summary.slug,
+    title: summary.title,
+    description: event.description?.trim() || null,
+    startDate: event.startDate || null,
+    endDate: summary.endDate,
+    volume: summary.volume,
+    liquidity: summary.liquidity,
+    image: summary.image,
+    active: summary.active,
+    closed: summary.closed,
+    markets: summary.markets,
+  };
 }
 
 function normalizeSeverityScore(severity: WalletRiskSignal['severity']): number {

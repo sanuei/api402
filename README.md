@@ -54,6 +54,7 @@
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
 - `/api/deepseek` 与 `/api/qwen` 已接入 OpenRouter 真实上游，支持 `POST application/json` 的 `prompt` / `messages` 请求
 - `/api/gpt-5.4`、`/api/gpt-5.4-pro`、`/api/claude-4.6` 已接入 OpenRouter 真实上游，支持最新旗舰模型按次调用
+- `/api/polymarket/trending`、`/api/polymarket/search?q=...`、`/api/polymarket/event?slug=...` 已接入 Polymarket Gamma 公共上游
 - `/api/wallet-risk?address=0x...` 已接入 Base Blockscout 公共数据源，返回结构化钱包风险画像
 - AI 请求体不合法时会先返回 `400`，避免开发者因参数错误先进入付费流程
 - AI 接口已加入 24 小时预算保护与请求数上限，超额时返回 `429` 和机器可读错误码：`AI_BUDGET_EXCEEDED` / `AI_REQUEST_LIMIT_EXCEEDED`
@@ -108,6 +109,7 @@ npm run deploy
 - BTC / ETH 价格可尝试代理 Binance
 - K 线接口已接入 Binance 上游
 - `DeepSeek` / `Qwen` / `GPT-5.4` / `GPT-5.4 Pro` / `Claude 4.6` 已接入 OpenRouter 实时上游
+- `Polymarket trending / search / event detail` 已接入 Gamma 实时上游
 - `wallet-risk` 已接入 Base Blockscout 公共上游
 - 仍有部分接口保留 demo/mock 数据
 - 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验、nonce 防重放和 demo token

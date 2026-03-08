@@ -726,6 +726,205 @@ test('wallet-risk rejects missing address before payment challenge', async () =>
   assert.match(body.message || '', /wallet-risk requires \?address=/);
 });
 
+test('catalog prioritizes frontier models and polymarket ahead of commodity price feeds', () => {
+  const orderedPaths = API_ENDPOINTS.map((endpoint) => endpoint.path);
+
+  assert.equal(orderedPaths[0], '/api/gpt-5.4-pro');
+  assert.equal(orderedPaths[1], '/api/claude-4.6');
+  assert.ok(orderedPaths.indexOf('/api/polymarket/trending') < orderedPaths.indexOf('/api/btc-price'));
+  assert.ok(orderedPaths.indexOf('/api/polymarket/search') < orderedPaths.indexOf('/api/eth-price'));
+});
+
+test('polymarket search rejects missing q before payment challenge', async () => {
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/polymarket/search', {
+      headers: {
+        'X-Request-Id': 'req-polymarket-search-missing',
+      },
+    }),
+    createEnv(),
+  );
+  const body = (await response.json()) as { error?: string; message?: string; requestId?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request');
+  assert.equal(body.requestId, 'req-polymarket-search-missing');
+  assert.match(body.message || '', /polymarket search requires \?q=/);
+});
+
+test('polymarket event rejects missing slug before payment challenge', async () => {
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/polymarket/event', {
+      headers: {
+        'X-Request-Id': 'req-polymarket-event-missing',
+      },
+    }),
+    createEnv(),
+  );
+  const body = (await response.json()) as { error?: string; message?: string; requestId?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request');
+  assert.equal(body.requestId, 'req-polymarket-event-missing');
+  assert.match(body.message || '', /polymarket event requires \?slug=/);
+});
+
+test('polymarket trending endpoint returns normalized live market list when upstream data is available', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (url.startsWith('https://gamma-api.polymarket.com/markets')) {
+      return new Response(
+        JSON.stringify([
+          {
+            id: '101',
+            question: 'Will BTC hit $100k this month?',
+            slug: 'btc-100k-this-month',
+            eventSlug: 'btc-100k-this-month',
+            volume: '2150000.42',
+            liquidity: '421000.12',
+            endDate: '2026-03-31T12:00:00Z',
+            image: 'https://example.com/btc.jpg',
+            active: true,
+            closed: false,
+            outcomes: JSON.stringify(['Yes', 'No']),
+            outcomePrices: JSON.stringify([0.44, 0.56]),
+          },
+          {
+            id: '102',
+            question: 'Will ETH outperform BTC this quarter?',
+            slug: 'eth-outperform-btc-quarter',
+            eventSlug: 'eth-outperform-btc-quarter',
+            volume: '980000.00',
+            liquidity: '200100.00',
+            endDate: '2026-04-01T12:00:00Z',
+            active: true,
+            closed: false,
+            outcomes: JSON.stringify(['Yes', 'No']),
+            outcomePrices: JSON.stringify([0.35, 0.65]),
+          },
+        ]),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    return new Response(JSON.stringify({ error: 'unexpected upstream target' }), { status: 500 });
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/polymarket/trending', {
+        headers: {
+          Authorization: 'Bearer demo',
+        },
+      }),
+      createEnv(),
+    );
+    const body = (await response.json()) as {
+      source?: string;
+      mode?: string;
+      markets?: Array<{ slug?: string; volume?: number; outcomes?: string[]; outcomePrices?: number[] }>;
+      _meta: { origin: string; upstream?: { source?: string; status?: string } };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.source, 'polymarket');
+    assert.equal(body.mode, 'trending');
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.source, 'polymarket');
+    assert.equal(body._meta.upstream?.status, 'live');
+    assert.equal(body.markets?.[0]?.slug, 'btc-100k-this-month');
+    assert.equal(body.markets?.[0]?.volume, 2150000.42);
+    assert.deepEqual(body.markets?.[0]?.outcomes, ['Yes', 'No']);
+    assert.deepEqual(body.markets?.[0]?.outcomePrices, [0.44, 0.56]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('polymarket event endpoint returns normalized event details when upstream data is available', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (url === 'https://gamma-api.polymarket.com/events/slug/btc-100k-this-month') {
+      return new Response(
+        JSON.stringify({
+          id: '201',
+          slug: 'btc-100k-this-month',
+          title: 'Bitcoin above $100k this month?',
+          description: 'A directional market for BTC over the next 30 days.',
+          startDate: '2026-03-01T00:00:00Z',
+          endDate: '2026-03-31T12:00:00Z',
+          image: 'https://example.com/btc-event.jpg',
+          volume: '4300000.33',
+          liquidity: '860000.22',
+          active: true,
+          closed: false,
+          markets: [
+            {
+              id: '301',
+              question: 'Will BTC hit $100k this month?',
+              slug: 'btc-100k-this-month-yes-no',
+              eventSlug: 'btc-100k-this-month',
+              volume: '2150000.42',
+              liquidity: '421000.12',
+              endDate: '2026-03-31T12:00:00Z',
+              outcomes: JSON.stringify(['Yes', 'No']),
+              outcomePrices: JSON.stringify([0.44, 0.56]),
+              active: true,
+              closed: false,
+            },
+          ],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    return new Response(JSON.stringify({ error: 'unexpected upstream target' }), { status: 500 });
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/polymarket/event?slug=btc-100k-this-month', {
+        headers: {
+          Authorization: 'Bearer demo',
+        },
+      }),
+      createEnv(),
+    );
+    const body = (await response.json()) as {
+      source?: string;
+      slug?: string;
+      title?: string;
+      markets?: Array<{ slug?: string }>;
+      _meta: { origin: string; upstream?: { source?: string; status?: string } };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.source, 'polymarket');
+    assert.equal(body.slug, 'btc-100k-this-month');
+    assert.equal(body.title, 'Bitcoin above $100k this month?');
+    assert.equal(body.markets?.[0]?.slug, 'btc-100k-this-month-yes-no');
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.source, 'polymarket');
+    assert.equal(body._meta.upstream?.status, 'live');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('deepseek endpoint proxies live openrouter chat completion when configured', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {

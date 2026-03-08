@@ -1871,3 +1871,44 @@
 1. 将 settlement 可观测字段同步补入 catalog schema，方便 SDK 静态建模
 2. 给关键上游代理补统一熔断 / 降级策略并提供 machine-readable 错误码
 3. 继续推进 AI 类接口的真实上游替换，减少 demo 占比
+
+## 2026-03-08
+
+### 本轮目标
+
+- 开始专注开发更有流量吸引力的 `Polymarket` 预测市场接口
+- 调整首页 API 目录顺序，把最新模型和预测市场能力提前，弱化 BTC/ETH 单点价格接口的首页曝光
+
+### 已完成
+
+- 新增 `GET /api/polymarket/trending`，返回 Polymarket 当前热门活跃市场列表
+- 新增 `GET /api/polymarket/search?q=...`，返回 Polymarket 关键词搜索结果
+- 新增 `GET /api/polymarket/event?slug=...`，返回单个 Polymarket 事件详情和其下属市场
+- 三个接口都接到了 Polymarket Gamma 公共上游，不是 mock 数据
+- 为 `polymarket/search` 和 `polymarket/event` 增加了付费前参数校验，避免参数错误先进入 402
+- 重排 `API_ENDPOINTS` 顺序：`GPT-5.4 Pro`、`Claude 4.6`、`GPT-5.4`、`DeepSeek`、`Qwen`、`Polymarket`、链上情报、最后才是 BTC/ETH 价格
+- 新增测试覆盖：目录排序、Polymarket 缺参校验、trending live 返回、event live 返回
+- 已同步更新 `README.md`、`ROADMAP.md`、`API_EXPANSION.md`
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker/upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+- [doc/API_EXPANSION.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/API_EXPANSION.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `37/37`
+- `npm run build:frontend` 通过
+- `npx wrangler deploy --dry-run` 通过
+- `npm run deploy` 通过，Cloudflare 当前版本 `8fffaca0-95d8-4127-ab89-96a4be1a29c8`
+
+### 下一步建议
+
+1. 继续做 `Polymarket related / topic / mispricing` 这类更容易形成分享和复购的预测市场接口
+2. 将 `approval-audit` 和 `tx-simulate-explain` 继续作为高客单价 Web3 + AI 风控主线推进
+3. 如果首页目录继续扩展，下一步考虑增加“热门接口”分组，而不是只依赖单一排序

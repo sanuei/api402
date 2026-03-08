@@ -40,7 +40,23 @@
 当前进度更新:
 
 - `Onchain Wallet Intelligence` 已开始落地，首个接口为 `GET /api/wallet-risk?address=0x...`
+- `Prediction Markets` 已开始落地，已新增 `GET /api/polymarket/trending`、`GET /api/polymarket/search?q=...`、`GET /api/polymarket/event?slug=...`
 - 下一步建议继续扩 `approval-audit` 与 `tx-simulate-explain`
+
+### 补充方向: Prediction Markets / Attention APIs
+
+- 价值：
+  - 更适合放在首页前排，天然更有点击欲望和分享属性
+  - 对 AI agent 来说不仅是流量入口，也能作为“市场共识信号”
+  - 和加密货币 / 交易 / 事件判断主题天然贴近
+- 已上线接口：
+  - `GET /api/polymarket/trending`
+  - `GET /api/polymarket/search?q=...`
+  - `GET /api/polymarket/event?slug=...`
+- 下一步可继续扩：
+  - `GET /api/polymarket/related?slug=...`
+  - `GET /api/polymarket/topic?tag=election|crypto|macro`
+  - `GET /api/polymarket/mispricing`
 
 ### 1. Web Search
 

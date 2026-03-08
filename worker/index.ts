@@ -179,32 +179,64 @@ type ReplayConsumeResult = {
 
 export const API_ENDPOINTS: APIEndpoint[] = [
   {
-    path: '/api/btc-price',
-    price: '0.00001',
-    label: { zh: 'BTC 价格', en: 'BTC Price' },
+    path: '/api/gpt-5.4-pro',
+    price: '0.12',
+    method: 'POST',
+    label: { zh: 'GPT-5.4 Pro 深度推理', en: 'GPT-5.4 Pro Reasoning' },
     description: {
-      zh: '聚合自 Binance 的 BTC 实时价格。',
-      en: 'Real-time BTC price feed aggregated from Binance.',
+      zh: '面向高价值深度推理任务的 GPT-5.4 Pro 按次调用入口，适合代码审查和复杂分析。',
+      en: 'High-value pay-per-call access to GPT-5.4 Pro for deeper reasoning, code review, and complex analysis.',
     },
-    category: { zh: '市场数据', en: 'Market Data' },
-    upstream: 'binance',
-    tags: ['btc', 'market-data', 'realtime'],
+    category: { zh: '旗舰模型', en: 'Frontier Models' },
+    upstream: 'openrouter',
+    tags: ['ai', 'reasoning', 'gpt-5.4-pro', 'openai', 'premium'],
     status: 'live',
-    sample: () => ({ symbol: 'BTC', price: 67234.56, timestamp: Date.now() }),
+    sample: () => ({
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_GPT54_PRO_MODEL,
+      response: 'GPT-5.4 Pro is best reserved for expensive, high-confidence reasoning tasks.',
+      usage: { promptTokens: 48, completionTokens: 72, totalTokens: 120 },
+    }),
   },
   {
-    path: '/api/eth-price',
-    price: '0.00001',
-    label: { zh: 'ETH 价格', en: 'ETH Price' },
+    path: '/api/claude-4.6',
+    price: '0.04',
+    method: 'POST',
+    label: { zh: 'Claude 4.6 对话', en: 'Claude 4.6 Chat' },
     description: {
-      zh: '聚合自 Binance 的 ETH 实时价格。',
-      en: 'Real-time ETH price feed aggregated from Binance.',
+      zh: '基于 OpenRouter 的 Claude 4.6 按次调用入口，适合长上下文写作、审阅和 agent 安全说明。',
+      en: 'Pay-per-call Claude 4.6 access via OpenRouter for long-context writing, review, and agent-safe explanations.',
     },
-    category: { zh: '市场数据', en: 'Market Data' },
-    upstream: 'binance',
-    tags: ['eth', 'market-data', 'realtime'],
+    category: { zh: '旗舰模型', en: 'Frontier Models' },
+    upstream: 'openrouter',
+    tags: ['ai', 'chat', 'claude-4.6', 'anthropic', 'openrouter', 'latest'],
     status: 'live',
-    sample: () => ({ symbol: 'ETH', price: 3456.78, timestamp: Date.now() }),
+    sample: () => ({
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_CLAUDE46_MODEL,
+      response: 'Claude 4.6 is useful when you want strong writing and careful instruction following without a separate subscription.',
+      usage: { promptTokens: 28, completionTokens: 34, totalTokens: 62 },
+    }),
+  },
+  {
+    path: '/api/gpt-5.4',
+    price: '0.03',
+    method: 'POST',
+    label: { zh: 'GPT-5.4 对话', en: 'GPT-5.4 Chat' },
+    description: {
+      zh: '基于 OpenRouter 的 GPT-5.4 按次调用入口，适合临时体验最新 OpenAI 模型。',
+      en: 'Pay-per-call access to GPT-5.4 via OpenRouter for lightweight trials of the latest OpenAI model.',
+    },
+    category: { zh: '旗舰模型', en: 'Frontier Models' },
+    upstream: 'openrouter',
+    tags: ['ai', 'chat', 'gpt-5.4', 'openai', 'openrouter', 'latest'],
+    status: 'live',
+    sample: () => ({
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_GPT54_MODEL,
+      response: 'GPT-5.4 is useful when you need strong general reasoning without a monthly subscription.',
+      usage: { promptTokens: 22, completionTokens: 30, totalTokens: 52 },
+    }),
   },
   {
     path: '/api/deepseek',
@@ -247,63 +279,82 @@ export const API_ENDPOINTS: APIEndpoint[] = [
     }),
   },
   {
-    path: '/api/gpt-5.4',
-    price: '0.03',
-    method: 'POST',
-    label: { zh: 'GPT-5.4 对话', en: 'GPT-5.4 Chat' },
+    path: '/api/polymarket/trending',
+    price: '0.003',
+    label: { zh: 'Polymarket 热门市场', en: 'Polymarket Trending Markets' },
     description: {
-      zh: '基于 OpenRouter 的 GPT-5.4 按次调用入口，适合临时体验最新 OpenAI 模型。',
-      en: 'Pay-per-call access to GPT-5.4 via OpenRouter for lightweight trials of the latest OpenAI model.',
+      zh: '返回 Polymarket 当前最热门的预测市场，适合做选题、信号发现和 agent 首页流量入口。',
+      en: 'Returns the hottest active Polymarket prediction markets for discovery, trend monitoring, and agent dashboards.',
     },
-    category: { zh: '旗舰模型', en: 'Frontier Models' },
-    upstream: 'openrouter',
-    tags: ['ai', 'chat', 'gpt-5.4', 'openai', 'openrouter', 'latest'],
+    category: { zh: '预测市场', en: 'Prediction Markets' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'prediction-market', 'trending', 'discovery', 'live'],
     status: 'live',
     sample: () => ({
-      source: 'openrouter',
-      model: DEFAULT_OPENROUTER_GPT54_MODEL,
-      response: 'GPT-5.4 is useful when you need strong general reasoning without a monthly subscription.',
-      usage: { promptTokens: 22, completionTokens: 30, totalTokens: 52 },
+      source: 'polymarket',
+      markets: [
+        {
+          question: 'Will Bitcoin reach $150k in 2026?',
+          slug: 'bitcoin-150k-in-2026',
+          volume: 5212400.33,
+          liquidity: 822340.15,
+          outcomes: ['Yes', 'No'],
+          outcomePrices: [0.41, 0.59],
+        },
+      ],
+      timestamp: Date.now(),
     }),
   },
   {
-    path: '/api/gpt-5.4-pro',
-    price: '0.12',
-    method: 'POST',
-    label: { zh: 'GPT-5.4 Pro 深度推理', en: 'GPT-5.4 Pro Reasoning' },
+    path: '/api/polymarket/search',
+    price: '0.004',
+    label: { zh: 'Polymarket 搜索', en: 'Polymarket Search' },
     description: {
-      zh: '面向高价值深度推理任务的 GPT-5.4 Pro 按次调用入口，适合代码审查和复杂分析。',
-      en: 'High-value pay-per-call access to GPT-5.4 Pro for deeper reasoning, code review, and complex analysis.',
+      zh: '按关键词搜索 Polymarket 事件和市场，适合给 agent 做热点检索与候选池构建。',
+      en: 'Searches Polymarket events and markets by keyword for agent-driven discovery and watchlist building.',
     },
-    category: { zh: '旗舰模型', en: 'Frontier Models' },
-    upstream: 'openrouter',
-    tags: ['ai', 'reasoning', 'gpt-5.4-pro', 'openai', 'premium'],
+    category: { zh: '预测市场', en: 'Prediction Markets' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'search', 'prediction-market', 'event-discovery'],
     status: 'live',
     sample: () => ({
-      source: 'openrouter',
-      model: DEFAULT_OPENROUTER_GPT54_PRO_MODEL,
-      response: 'GPT-5.4 Pro is best reserved for expensive, high-confidence reasoning tasks.',
-      usage: { promptTokens: 48, completionTokens: 72, totalTokens: 120 },
+      source: 'polymarket',
+      query: 'bitcoin',
+      events: [
+        {
+          title: 'Bitcoin above ___ on March 31?',
+          slug: 'bitcoin-above-on-march-31',
+          volume: 1834220.72,
+          liquidity: 323110.11,
+        },
+      ],
+      timestamp: Date.now(),
     }),
   },
   {
-    path: '/api/claude-4.6',
-    price: '0.04',
-    method: 'POST',
-    label: { zh: 'Claude 4.6 对话', en: 'Claude 4.6 Chat' },
+    path: '/api/polymarket/event',
+    price: '0.005',
+    label: { zh: 'Polymarket 事件详情', en: 'Polymarket Event Detail' },
     description: {
-      zh: '基于 OpenRouter 的 Claude 4.6 按次调用入口，适合长上下文写作、审阅和 agent 安全说明。',
-      en: 'Pay-per-call Claude 4.6 access via OpenRouter for long-context writing, review, and agent-safe explanations.',
+      zh: '按 slug 拉取单个 Polymarket 事件及其市场详情，适合做决策解释、监控和页面深链。',
+      en: 'Loads one Polymarket event by slug with nested market details for monitoring, explainability, and deep linking.',
     },
-    category: { zh: '旗舰模型', en: 'Frontier Models' },
-    upstream: 'openrouter',
-    tags: ['ai', 'chat', 'claude-4.6', 'anthropic', 'openrouter', 'latest'],
+    category: { zh: '预测市场', en: 'Prediction Markets' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'event', 'detail', 'prediction-market', 'live'],
     status: 'live',
     sample: () => ({
-      source: 'openrouter',
-      model: DEFAULT_OPENROUTER_CLAUDE46_MODEL,
-      response: 'Claude 4.6 is useful when you want strong writing and careful instruction following without a separate subscription.',
-      usage: { promptTokens: 28, completionTokens: 34, totalTokens: 62 },
+      source: 'polymarket',
+      slug: 'bitcoin-above-on-march-31',
+      title: 'Bitcoin above ___ on March 31?',
+      markets: [
+        {
+          question: 'Bitcoin above $90k on March 31?',
+          outcomes: ['Yes', 'No'],
+          outcomePrices: [0.36, 0.64],
+        },
+      ],
+      timestamp: Date.now(),
     }),
   },
   {
@@ -360,6 +411,34 @@ export const API_ENDPOINTS: APIEndpoint[] = [
         { address: '0xabcd...', trades: 9, notionalUsd: 750000, dominantSide: 'sell' },
       ],
     }),
+  },
+  {
+    path: '/api/btc-price',
+    price: '0.00001',
+    label: { zh: 'BTC 价格', en: 'BTC Price' },
+    description: {
+      zh: '聚合自 Binance 的 BTC 实时价格。',
+      en: 'Real-time BTC price feed aggregated from Binance.',
+    },
+    category: { zh: '市场数据', en: 'Market Data' },
+    upstream: 'binance',
+    tags: ['btc', 'market-data', 'realtime'],
+    status: 'live',
+    sample: () => ({ symbol: 'BTC', price: 67234.56, timestamp: Date.now() }),
+  },
+  {
+    path: '/api/eth-price',
+    price: '0.00001',
+    label: { zh: 'ETH 价格', en: 'ETH Price' },
+    description: {
+      zh: '聚合自 Binance 的 ETH 实时价格。',
+      en: 'Real-time ETH price feed aggregated from Binance.',
+    },
+    category: { zh: '市场数据', en: 'Market Data' },
+    upstream: 'binance',
+    tags: ['eth', 'market-data', 'realtime'],
+    status: 'live',
+    sample: () => ({ symbol: 'ETH', price: 3456.78, timestamp: Date.now() }),
   },
   {
     path: '/api/kline',
@@ -2315,7 +2394,12 @@ function createBadRequestResponse(message: string, requestId: string): Response 
 }
 
 function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, requestId: string): Response | null {
-  if (endpoint.path !== '/api/wallet-risk') {
+  const requiresValidatedGet =
+    endpoint.path === '/api/wallet-risk' ||
+    endpoint.path === '/api/polymarket/search' ||
+    endpoint.path === '/api/polymarket/event';
+
+  if (!requiresValidatedGet) {
     return null;
   }
 
@@ -2334,13 +2418,35 @@ function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, 
   }
 
   const url = new URL(request.url);
-  const address = url.searchParams.get('address')?.trim() || '';
-  if (!address) {
-    return createBadRequestResponse('wallet-risk requires ?address=0x... before payment can be evaluated.', requestId);
+  if (endpoint.path === '/api/wallet-risk') {
+    const address = url.searchParams.get('address')?.trim() || '';
+    if (!address) {
+      return createBadRequestResponse('wallet-risk requires ?address=0x... before payment can be evaluated.', requestId);
+    }
+
+    if (!isHexAddress(address)) {
+      return createBadRequestResponse('wallet-risk address must be a valid EVM hex address.', requestId);
+    }
+
+    return null;
   }
 
-  if (!isHexAddress(address)) {
-    return createBadRequestResponse('wallet-risk address must be a valid EVM hex address.', requestId);
+  if (endpoint.path === '/api/polymarket/search') {
+    const query = url.searchParams.get('q')?.trim() || '';
+    if (!query) {
+      return createBadRequestResponse('polymarket search requires ?q=keyword before payment can be evaluated.', requestId);
+    }
+
+    return null;
+  }
+
+  if (endpoint.path === '/api/polymarket/event') {
+    const slug = url.searchParams.get('slug')?.trim() || '';
+    if (!slug) {
+      return createBadRequestResponse('polymarket event requires ?slug=event-slug before payment can be evaluated.', requestId);
+    }
+
+    return null;
   }
 
   return null;
