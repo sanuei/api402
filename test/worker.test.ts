@@ -604,6 +604,87 @@ test('ai endpoint rejects invalid json body before payment challenge', async () 
   assert.equal(response.headers.get('X-Request-Id'), 'req-ai-invalid');
 });
 
+test('article extract endpoint rejects invalid target url before payment challenge', async () => {
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/extract/article?url=http://127.0.0.1/private', {
+      headers: { 'X-Request-Id': 'req-extract-invalid' },
+    }),
+    createEnv(),
+  );
+  const body = (await response.json()) as { error: string; requestId?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request');
+  assert.equal(body.requestId, 'req-extract-invalid');
+  assert.equal(response.headers.get('X-Request-Id'), 'req-extract-invalid');
+});
+
+test('article extract endpoint fetches and extracts live page metadata in demo mode', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    assert.equal(url, 'https://example.com/article');
+    return new Response(
+      `<!doctype html>
+      <html lang="en">
+        <head>
+          <title>Example Article</title>
+          <meta name="description" content="A short metadata description for the page." />
+          <link rel="canonical" href="https://example.com/article" />
+        </head>
+        <body>
+          <h1>Example Article</h1>
+          <h2>Key Takeaways</h2>
+          <p>This example article explains how to extract readable summaries from HTML pages in a worker runtime.</p>
+          <p>It also includes a second paragraph so the excerpt logic has enough readable content.</p>
+          <a href="/about">About</a>
+          <a href="https://developer.mozilla.org/">MDN</a>
+        </body>
+      </html>`,
+      {
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+      },
+    );
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/extract/article?url=https%3A%2F%2Fexample.com%2Farticle', {
+        headers: { Authorization: 'Bearer demo' },
+      }),
+      createEnv(),
+    );
+    const body = (await response.json()) as {
+      title?: string;
+      description?: string;
+      excerpt?: string;
+      headings?: string[];
+      links?: Array<{ href: string; text: string; sameHost: boolean }>;
+      _meta: { origin: string; upstream?: { source: string; status: string; reasonCode: string } };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.title, 'Example Article');
+    assert.equal(body.description, 'A short metadata description for the page.');
+    assert.match(body.excerpt || '', /extract readable summaries/i);
+    assert.deepEqual(body.headings, ['Example Article', 'Key Takeaways']);
+    assert.equal(body.links?.[0]?.href, 'https://example.com/about');
+    assert.equal(body.links?.[0]?.sameHost, true);
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.source, 'direct-fetch');
+    assert.equal(body._meta.upstream?.status, 'live');
+    assert.equal(body._meta.upstream?.reasonCode, 'OK');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('deepseek endpoint proxies live openrouter chat completion when configured', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {

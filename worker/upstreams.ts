@@ -78,6 +78,11 @@ export type AIRequestContext = {
   requestMode: 'preview_get' | 'post_chat';
 };
 
+export type UpstreamRequestContext = {
+  ai: AIRequestContext | null;
+  extractTargetUrl?: string | null;
+};
+
 export type AIUsageEvent = {
   at: number;
   model: string;
@@ -174,6 +179,159 @@ async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 
   }
 }
 
+async function fetchTextWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = UPSTREAM_TIMEOUT_MS,
+): Promise<{ text: string; finalUrl: string; contentType: string | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, { ...init, signal: controller.signal, redirect: 'follow' });
+    if (!response.ok) {
+      throw {
+        code: 'UPSTREAM_HTTP_ERROR',
+        message: `upstream ${response.status}`,
+        retryable: response.status >= 500 || response.status === 429,
+      } as UpstreamFailure;
+    }
+
+    return {
+      text: await response.text(),
+      finalUrl: response.url || url,
+      contentType: response.headers.get('Content-Type'),
+    };
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw {
+        code: 'UPSTREAM_TIMEOUT',
+        message: 'upstream timeout',
+        retryable: true,
+      } as UpstreamFailure;
+    }
+
+    if (typeof error === 'object' && error && 'code' in error && typeof (error as { code?: unknown }).code === 'string') {
+      throw error;
+    }
+
+    throw {
+      code: 'UPSTREAM_FETCH_FAILED',
+      message: error instanceof Error ? error.message : 'unknown upstream error',
+      retryable: true,
+    } as UpstreamFailure;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function decodeHtmlEntities(input: string): string {
+  return input
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&nbsp;/gi, ' ');
+}
+
+function stripHtmlTags(input: string): string {
+  return decodeHtmlEntities(input.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function matchMetaContent(html: string, names: string[]): string | null {
+  const lowered = names.map((name) => name.toLowerCase());
+  const metaRegex = /<meta\b[^>]*?(?:name|property)=["']([^"']+)["'][^>]*?content=["']([^"']+)["'][^>]*?>/gi;
+
+  for (const match of html.matchAll(metaRegex)) {
+    const key = match[1]?.toLowerCase();
+    if (key && lowered.includes(key)) {
+      return stripHtmlTags(match[2] || '');
+    }
+  }
+
+  return null;
+}
+
+function matchTagText(html: string, tagName: string): string | null {
+  const match = html.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i'));
+  return match ? stripHtmlTags(match[1] || '') : null;
+}
+
+function matchAllTagTexts(html: string, tagName: string, limit: number): string[] {
+  const regex = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'gi');
+  const values = Array.from(html.matchAll(regex))
+    .map((match) => stripHtmlTags(match[1] || ''))
+    .filter(Boolean);
+  return values.slice(0, limit);
+}
+
+function extractCanonicalUrl(html: string): string | null {
+  const canonicalMatch = html.match(/<link\b[^>]*?rel=["'][^"']*canonical[^"']*["'][^>]*?href=["']([^"']+)["'][^>]*?>/i);
+  if (canonicalMatch?.[1]) {
+    return canonicalMatch[1].trim();
+  }
+
+  return matchMetaContent(html, ['og:url']);
+}
+
+function extractLang(html: string): string | null {
+  const match = html.match(/<html\b[^>]*\blang=["']([^"']+)["']/i);
+  return match?.[1]?.trim() || null;
+}
+
+function extractExcerpt(html: string): string | null {
+  const body = html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, ' ');
+  const paragraphs = matchAllTagTexts(body, 'p', 4).filter((text) => text.length >= 40);
+  if (paragraphs.length === 0) {
+    return null;
+  }
+
+  return paragraphs.join(' ').slice(0, 420).trim();
+}
+
+function extractLinks(html: string, baseUrl: string, limit: number): Array<{ href: string; text: string; sameHost: boolean }> {
+  const regex = /<a\b[^>]*?href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+  const base = new URL(baseUrl);
+  const seen = new Set<string>();
+  const links: Array<{ href: string; text: string; sameHost: boolean }> = [];
+
+  for (const match of html.matchAll(regex)) {
+    if (links.length >= limit) {
+      break;
+    }
+
+    const rawHref = match[1]?.trim();
+    const text = stripHtmlTags(match[2] || '');
+    if (!rawHref || !text) {
+      continue;
+    }
+
+    try {
+      const resolved = new URL(rawHref, baseUrl);
+      if (!['http:', 'https:'].includes(resolved.protocol)) {
+        continue;
+      }
+      if (seen.has(resolved.href)) {
+        continue;
+      }
+      seen.add(resolved.href);
+      links.push({
+        href: resolved.href,
+        text: text.slice(0, 120),
+        sameHost: resolved.hostname === base.hostname,
+      });
+    } catch {
+      continue;
+    }
+  }
+
+  return links;
+}
+
 type HyperliquidTrade = {
   coin?: string;
   side?: string;
@@ -204,7 +362,7 @@ type FetchUpstreamDependencies = {
 export async function fetchUpstreamData(
   path: string,
   env: UpstreamEnv,
-  aiContext: AIRequestContext | null,
+  context: UpstreamRequestContext,
   deps: FetchUpstreamDependencies,
 ): Promise<UpstreamResult> {
   const sourceByPath: Record<string, string | undefined> = {
@@ -214,6 +372,7 @@ export async function fetchUpstreamData(
     '/api/qwen': 'openrouter',
     '/api/whale-positions': 'hyperliquid',
     '/api/kline': 'binance',
+    '/api/extract/article': 'direct-fetch',
   };
 
   const source = sourceByPath[path];
@@ -417,7 +576,54 @@ export async function fetchUpstreamData(
       };
     }
 
+    if (path === '/api/extract/article') {
+      const targetUrl = context.extractTargetUrl;
+      if (!targetUrl) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing extract target url', retryable: false } as UpstreamFailure;
+      }
+
+      const { text, finalUrl, contentType } = await fetchTextWithTimeout(targetUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'API402Bot/1.0 (+https://api-402.com)',
+          Accept: 'text/html,application/xhtml+xml',
+        },
+      });
+
+      const title = matchTagText(text, 'title');
+      const description = matchMetaContent(text, ['description', 'og:description', 'twitter:description']);
+      const canonicalUrl = extractCanonicalUrl(text);
+      const lang = extractLang(text);
+      const headings = matchAllTagTexts(text, 'h1', 2).concat(matchAllTagTexts(text, 'h2', 3)).slice(0, 5);
+      const excerpt = extractExcerpt(text);
+      const links = extractLinks(text, finalUrl, 8);
+
+      if (!title && !description && !excerpt) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'no extractable content', retryable: true } as UpstreamFailure;
+      }
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          url: targetUrl,
+          finalUrl,
+          canonicalUrl,
+          title,
+          description,
+          excerpt,
+          headings,
+          links,
+          lang,
+          contentType,
+          wordCount: excerpt ? excerpt.split(/\s+/).length : 0,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
     if (path === '/api/deepseek' || path === '/api/qwen') {
+      const aiContext = context.ai;
       if (!aiContext) {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing ai request context', retryable: false } as UpstreamFailure;
       }

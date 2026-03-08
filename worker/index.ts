@@ -77,17 +77,35 @@ import {
   type AIProfitPolicy,
   type AIQuotaCode,
   type AIRequestContext,
-  type AIUsageAggregate,
   type AIUsageEvent,
   type AIUsageSummary,
   type OpenRouterChatMessage,
   type UpstreamErrorCode,
   type UpstreamMeta,
+  type UpstreamRequestContext,
   type UpstreamTelemetryEvent,
   type UpstreamTelemetrySummary,
 } from './upstreams';
+import {
+  MetricsStoreDurableObject,
+  appendDurableMetric,
+  computeEndpointFreshness,
+  getDurableAIUsageSummary,
+  getDurableFunnelSummary,
+  getDurableMetricsSnapshot,
+  getEndpointRequestMetricSummary,
+  getInMemoryAIUsageSummary,
+  getInMemoryFunnelSummary,
+  recordAIUsageWithDurable,
+  recordEndpointRequestMetricWithDurable,
+  type EndpointRequestMetricEvent,
+  type FunnelSummary,
+  type FunnelWindow,
+  type MetricsSnapshot,
+} from './metrics';
 import { createSettlementStatusResponse } from './settlement';
 export { buildPaymentMessage } from './payment';
+export { MetricsStoreDurableObject } from './metrics';
 export type { PaymentPayload } from './payment';
 
 export interface Env {
@@ -151,12 +169,6 @@ const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const FUNNEL_METRICS_PATH = '/api/v1/metrics/funnel';
-const ENDPOINT_METRICS_WINDOW_MS = 60 * 60 * 1000;
-const ENDPOINT_METRICS_MAX_EVENTS = 600;
-const ENDPOINT_METRICS_DURABLE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const ENDPOINT_METRICS_DURABLE_MAX_EVENTS = 20_000;
-const ENDPOINT_METRICS_BUCKET_MS = 10 * 60 * 1000;
-const ENDPOINT_METRICS_BUCKET_COUNT = 6;
 const REQUEST_ID_HEADER = 'X-Request-Id';
 
 
@@ -275,6 +287,31 @@ export const API_ENDPOINTS: APIEndpoint[] = [
       candles: [
         [1700000000, 67000, 67500, 66500, 67200, 1000],
         [1700003600, 67200, 67800, 67100, 67650, 1200],
+      ],
+    }),
+  },
+  {
+    path: '/api/extract/article',
+    price: '0.0008',
+    label: { zh: '网页提取', en: 'Article Extract' },
+    description: {
+      zh: '抓取指定网页并提取标题、描述、摘要、标题层级和链接概览。',
+      en: 'Fetch a target page and extract title, description, excerpt, headings, and key links.',
+    },
+    category: { zh: '开发工具', en: 'Developer Tools' },
+    upstream: 'direct-fetch',
+    tags: ['extract', 'crawl', 'web', 'live'],
+    status: 'live',
+    sample: () => ({
+      url: 'https://example.com/article',
+      finalUrl: 'https://example.com/article',
+      title: 'Example Article',
+      description: 'A concise summary extracted from the page metadata.',
+      excerpt: 'This is the first readable excerpt pulled from the page body.',
+      headings: ['Example Article', 'Key Takeaways'],
+      links: [
+        { href: 'https://example.com/about', text: 'About', sameHost: true },
+        { href: 'https://developer.mozilla.org/', text: 'MDN', sameHost: false },
       ],
     }),
   },
@@ -668,176 +705,6 @@ export class ReplayGuardDurableObject {
   }
 }
 
-export class MetricsStoreDurableObject {
-  constructor(
-    private readonly state: DurableObjectState,
-    private readonly env: Env,
-  ) {}
-
-  async fetch(request: Request): Promise<Response> {
-    const url = new URL(request.url);
-
-    if (request.method === 'POST' && url.pathname === '/append') {
-      const payload = (await request.json()) as
-        | { kind?: 'upstream'; key?: string; event?: UpstreamTelemetryEvent }
-        | { kind?: 'endpoint'; key?: string; event?: EndpointRequestMetricEvent }
-        | { kind?: 'ai'; key?: string; event?: AIUsageEvent };
-
-      if (!payload || typeof payload !== 'object' || !payload.kind || !payload.key || !payload.event) {
-        return jsonResponse({ error: 'Invalid metrics payload' }, { status: 400 });
-      }
-
-      const storageKey = `${payload.kind}:${payload.key}`;
-      if (payload.kind === 'upstream') {
-        const existing = ((await this.state.storage.get<UpstreamTelemetryEvent[]>(storageKey)) || []).filter(Boolean);
-        const next = pruneTelemetryEvents([...existing, payload.event as UpstreamTelemetryEvent], Date.now());
-        await this.state.storage.put(storageKey, next);
-      } else if (payload.kind === 'ai') {
-        const existing = ((await this.state.storage.get<AIUsageEvent[]>(storageKey)) || []).filter(Boolean);
-        const next = pruneAIUsageEvents([...existing, payload.event as AIUsageEvent], Date.now());
-        await this.state.storage.put(storageKey, next);
-      } else {
-        const existing = ((await this.state.storage.get<EndpointRequestMetricEvent[]>(storageKey)) || []).filter(Boolean);
-        const next = pruneEndpointRequestEventsWithWindow(
-          [...existing, payload.event as EndpointRequestMetricEvent],
-          Date.now(),
-          ENDPOINT_METRICS_DURABLE_RETENTION_MS,
-          ENDPOINT_METRICS_DURABLE_MAX_EVENTS,
-        );
-        await this.state.storage.put(storageKey, next);
-      }
-
-      await this.state.storage.setAlarm(Date.now() + ENDPOINT_METRICS_WINDOW_MS);
-      return jsonResponse({ ok: true });
-    }
-
-    if (request.method === 'POST' && url.pathname === '/snapshot') {
-      const payload = (await request.json().catch(() => ({}))) as { now?: number };
-      const now = Number(payload.now) || Date.now();
-      const entries = await this.state.storage.list<UpstreamTelemetryEvent[] | EndpointRequestMetricEvent[]>();
-      const upstreamTelemetry: Record<string, UpstreamTelemetryEvent[]> = {};
-      const endpointMetrics: Record<string, EndpointRequestMetricEvent[]> = {};
-
-      for (const [key, value] of entries.entries()) {
-        if (!Array.isArray(value)) {
-          continue;
-        }
-
-        if (key.startsWith('upstream:')) {
-          upstreamTelemetry[key.slice('upstream:'.length)] = pruneTelemetryEvents(
-            value as UpstreamTelemetryEvent[],
-            now,
-          );
-          continue;
-        }
-
-        if (key.startsWith('endpoint:')) {
-          endpointMetrics[key.slice('endpoint:'.length)] = pruneEndpointRequestEvents(
-            value as EndpointRequestMetricEvent[],
-            now,
-          );
-        }
-      }
-
-      return jsonResponse({ upstreamTelemetry, endpointMetrics });
-    }
-
-    if (request.method === 'POST' && url.pathname === '/ai-usage-summary') {
-      const payload = (await request.json().catch(() => ({}))) as { now?: number; path?: string };
-      const now = Number(payload.now) || Date.now();
-      const path = typeof payload.path === 'string' ? payload.path : '';
-      const entries = await this.state.storage.list<AIUsageEvent[]>({ prefix: 'ai:' });
-      const allEvents: AIUsageEvent[] = [];
-      let endpointEvents: AIUsageEvent[] = [];
-
-      for (const [key, value] of entries.entries()) {
-        if (!Array.isArray(value)) {
-          continue;
-        }
-
-        const pruned = pruneAIUsageEvents(value as AIUsageEvent[], now);
-        allEvents.push(...pruned);
-        if (key === `ai:${path}`) {
-          endpointEvents = pruned;
-        }
-      }
-
-      return jsonResponse({
-        windowMs: AI_USAGE_WINDOW_MS,
-        global: summarizeAIUsageAggregate(allEvents, now),
-        endpoint: summarizeAIUsageAggregate(endpointEvents, now),
-      });
-    }
-
-    if (request.method === 'POST' && url.pathname === '/funnel') {
-      const payload = (await request.json().catch(() => ({}))) as { now?: number; window?: FunnelWindow };
-      const now = Number(payload.now) || Date.now();
-      const window = payload.window === '7d' ? '7d' : '24h';
-      const entries = await this.state.storage.list<EndpointRequestMetricEvent[]>({ prefix: 'endpoint:' });
-      const endpointMetrics: Record<string, EndpointRequestMetricEvent[]> = {};
-
-      for (const [key, value] of entries.entries()) {
-        if (!Array.isArray(value)) {
-          continue;
-        }
-
-        endpointMetrics[key.slice('endpoint:'.length)] = value as EndpointRequestMetricEvent[];
-      }
-
-      return jsonResponse(summarizeFunnelFromEndpointMetrics(endpointMetrics, window, now));
-    }
-
-    return jsonResponse({ error: 'Not found' }, { status: 404 });
-  }
-
-  async alarm(): Promise<void> {
-    const now = Date.now();
-    const entries = await this.state.storage.list<UpstreamTelemetryEvent[] | EndpointRequestMetricEvent[] | AIUsageEvent[]>();
-
-    for (const [key, value] of entries.entries()) {
-      if (!Array.isArray(value)) {
-        continue;
-      }
-
-      if (key.startsWith('upstream:')) {
-        const next = pruneTelemetryEvents(value as UpstreamTelemetryEvent[], now);
-        if (next.length === 0) {
-          await this.state.storage.delete(key);
-        } else {
-          await this.state.storage.put(key, next);
-        }
-        continue;
-      }
-
-      if (key.startsWith('endpoint:')) {
-        const next = pruneEndpointRequestEventsWithWindow(
-          value as EndpointRequestMetricEvent[],
-          now,
-          ENDPOINT_METRICS_DURABLE_RETENTION_MS,
-          ENDPOINT_METRICS_DURABLE_MAX_EVENTS,
-        );
-        if (next.length === 0) {
-          await this.state.storage.delete(key);
-        } else {
-          await this.state.storage.put(key, next);
-        }
-        continue;
-      }
-
-      if (key.startsWith('ai:')) {
-        const next = pruneAIUsageEvents(value as AIUsageEvent[], now);
-        if (next.length === 0) {
-          await this.state.storage.delete(key);
-        } else {
-          await this.state.storage.put(key, next);
-        }
-      }
-    }
-
-    await this.state.storage.setAlarm(Date.now() + ENDPOINT_METRICS_WINDOW_MS);
-  }
-}
-
 function getCatalogEndpoint(
   baseUrl: string,
   payTo: string,
@@ -893,7 +760,17 @@ function getCatalogEndpoint(
     },
     exampleRequest: {
       curl:
-        endpoint.method === 'POST'
+        endpoint.path === '/api/extract/article'
+          ? [
+              `curl -H "PAYMENT-SIGNATURE: <base64-signed-payload>" \\`,
+              `  -H "${PAYMENT_TX_HASH_HEADER}: 0xreplace-with-base-usdc-transaction-hash" \\`,
+              `  "${baseUrl}${endpoint.path}?url=https%3A%2F%2Fexample.com%2Farticle"`,
+              '',
+              '# demo mode',
+              `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" \\`,
+              `  "${baseUrl}${endpoint.path}?url=https%3A%2F%2Fexample.com%2Farticle"`,
+            ].join('\n')
+          : endpoint.method === 'POST'
           ? [
               `curl -X POST ${baseUrl}${endpoint.path} \\`,
               '  -H "Content-Type: application/json" \\',
@@ -938,225 +815,6 @@ function getCatalogEndpoint(
           telemetry: upstreamTelemetry,
         }
       : null,
-  };
-}
-
-function getEndpointRequestMetricsState(): Map<string, EndpointRequestMetricEvent[]> {
-  if (!globalThis.endpointRequestMetricsState) {
-    globalThis.endpointRequestMetricsState = new Map();
-  }
-
-  return globalThis.endpointRequestMetricsState;
-}
-
-function pruneEndpointRequestEventsWithWindow(
-  events: EndpointRequestMetricEvent[],
-  now: number,
-  windowMs: number,
-  maxEvents: number,
-): EndpointRequestMetricEvent[] {
-  const windowStart = now - windowMs;
-  const inWindow = events.filter((event) => event.at >= windowStart);
-  return inWindow.slice(-maxEvents);
-}
-
-function pruneEndpointRequestEvents(events: EndpointRequestMetricEvent[], now: number): EndpointRequestMetricEvent[] {
-  return pruneEndpointRequestEventsWithWindow(events, now, ENDPOINT_METRICS_WINDOW_MS, ENDPOINT_METRICS_MAX_EVENTS);
-}
-
-function getFunnelWindowMs(window: FunnelWindow): number {
-  return window === '7d' ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-}
-
-function summarizeFunnelFromEndpointMetrics(
-  endpointMetrics: Record<string, EndpointRequestMetricEvent[]>,
-  window: FunnelWindow,
-  now: number,
-): FunnelSummary {
-  const windowMs = getFunnelWindowMs(window);
-  const fromMs = now - windowMs;
-
-  const endpoints = Object.entries(endpointMetrics)
-    .map(([path, events]) => {
-      const inWindow = events.filter((event) => event.at >= fromMs && event.at <= now);
-      const challengedRequestIds = new Set(
-        inWindow
-          .filter((event) => event.statusCode === 402 && event.requestId)
-          .map((event) => event.requestId as string),
-      );
-      const replayedRequestIds = new Set(
-        inWindow
-          .filter(
-            (event) =>
-              event.statusCode < 400 &&
-              ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || '') &&
-              event.requestId &&
-              challengedRequestIds.has(event.requestId),
-          )
-          .map((event) => event.requestId as string),
-      );
-
-      const challenged402 = inWindow.filter((event) => event.statusCode === 402).length;
-      const settled = inWindow.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
-      const replayed = replayedRequestIds.size;
-      return {
-        path,
-        challenged402,
-        settled,
-        replayed,
-        challengeToReplayConversionRate:
-          challengedRequestIds.size > 0 ? Number((replayed / challengedRequestIds.size).toFixed(4)) : 0,
-      };
-    })
-    .filter((endpoint) => endpoint.challenged402 > 0 || endpoint.settled > 0 || endpoint.replayed > 0)
-    .sort((a, b) => b.challenged402 - a.challenged402 || b.replayed - a.replayed || a.path.localeCompare(b.path));
-
-  return {
-    window,
-    from: new Date(fromMs).toISOString(),
-    to: new Date(now).toISOString(),
-    endpoints,
-  };
-}
-
-function recordEndpointRequestMetric(path: string, event: EndpointRequestMetricEvent): void {
-  const store = getEndpointRequestMetricsState();
-  const existing = store.get(path) || [];
-  store.set(path, pruneEndpointRequestEvents([...existing, event], event.at));
-}
-
-async function recordEndpointRequestMetricWithDurable(
-  env: Env,
-  path: string,
-  event: EndpointRequestMetricEvent,
-): Promise<void> {
-  recordEndpointRequestMetric(path, event);
-  await appendDurableMetric(env, { kind: 'endpoint', key: path, event });
-}
-
-function getEndpointRequestMetricSummary(
-  path: string,
-  now: number,
-  hasUpstream: boolean,
-  snapshot: MetricsSnapshot | null = null,
-): EndpointRequestMetricSummary {
-  const sourceEvents = snapshot ? snapshot.endpointMetrics[path] || [] : getEndpointRequestMetricsState().get(path) || [];
-  const events = pruneEndpointRequestEvents(sourceEvents, now);
-  const totalRequests = events.length;
-
-  const recentBuckets = Array.from({ length: ENDPOINT_METRICS_BUCKET_COUNT }, (_, index) => {
-    const bucketStartMs = now - (ENDPOINT_METRICS_BUCKET_COUNT - index) * ENDPOINT_METRICS_BUCKET_MS;
-    return {
-      bucketStartMs,
-      bucketEndMs: bucketStartMs + ENDPOINT_METRICS_BUCKET_MS,
-      requests: 0,
-      errors: 0,
-    };
-  });
-
-  for (const event of events) {
-    const bucket = recentBuckets.find((item) => event.at >= item.bucketStartMs && event.at < item.bucketEndMs);
-    if (!bucket) {
-      continue;
-    }
-
-    bucket.requests += 1;
-    if (event.statusCode >= 400) {
-      bucket.errors += 1;
-    }
-  }
-
-  if (totalRequests === 0) {
-    return {
-      windowMs: ENDPOINT_METRICS_WINDOW_MS,
-      totalRequests: 0,
-      successRate: 1,
-      paymentRequiredRate: 0,
-      rateLimitedRate: 0,
-      upstreamFallbackRate: hasUpstream ? 0 : null,
-      paymentFunnel: {
-        challenged402: 0,
-        settled: 0,
-        replayed: 0,
-        challengeToReplayConversionRate: 0,
-      },
-      lastRequestAt: null,
-      lastErrorAt: null,
-      errorsByCode: [],
-      requestTrend: recentBuckets.map((item) => ({
-        bucketStart: new Date(item.bucketStartMs).toISOString(),
-        requests: item.requests,
-        errors: item.errors,
-      })),
-    };
-  }
-
-  const successCount = events.filter((event) => event.statusCode < 400).length;
-  const paymentRequiredCount = events.filter((event) => event.statusCode === 402).length;
-  const rateLimitedCount = events.filter((event) => event.statusCode === 429).length;
-  const settledCount = events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
-
-  const challengedRequestIds = new Set(
-    events
-      .filter((event) => event.statusCode === 402 && event.requestId)
-      .map((event) => event.requestId as string),
-  );
-  const replayedRequestIds = new Set(
-    events
-      .filter(
-        (event) =>
-          event.statusCode < 400 &&
-          ['PAYMENT_VALID', 'DEMO_PAYMENT', 'PAYMENT_PROOF_HEADER'].includes(event.paymentCode || '') &&
-          event.requestId &&
-          challengedRequestIds.has(event.requestId),
-      )
-      .map((event) => event.requestId as string),
-  );
-  const replayedCount = replayedRequestIds.size;
-
-  const upstreamFallbackCount = hasUpstream
-    ? events.filter((event) => event.statusCode < 400 && event.upstreamReasonCode && event.upstreamReasonCode !== 'OK').length
-    : 0;
-
-  const errorCodeCount = new Map<string, number>();
-  for (const event of events) {
-    if (event.statusCode < 400) {
-      continue;
-    }
-
-    const code = event.paymentCode || `HTTP_${event.statusCode}`;
-    errorCodeCount.set(code, (errorCodeCount.get(code) || 0) + 1);
-  }
-
-  const errorsByCode = [...errorCodeCount.entries()]
-    .map(([code, count]) => ({ code, count }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  const lastError = [...events].reverse().find((event) => event.statusCode >= 400);
-
-  return {
-    windowMs: ENDPOINT_METRICS_WINDOW_MS,
-    totalRequests,
-    successRate: Number((successCount / totalRequests).toFixed(4)),
-    paymentRequiredRate: Number((paymentRequiredCount / totalRequests).toFixed(4)),
-    rateLimitedRate: Number((rateLimitedCount / totalRequests).toFixed(4)),
-    upstreamFallbackRate: hasUpstream ? Number((upstreamFallbackCount / totalRequests).toFixed(4)) : null,
-    paymentFunnel: {
-      challenged402: paymentRequiredCount,
-      settled: settledCount,
-      replayed: replayedCount,
-      challengeToReplayConversionRate:
-        challengedRequestIds.size > 0 ? Number((replayedCount / challengedRequestIds.size).toFixed(4)) : 0,
-    },
-    lastRequestAt: new Date(events[events.length - 1].at).toISOString(),
-    lastErrorAt: lastError ? new Date(lastError.at).toISOString() : null,
-    errorsByCode,
-    requestTrend: recentBuckets.map((item) => ({
-      bucketStart: new Date(item.bucketStartMs).toISOString(),
-      requests: item.requests,
-      errors: item.errors,
-    })),
   };
 }
 
@@ -1597,253 +1255,6 @@ export async function verifyPayment(
   };
 }
 
-type EndpointRequestMetricEvent = {
-  at: number;
-  statusCode: number;
-  requestId: string | null;
-  paymentCode: PaymentVerificationResult['code'] | 'RATE_LIMIT' | null;
-  upstreamReasonCode: UpstreamMeta['reasonCode'] | null;
-};
-
-type EndpointRequestMetricSummary = {
-  windowMs: number;
-  totalRequests: number;
-  successRate: number;
-  paymentRequiredRate: number;
-  rateLimitedRate: number;
-  upstreamFallbackRate: number | null;
-  paymentFunnel: {
-    challenged402: number;
-    settled: number;
-    replayed: number;
-    challengeToReplayConversionRate: number;
-  };
-  lastRequestAt: string | null;
-  lastErrorAt: string | null;
-  errorsByCode: Array<{ code: string; count: number }>;
-  requestTrend: Array<{ bucketStart: string; requests: number; errors: number }>;
-};
-
-type MetricsSnapshot = {
-  upstreamTelemetry: Record<string, UpstreamTelemetryEvent[]>;
-  endpointMetrics: Record<string, EndpointRequestMetricEvent[]>;
-};
-
-type FunnelWindow = '24h' | '7d';
-
-type EndpointFunnelSummary = {
-  path: string;
-  challenged402: number;
-  settled: number;
-  replayed: number;
-  challengeToReplayConversionRate: number;
-};
-
-type FunnelSummary = {
-  window: FunnelWindow;
-  from: string;
-  to: string;
-  endpoints: EndpointFunnelSummary[];
-};
-
-function getAIUsageState(): Map<string, AIUsageEvent[]> {
-  if (!globalThis.aiUsageState) {
-    globalThis.aiUsageState = new Map();
-  }
-
-  return globalThis.aiUsageState;
-}
-
-function pruneAIUsageEvents(events: AIUsageEvent[], now: number): AIUsageEvent[] {
-  const windowStart = now - AI_USAGE_WINDOW_MS;
-  return events.filter((event) => event.at >= windowStart);
-}
-
-function recordAIUsage(path: string, event: AIUsageEvent): void {
-  const store = getAIUsageState();
-  const existing = store.get(path) || [];
-  store.set(path, pruneAIUsageEvents([...existing, event], event.at));
-}
-
-function summarizeAIUsageAggregate(events: AIUsageEvent[], now: number): AIUsageAggregate {
-  const inWindow = pruneAIUsageEvents(events, now);
-  const oldest = inWindow[0];
-  return {
-    totalRequests: inWindow.length,
-    totalCostUsd: Number(inWindow.reduce((sum, event) => sum + event.costUsd, 0).toFixed(6)),
-    oldestAt: oldest ? new Date(oldest.at).toISOString() : null,
-  };
-}
-
-async function appendDurableMetric(
-  env: Env,
-  payload:
-    | { kind: 'upstream'; key: string; event: UpstreamTelemetryEvent }
-    | { kind: 'endpoint'; key: string; event: EndpointRequestMetricEvent }
-    | { kind: 'ai'; key: string; event: AIUsageEvent },
-): Promise<void> {
-  if (!env.METRICS_STORE) {
-    return;
-  }
-
-  try {
-    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
-    const response = await stub.fetch('https://metrics-store/append', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      throw new Error(`metrics store ${response.status}`);
-    }
-  } catch (error) {
-    console.error('metrics store append failed', error);
-  }
-}
-
-async function recordAIUsageWithDurable(env: Env, path: string, event: AIUsageEvent): Promise<void> {
-  recordAIUsage(path, event);
-  await appendDurableMetric(env, { kind: 'ai', key: path, event });
-}
-
-async function getDurableMetricsSnapshot(env: Env, now: number): Promise<MetricsSnapshot | null> {
-  if (!env.METRICS_STORE) {
-    return null;
-  }
-
-  try {
-    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
-    const response = await stub.fetch('https://metrics-store/snapshot', {
-      method: 'POST',
-      body: JSON.stringify({ now }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`metrics store ${response.status}`);
-    }
-
-    return (await response.json()) as MetricsSnapshot;
-  } catch (error) {
-    console.error('metrics store snapshot failed', error);
-    return null;
-  }
-}
-
-async function getDurableAIUsageSummary(
-  env: Env,
-  path: string,
-  now: number,
-): Promise<AIUsageSummary | null> {
-  if (!env.METRICS_STORE) {
-    return null;
-  }
-
-  try {
-    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
-    const response = await stub.fetch('https://metrics-store/ai-usage-summary', {
-      method: 'POST',
-      body: JSON.stringify({ now, path }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`metrics store ai usage ${response.status}`);
-    }
-
-    return (await response.json()) as AIUsageSummary;
-  } catch (error) {
-    console.error('metrics store ai usage failed', error);
-    return null;
-  }
-}
-
-async function getDurableFunnelSummary(
-  env: Env,
-  now: number,
-  window: FunnelWindow,
-): Promise<FunnelSummary | null> {
-  if (!env.METRICS_STORE) {
-    return null;
-  }
-
-  try {
-    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
-    const response = await stub.fetch('https://metrics-store/funnel', {
-      method: 'POST',
-      body: JSON.stringify({ now, window }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`metrics store ${response.status}`);
-    }
-
-    return (await response.json()) as FunnelSummary;
-  } catch (error) {
-    console.error('metrics store funnel failed', error);
-    return null;
-  }
-}
-
-function getInMemoryFunnelSummary(now: number, window: FunnelWindow): FunnelSummary {
-  const endpointMetrics: Record<string, EndpointRequestMetricEvent[]> = {};
-  for (const [path, events] of getEndpointRequestMetricsState().entries()) {
-    endpointMetrics[path] = events;
-  }
-
-  return summarizeFunnelFromEndpointMetrics(endpointMetrics, window, now);
-}
-
-type EndpointFreshness = {
-  status: 'fresh' | 'stale' | 'unknown';
-  ageSeconds: number | null;
-  maxAgeSeconds: number;
-  signal: 'upstream_telemetry' | 'request_metrics' | 'none';
-};
-
-const ENDPOINT_FRESHNESS_MAX_AGE_SECONDS = 15 * 60;
-
-function computeEndpointFreshness(
-  now: number,
-  requestMetrics: EndpointRequestMetricSummary,
-  upstreamTelemetry: UpstreamTelemetrySummary | null,
-): { lastUpdatedAt: string | null; freshness: EndpointFreshness } {
-  const signalAt = upstreamTelemetry?.updatedAt || requestMetrics.lastRequestAt;
-  if (!signalAt) {
-    return {
-      lastUpdatedAt: null,
-      freshness: {
-        status: 'unknown',
-        ageSeconds: null,
-        maxAgeSeconds: ENDPOINT_FRESHNESS_MAX_AGE_SECONDS,
-        signal: 'none',
-      },
-    };
-  }
-
-  const updatedAtMs = Date.parse(signalAt);
-  if (Number.isNaN(updatedAtMs)) {
-    return {
-      lastUpdatedAt: null,
-      freshness: {
-        status: 'unknown',
-        ageSeconds: null,
-        maxAgeSeconds: ENDPOINT_FRESHNESS_MAX_AGE_SECONDS,
-        signal: 'none',
-      },
-    };
-  }
-
-  const ageSeconds = Math.max(0, Math.floor((now - updatedAtMs) / 1000));
-  return {
-    lastUpdatedAt: new Date(updatedAtMs).toISOString(),
-    freshness: {
-      status: ageSeconds <= ENDPOINT_FRESHNESS_MAX_AGE_SECONDS ? 'fresh' : 'stale',
-      ageSeconds,
-      maxAgeSeconds: ENDPOINT_FRESHNESS_MAX_AGE_SECONDS,
-      signal: upstreamTelemetry?.updatedAt ? 'upstream_telemetry' : 'request_metrics',
-    },
-  };
-}
-
 function getUpstreamCircuitState(): Map<string, { failures: number; openUntil: number; lastErrorCode?: string }> {
   if (!globalThis.upstreamCircuitState) {
     globalThis.upstreamCircuitState = new Map();
@@ -2011,18 +1422,6 @@ function createBadRequestResponse(message: string, requestId: string): Response 
       headers: { [REQUEST_ID_HEADER]: requestId },
     },
   );
-}
-
-function getInMemoryAIUsageSummary(path: string, now: number): AIUsageSummary {
-  const store = getAIUsageState();
-  const allEvents = [...store.values()].flatMap((events) => events);
-  const endpointEvents = store.get(path) || [];
-
-  return {
-    windowMs: AI_USAGE_WINDOW_MS,
-    global: summarizeAIUsageAggregate(allEvents, now),
-    endpoint: summarizeAIUsageAggregate(endpointEvents, now),
-  };
 }
 
 function buildAIQuotaResponse(
@@ -2261,6 +1660,119 @@ async function prepareAIRequestContext(
   };
 }
 
+function isForbiddenExtractHost(hostname: string): boolean {
+  const normalized = hostname.trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+
+  if (
+    normalized === 'localhost' ||
+    normalized === '0.0.0.0' ||
+    normalized === '127.0.0.1' ||
+    normalized === '::1' ||
+    normalized.endsWith('.local')
+  ) {
+    return true;
+  }
+
+  const ipv4Match = normalized.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (!ipv4Match) {
+    return false;
+  }
+
+  const [a, b] = [Number(ipv4Match[1]), Number(ipv4Match[2])];
+  if (a === 10 || a === 127 || a === 0) {
+    return true;
+  }
+  if (a === 169 && b === 254) {
+    return true;
+  }
+  if (a === 192 && b === 168) {
+    return true;
+  }
+  if (a === 172 && b >= 16 && b <= 31) {
+    return true;
+  }
+
+  return false;
+}
+
+function prepareExtractTargetUrl(request: Request, requestId: string): { targetUrl: string | null; response: Response | null } {
+  const url = new URL(request.url);
+  const rawTargetUrl = url.searchParams.get('url');
+  if (!rawTargetUrl) {
+    return {
+      targetUrl: null,
+      response: createBadRequestResponse('Article extract requests must include a non-empty ?url= query parameter.', requestId),
+    };
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(rawTargetUrl);
+  } catch {
+    return {
+      targetUrl: null,
+      response: createBadRequestResponse('Article extract url must be a valid absolute URL.', requestId),
+    };
+  }
+
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    return {
+      targetUrl: null,
+      response: createBadRequestResponse('Article extract only supports http and https URLs.', requestId),
+    };
+  }
+
+  if (isForbiddenExtractHost(parsed.hostname)) {
+    return {
+      targetUrl: null,
+      response: createBadRequestResponse('Article extract target host is not allowed.', requestId),
+    };
+  }
+
+  return { targetUrl: parsed.toString(), response: null };
+}
+
+async function prepareUpstreamRequestContext(
+  request: Request,
+  endpoint: APIEndpoint,
+  env: Env,
+  requestId: string,
+): Promise<{ context: UpstreamRequestContext; response: Response | null }> {
+  if (endpoint.path === '/api/extract/article') {
+    if (request.method !== 'GET') {
+      return {
+        context: { ai: null, extractTargetUrl: null },
+        response: apiResponse(
+          {
+            error: 'Method not allowed',
+            requestId,
+            allowedMethods: ['GET'],
+          },
+          {
+            status: 405,
+            headers: { Allow: 'GET', [REQUEST_ID_HEADER]: requestId },
+          },
+        ),
+      };
+    }
+
+    const preparedExtract = prepareExtractTargetUrl(request, requestId);
+    return {
+      context: { ai: null, extractTargetUrl: preparedExtract.targetUrl },
+      response: preparedExtract.response,
+    };
+  }
+
+  const preparedAI = await prepareAIRequestContext(request, endpoint, env, requestId);
+  return {
+    context: { ai: preparedAI.context, extractTargetUrl: null },
+    response: preparedAI.response,
+  };
+}
+
 function enforceRateLimit(request: Request): Response | null {
   if (!globalThis.rateLimiter) {
     globalThis.rateLimiter = new Map<string, number[]>();
@@ -2394,16 +1906,16 @@ const worker = {
     if (endpoint) {
       const now = Date.now();
       const requestId = getRequestId(request);
-      const preparedAIRequest = await prepareAIRequestContext(request, endpoint, env, requestId);
-      if (preparedAIRequest.response) {
+      const preparedUpstreamRequest = await prepareUpstreamRequestContext(request, endpoint, env, requestId);
+      if (preparedUpstreamRequest.response) {
         await recordEndpointRequestMetricWithDurable(env, path, {
           at: now,
-          statusCode: preparedAIRequest.response.status,
+          statusCode: preparedUpstreamRequest.response.status,
           requestId,
           paymentCode: null,
           upstreamReasonCode: null,
         });
-        return preparedAIRequest.response;
+        return preparedUpstreamRequest.response;
       }
 
       const rateLimitResponse = enforceRateLimit(request);
@@ -2463,7 +1975,7 @@ const worker = {
         return aiQuotaResponse;
       }
 
-      const upstreamResult = await fetchUpstreamData(path, env, preparedAIRequest.context, {
+      const upstreamResult = await fetchUpstreamData(path, env, preparedUpstreamRequest.context, {
         getCircuitSnapshot: getUpstreamCircuitSnapshot,
         recordTelemetry: (event, source) => recordUpstreamTelemetryWithDurable(env, source, event),
         recordSuccess: (source, now, latencyMs) => recordUpstreamSuccessWithDurable(env, source, now, latencyMs),

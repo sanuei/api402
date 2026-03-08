@@ -4,6 +4,46 @@
 
 ### 本轮目标
 
+- 继续拆 `worker/index.ts`，把 metrics 聚合和 Metrics Durable Object 抽出去，并同时上线一个真实可付费的新工具接口
+
+### 已完成
+
+- 新增独立 metrics 模块 [metrics.ts](/Users/yangshangwei/.codex/worktrees/e999/api402/worker/metrics.ts)，承接：
+  - endpoint request metrics
+  - AI usage summary
+  - funnel summary
+  - `MetricsStoreDurableObject`
+- `worker/index.ts` 现在通过模块调用 metrics helper，不再内联一整段 request metrics / AI usage / funnel 聚合实现
+- 新增 live 接口 [upstreams.ts](/Users/yangshangwei/.codex/worktrees/e999/api402/worker/upstreams.ts)：
+  - `GET /api/extract/article?url=...`
+  - 支持抓取页面并提取标题、描述、摘要、标题层级、链接概览
+  - 对非法 URL、非 `http/https`、本地/内网 host 会在支付前直接返回 `400`
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/.codex/worktrees/e999/api402/worker/index.ts)
+- [metrics.ts](/Users/yangshangwei/.codex/worktrees/e999/api402/worker/metrics.ts)
+- [upstreams.ts](/Users/yangshangwei/.codex/worktrees/e999/api402/worker/upstreams.ts)
+- [worker.test.ts](/Users/yangshangwei/.codex/worktrees/e999/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/.codex/worktrees/e999/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/.codex/worktrees/e999/api402/doc/ROADMAP.md)
+- [API_EXPANSION.md](/Users/yangshangwei/.codex/worktrees/e999/api402/doc/API_EXPANSION.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 29 个测试全部通过
+
+### 下一步建议
+
+1. 给 `extract/article` 补 `markdown` / `statusCode` / `readabilityScore`
+2. 将 metrics DO 做分片，避免持续增长后单实例压力过大
+3. 开始下一组高价值接口：`Web Search`
+
+## 2026-03-08
+
+### 本轮目标
+
 - 继续做后端结构优化，把 settlement/status 查询与证明校验路由从 `worker/index.ts` 中抽离出去
 
 ### 已完成

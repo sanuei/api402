@@ -16,6 +16,7 @@
 - `worker/payment.ts`：支付协议类型、错误码映射、payment helper 与 remediation 规则
 - `worker/upstreams.ts`：实时上游代理、AI provider 适配、熔断与遥测逻辑
 - `worker/settlement.ts`：结算状态查询路由、支付证明绑定校验与 settlement 响应组装
+- `worker/metrics.ts`：request metrics、AI usage、funnel summary 与 Metrics Durable Object
 - `test/`：Worker 集成测试
 - `public/`：Logo、favicon、OG 图、robots、sitemap 等静态资源
 - `dist/`：Vite 构建产物
@@ -54,6 +55,7 @@
 - `/api/deepseek` 与 `/api/qwen` 已接入 OpenRouter 真实上游，支持 `POST application/json` 的 `prompt` / `messages` 请求
 - AI 请求体不合法时会先返回 `400`，避免开发者因参数错误先进入付费流程
 - AI 接口已加入 24 小时预算保护与请求数上限，超额时返回 `429` 和机器可读错误码：`AI_BUDGET_EXCEEDED` / `AI_REQUEST_LIMIT_EXCEEDED`
+- 新增 `/api/extract/article?url=...`，可实时抓取网页并提取标题、描述、摘要、标题层级和链接概览
 
 ## Core Routes
 
@@ -104,6 +106,7 @@ npm run deploy
 - BTC / ETH 价格可尝试代理 Binance
 - K 线接口已接入 Binance 上游
 - `DeepSeek` / `Qwen` 已接入 OpenRouter 实时上游
+- `Article Extract` 已接入 direct fetch 实时提取
 - 仍有部分接口保留 demo/mock 数据
 - 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验、nonce 防重放和 demo token
 - 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证和 nonce 重放

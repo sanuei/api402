@@ -63,6 +63,8 @@
 - 已完成后端模块化第一步：支付协议层从 `worker/index.ts` 抽离到 `worker/payment.ts`
 - 已完成后端模块化第二步：实时上游代理与 AI provider 逻辑从 `worker/index.ts` 抽离到 `worker/upstreams.ts`
 - 已完成后端模块化第三步：结算状态查询与证明绑定校验从 `worker/index.ts` 抽离到 `worker/settlement.ts`
+- 已完成后端模块化第四步：metrics 聚合、AI usage summary 与 Metrics Durable Object 从 `worker/index.ts` 抽离到 `worker/metrics.ts`
+- 已完成第一条 `Crawl / Extract` live 接口：`GET /api/extract/article?url=...`
 
 ## Phase 1
 
@@ -141,9 +143,9 @@
 建议下一轮直接做下面 4 项:
 
 1. 对 `worker/index.ts` 做后端分层，优先拆 `routes`、`payment`、`metrics`、`upstreams`
-2. 继续拆 `worker/index.ts`，优先分出 `metrics` 聚合
-3. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
-4. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
+2. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
+3. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
+4. 继续扩展 `Crawl / Extract`，补 `markdown` / `readability` / `statusCode` 等结构化字段
 
 ## Operations
 

@@ -59,6 +59,9 @@
 - 价值：
   - 和 search 组合后，形成 agent 真正常用链路
   - 比单纯搜索更容易收费，因为是“执行型工具”
+- 当前进度：
+  - 已上线 `GET /api/extract/article?url=...`
+  - 当前返回标题、描述、摘要、标题层级和链接概览
 - 推荐接口：
   - `POST /api/crawl/page`
   - `POST /api/extract/article`
