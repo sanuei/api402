@@ -64,12 +64,12 @@
 
 <body>
     <nav class="fixed top-0 inset-x-0 z-50 border-b border-white/5 bg-[#040506]/75 backdrop-blur-xl">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-            <div class="flex items-center gap-3">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-16 py-3 flex flex-wrap sm:flex-nowrap items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
                 <img src="/logo-mark.svg" alt="API Market logo" class="h-10 w-10 rounded-2xl border border-white/10 bg-white/5 p-1.5">
-                <div>
-                    <div class="font-bold tracking-tight">API Market</div>
-                    <div class="text-xs text-slate-500">USDC micropayments for APIs</div>
+                <div class="min-w-0">
+                    <div class="font-bold tracking-tight truncate">API Market</div>
+                    <div class="text-xs text-slate-500 truncate">USDC micropayments for APIs</div>
                 </div>
             </div>
             <div class="hidden lg:flex items-center gap-7 text-sm text-slate-400">
@@ -78,27 +78,37 @@
                 <a href="#examples" class="hover:text-white transition-colors" data-i18n="nav.examples">Examples</a>
                 <a href="#faq" class="hover:text-white transition-colors" data-i18n="nav.faq">FAQ</a>
             </div>
-            <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 sm:gap-3 ml-auto">
                 <button id="languageToggle"
-                    class="secondary-btn px-4 py-2 rounded-full text-sm font-medium transition text-white">
+                    class="secondary-btn px-3 sm:px-4 py-2 rounded-full text-sm font-medium transition text-white touch-target">
                     EN
                 </button>
                 <a id="catalogLink" href="#catalog"
-                    class="hidden md:inline-flex secondary-btn px-4 py-2 rounded-full text-sm font-medium transition"
+                    class="hidden md:inline-flex secondary-btn px-4 py-2 rounded-full text-sm font-medium transition touch-target"
                     data-i18n="nav.openCatalog">
                     Open Catalog
                 </a>
                 <button id="connectWallet"
-                    class="primary-btn px-5 py-2.5 rounded-full text-sm font-semibold transition text-white"
+                    class="primary-btn px-4 sm:px-5 py-2.5 rounded-full text-sm font-semibold transition text-white touch-target"
                     data-i18n="nav.connectWallet">
                     Connect Wallet
                 </button>
             </div>
         </div>
+        <div class="lg:hidden border-t border-white/5">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="mobile-nav-links py-3">
+                    <a href="#catalog" class="mobile-nav-link" data-i18n="nav.catalog">Catalog</a>
+                    <a href="#flow" class="mobile-nav-link" data-i18n="nav.flow">Flow</a>
+                    <a href="#examples" class="mobile-nav-link" data-i18n="nav.examples">Examples</a>
+                    <a href="#faq" class="mobile-nav-link" data-i18n="nav.faq">FAQ</a>
+                </div>
+            </div>
+        </div>
     </nav>
 
     <main>
-        <section class="pt-28 pb-14 md:pb-20">
+        <section class="pt-40 lg:pt-28 pb-14 md:pb-20">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="grid lg:grid-cols-[1.1fr_0.9fr] gap-10 items-center">
                     <div>
@@ -107,7 +117,7 @@
                             <span>Base + USDC + <strong>x402-style challenge</strong></span>
                         </div>
                         <p class="kicker mb-4" data-i18n="hero.kicker">Micropayments For Agents And Developers</p>
-                        <h1 class="text-5xl md:text-7xl font-bold tracking-tight leading-[0.95]">
+                        <h1 class="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight leading-[0.95]">
                             <span data-i18n="hero.title.prefix">按次付费调用 API，</span>
                             <span class="text-[#33f0b2]" data-i18n="hero.title.mid">不注册</span>，
                             <span class="text-[#8de7ff]" data-i18n="hero.title.end">不发 Key</span>。
@@ -151,20 +161,20 @@
                 </div>
 
                 <div class="metric-grid mt-16 grid lg:grid-cols-4 gap-4">
-                    <div class="soft-card rounded-3xl p-6">
+                    <div class="metric-card soft-card rounded-3xl p-5 sm:p-6">
                         <div class="text-slate-500 text-sm" data-i18n="metrics.endpointCount">Endpoint Count</div>
                         <div class="metric-value font-bold mt-3" id="metricCount">--</div>
                     </div>
-                    <div class="soft-card rounded-3xl p-6">
+                    <div class="metric-card soft-card rounded-3xl p-5 sm:p-6">
                         <div class="text-slate-500 text-sm" data-i18n="metrics.totalApiCalls">Total API Calls</div>
                         <div class="metric-value font-bold mt-3 text-[#ffcf66]" id="totalApiCalls">--</div>
                         <div class="mt-3 text-xs text-slate-500 mono" id="totalApiCallsUpdatedAt">--</div>
                     </div>
-                    <div class="soft-card rounded-3xl p-6">
+                    <div class="metric-card soft-card rounded-3xl p-5 sm:p-6">
                         <div class="text-slate-500 text-sm" data-i18n="metrics.totalSettledUsdc">Total Settled</div>
                         <div class="metric-value font-bold mt-3 text-[#33f0b2]" id="totalSettledUsdc">--</div>
                     </div>
-                    <div class="soft-card rounded-3xl p-6">
+                    <div class="metric-card soft-card rounded-3xl p-5 sm:p-6">
                         <div class="text-slate-500 text-sm" data-i18n="metrics.gatewayStatus">Gateway Status</div>
                         <div class="mt-4 flex items-center justify-between gap-3 text-base font-semibold">
                             <div class="flex items-center gap-3">
@@ -183,7 +193,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="soft-card rounded-3xl p-6 lg:col-span-2">
+                    <div class="metric-card metric-card-wide soft-card rounded-3xl p-5 sm:p-6 lg:col-span-2">
                         <div class="flex items-center justify-between gap-6">
                             <div>
                                 <div class="text-slate-500 text-sm" data-i18n="metrics.last24hCalls">24h Calls</div>
@@ -195,7 +205,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="soft-card rounded-3xl p-6 lg:col-span-2">
+                    <div class="metric-card metric-card-wide soft-card rounded-3xl p-5 sm:p-6 lg:col-span-2">
                         <div class="text-slate-500 text-sm" data-i18n="metrics.requestTrend24h">24h Trend</div>
                         <div class="mt-4 text-4xl font-semibold mono tracking-[0.25em] text-slate-100" id="overviewTrend">--</div>
                         <div class="mt-3 text-sm text-slate-500" data-i18n="metrics.requestTrend24h">24h Trend</div>
@@ -227,7 +237,7 @@
                 </div>
 
                 <div class="grid xl:grid-cols-[280px_minmax(0,1fr)] gap-5 items-start">
-                    <aside class="soft-card rounded-[28px] p-5 xl:sticky xl:top-24">
+                    <aside class="catalog-directory-panel soft-card rounded-[28px] p-5 xl:sticky xl:top-24">
                         <div class="kicker mb-3" data-i18n="catalog.directory">API 快速目录</div>
                         <p class="text-sm text-slate-400 leading-6" data-i18n="catalog.directoryHint">
                             先按分类快速定位，再在右侧查看卡片细节与价格。
@@ -285,7 +295,7 @@
                 <div class="grid lg:grid-cols-[0.95fr_1.05fr] gap-8 items-start">
                     <div class="soft-card rounded-[32px] p-7 md:p-8">
                         <p class="kicker mb-3" data-i18n="payment.kicker">Settlement Config</p>
-                        <h2 class="text-4xl md:text-5xl font-bold tracking-tight" data-i18n="payment.title">收款地址与支付参数</h2>
+                        <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight" data-i18n="payment.title">收款地址与支付参数</h2>
                         <p class="mt-4 text-slate-400 text-lg leading-8" data-i18n="payment.description">
                             如果别人调用你的付费 API，网关必须明确告诉对方把钱打到哪个地址。这里展示当前 Worker 对外暴露的收款地址和支付参数。
                         </p>
@@ -342,8 +352,8 @@
                 <div class="grid lg:grid-cols-[0.9fr_1.1fr] gap-8 items-start">
                     <div class="soft-card rounded-[32px] p-7 md:p-8">
                         <p class="kicker mb-3" data-i18n="examples.selected">Selected Endpoint</p>
-                        <div class="flex items-center justify-between gap-4">
-                            <h2 class="text-3xl font-bold tracking-tight" id="selectedName">Loading</h2>
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <h2 class="text-2xl sm:text-3xl font-bold tracking-tight" id="selectedName">Loading</h2>
                             <span class="badge-green rounded-full px-3 py-1 text-sm mono" id="selectedPrice">--</span>
                         </div>
                         <p class="mt-4 text-slate-400 leading-7" id="selectedDescription">
@@ -371,7 +381,7 @@
                                 <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="freshness.updatedAt">Updated At</div>
                                 <div class="mono text-sm text-slate-200 break-all" id="selectedUpdatedAt">--</div>
                             </div>
-                            <div class="grid grid-cols-3 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
                                 <div class="log-box rounded-2xl p-4">
                                     <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="requestMetrics.recentRequests">Requests (60m)</div>
                                     <div class="mono text-sm text-slate-200" id="selectedRecentRequests">0</div>
@@ -385,7 +395,7 @@
                                     <div class="mono text-sm text-[#33f0b2]" id="selectedReplayConversion">0%</div>
                                 </div>
                             </div>
-                            <div class="grid grid-cols-2 gap-3">
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                 <div class="log-box rounded-2xl p-4">
                                     <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono mb-2" data-i18n="requestMetrics.trend">Request Trend (6 buckets)</div>
                                     <div class="mono text-sm text-slate-200" id="selectedTrend">-</div>
@@ -464,7 +474,7 @@
             <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="text-center mb-10">
                     <p class="kicker mb-3" data-i18n="faq.kicker">FAQ</p>
-                    <h2 class="text-4xl md:text-5xl font-bold tracking-tight" data-i18n="faq.title">购买前最常见的几个问题</h2>
+                    <h2 class="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight" data-i18n="faq.title">购买前最常见的几个问题</h2>
                 </div>
                 <div class="space-y-4">
                     <details class="faq-item soft-card rounded-3xl p-6" open>
@@ -530,7 +540,7 @@
     </footer>
 
     <div id="walletModal" class="fixed inset-0 bg-black/80 backdrop-blur-md hidden items-center justify-center z-50">
-        <div class="soft-card rounded-[32px] w-full max-w-md mx-4 p-8 relative overflow-hidden">
+        <div class="soft-card rounded-[32px] w-full max-w-md mx-4 p-6 sm:p-8 relative overflow-hidden max-h-[88vh] overflow-y-auto">
             <div class="absolute -top-16 -right-12 w-32 h-32 bg-[#33f0b2]/20 blur-3xl pointer-events-none"></div>
             <div class="relative">
                 <h3 class="text-3xl font-bold text-center" data-i18n="wallet.title">Connect Wallet</h3>

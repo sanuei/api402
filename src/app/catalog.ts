@@ -192,7 +192,7 @@ export function renderCatalog(endpoints: CatalogEndpoint[]) {
       return `
         <button
           type="button"
-          class="api-card soft-card rounded-[28px] p-6 text-left transition-all duration-300"
+          class="api-card soft-card rounded-[28px] p-5 sm:p-6 text-left transition-all duration-300"
           data-endpoint-path="${escapeHtml(endpoint.path)}"
         >
           <div class="flex items-start justify-between gap-4">
@@ -201,13 +201,13 @@ export function renderCatalog(endpoints: CatalogEndpoint[]) {
           </div>
           <div class="mt-5">
             <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(localized.label)}</h3>
-            <p class="mt-3 text-slate-400 leading-7 min-h-[84px]">${escapeHtml(localized.description)}</p>
+            <p class="mt-3 text-slate-400 leading-7 md:min-h-[84px]">${escapeHtml(localized.description)}</p>
           </div>
           <div class="mt-5 flex items-center gap-2 text-xs">
             <span class="${freshnessClass} rounded-full px-3 py-1 mono">${escapeHtml(t(`freshness.${endpoint.freshness?.status || 'unknown'}`))}</span>
             <span class="text-slate-500 mono">${escapeHtml(formatRelativeAge(endpoint.freshness?.ageSeconds))}</span>
           </div>
-          <div class="mt-5 grid grid-cols-3 gap-2">
+          <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
             <div class="log-box rounded-xl p-2.5">
               <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.recentRequests'))}</div>
               <div class="mt-1 text-sm font-semibold text-slate-200 mono">${escapeHtml(String(endpoint.requestMetrics?.totalRequests || 0))}</div>
@@ -223,7 +223,7 @@ export function renderCatalog(endpoints: CatalogEndpoint[]) {
               )}</div>
             </div>
           </div>
-          <div class="mt-2 grid grid-cols-2 gap-2">
+          <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div class="log-box rounded-xl p-2.5">
               <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.trend'))}</div>
               <div class="mt-1 text-sm font-semibold text-slate-200 mono">${escapeHtml(formatTrendSparkline(endpoint))}</div>

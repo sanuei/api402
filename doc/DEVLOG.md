@@ -1995,3 +1995,39 @@
 1. 做 `GET /api/polymarket/entry-signal?slug=...&outcome=...`
 2. 做 `GET /api/polymarket/rotation?topic=crypto`
 3. 如果你要真正自动下单，再单独接签名、下单、撤单和风控
+
+## 2026-03-08
+
+### 本轮目标
+
+- 优化首页的移动端体验，重点处理导航、统计卡片、目录侧栏和示例区在手机上的拥挤问题
+
+### 已完成
+
+- 为移动端新增顶部快捷锚点导航，避免小屏只有按钮没有页面入口
+- 调整 Hero 顶部留白与主标题字号，避免固定导航和标题在手机上互相挤压
+- 重排统计卡片响应式布局：超窄屏单列，中等小屏双列，宽卡片不再压缩内容
+- 为目录侧栏增加移动端最大高度和滚动区域，避免目录过长时占满整屏
+- 优化动态生成的 API 卡片内部网格，在手机上改为单列后再向上扩展
+- 调整 Selected Endpoint 区块、FAQ 标题和钱包弹窗的移动端排版与可滚动性
+- 为主要交互按钮和导航项补齐更稳定的触控尺寸
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+- [src/app/catalog.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/catalog.ts)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `47/47`
+- `npm run build:frontend` 通过
+- `npx wrangler deploy --dry-run` 通过
+- `npm run deploy` 通过，Cloudflare 当前版本 `617e6dcf-f15f-41b9-bdae-0559032c5364`
+
+### 下一步建议
+
+1. 如果继续优化移动端，下一步应给目录增加折叠/展开和当前分类吸顶
+2. 接着继续推进 `Polymarket entry-signal / rotation`
+3. 后面如果增加更多卡片密集内容，需要优先以手机端栅格为基准设计
