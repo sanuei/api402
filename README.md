@@ -17,7 +17,8 @@
 - 免费提供 machine-readable catalog: `/api/v1/catalog`
 - 付费接口先返回 402 challenge，再接受支付头重放请求
 - 当前保留 demo 支付模式，方便前端和 SDK 联调
-- 支持 MetaMask、Coinbase Wallet、Rabby Wallet 地址连接
+- 已优先打通 Rabby Wallet 的浏览器内真实支付闭环：切到 Base、签名、转 USDC、等待确认、自动 replay
+- Coinbase Wallet 与 MetaMask 当前在 UI 中明确标注为“开发中”，避免用户误判
 - 支持首页中英文一键切换，并记住用户语言选择
 - catalog 已输出中英文字段，前端直接消费 Worker 返回的多语言文案
 - 提供基础 SEO 资源，包括 favicon、OG 图、robots 和 sitemap
@@ -25,6 +26,7 @@
 - 收款地址由 Worker 的 `PAY_TO` 环境变量决定，catalog 和 402 challenge 会对外暴露这个地址
 - 当前支付范围固定为 `Base` 主网原生 `USDC`，不接受其他链上的 USDC
 - 非 demo 请求现在要求提供 `PAYMENT-SIGNATURE` 和 `X-PAYMENT-TX-HASH`，Worker 会回查 Base 链上 USDC 转账回执
+- 首页测试弹窗现在能直接驱动 Rabby 真实支付流程，不再只是 demo 地址读取
 - 支付通过或被 402 拒绝时都会返回结构化 `settlement` 上下文（txHash、receiptBlock、confirmations），便于 SDK 自动重试
 - 新增 `GET /api/v1/settlement/{txHash}` 结算状态查询接口，返回 machine-readable 状态码与重试建议
 - settlement 查询支持可选 `PAYMENT-SIGNATURE` 证明校验，并可通过 `payer`/`resource`/`payTo`/`minAmount` 过滤条件做归因绑定校验
@@ -80,6 +82,7 @@ npm run deploy
 
 - 生产收款地址由 `PAY_TO` 指定（当前默认 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`）
 - 支付资产固定为 Base 主网原生 USDC（`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`）
+- 浏览器内真实支付当前只优先支持 Rabby Wallet；其余钱包先保持“开发中”状态
 - 建议使用 `BASE_RPC_URLS`（逗号分隔）配置主备 RPC
 - AI 实时上游需通过 `wrangler secret put OPENROUTER_API_KEY` 配置 OpenRouter key
 - 可通过 `OPENROUTER_DEEPSEEK_MODEL`、`OPENROUTER_QWEN_MODEL`、`OPENROUTER_MAX_OUTPUT_TOKENS` 控制模型与成本（默认 Qwen 走更快且实测可用的 `qwen/qwen-plus-2025-07-28`）

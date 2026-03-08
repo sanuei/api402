@@ -111,6 +111,23 @@ body::after {
   color: var(--green);
 }
 
+.wallet-option {
+  position: relative;
+}
+
+.wallet-option-pending {
+  opacity: 0.76;
+}
+
+.wallet-option-pending:hover {
+  border-color: rgba(255, 207, 102, 0.32);
+  color: var(--amber);
+}
+
+.wallet-state-badge {
+  flex-shrink: 0;
+}
+
 .kicker {
   letter-spacing: 0.16em;
   text-transform: uppercase;

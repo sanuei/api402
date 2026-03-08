@@ -4,6 +4,48 @@
 
 ### 本轮目标
 
+- 先优先跑通一个真实钱包，不再同时推进多钱包半成品；将 Rabby Wallet 浏览器内支付闭环接到现有 Worker，其他钱包在 UI 中明确标注为开发中
+
+### 已完成
+
+- 前端钱包策略调整为“先打通一个，再扩多个”：
+  - Rabby Wallet：浏览器内真实支付闭环已接通
+  - Coinbase Wallet / MetaMask：UI 明确标注为“开发中”
+- API 测试弹窗现在支持 Rabby 真实支付流程：
+  - 首次请求拿 402 challenge
+  - 切换到 Base 主网
+  - 对 canonical payment payload 签名
+  - 发起 Base USDC `transfer(payTo, amount)`
+  - 等待确认数达到 Worker 要求
+  - 自动携带 `PAYMENT-SIGNATURE` 与 `X-PAYMENT-TX-HASH` 重放请求
+- Demo Mode 仍然保留，继续用于无钱包 / 无 Base USDC 的演示与联调
+- 首页过时文案已同步修正，不再继续显示“当前仍以 demo 为主”或“还不是真实链上扣款”
+
+### 涉及文件
+
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [src/styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 27 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 给 Rabby 真实支付链路补更细的失败态展示，例如余额不足、未授权 Base、确认超时
+2. 做 AI 成本 / 毛利可视化，直接看到收入与上游消耗差值
+3. 扩充高价值 live API，优先评估 search / crawl / extract 与 OCR / PDF 结构化解析
+
+## 2026-03-08
+
+### 本轮目标
+
 - 为已接入 OpenRouter 的 AI 接口补上成本与利润保护，避免 demo / 外部流量把上游余额打穿
 
 ### 已完成

@@ -107,8 +107,9 @@ export interface HealthResponse {
 export interface EthereumProvider {
   isMetaMask?: boolean;
   isRabby?: boolean;
+  isCoinbaseWallet?: boolean;
   providers?: EthereumProvider[];
-  request(args: { method: string }): Promise<string[]>;
+  request(args: { method: string; params?: unknown[] | object }): Promise<unknown>;
 }
 
 declare global {

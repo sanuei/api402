@@ -434,7 +434,7 @@
                             <span class="text-slate-500"><i class="fas fa-plus"></i></span>
                         </summary>
                         <p class="mt-4 text-slate-400 leading-7" data-i18n="faq.a1">
-                            还不是。这一版保留 demo 授权路径，同时把 catalog、挑战格式和前后端模型统一，为接入真实 EIP-3009 / x402 验证做准备。
+                            是。当前网页已经优先打通 Rabby Wallet 的 Base 主网 USDC 支付闭环：先拿 402 挑战，再签名、转账、等待确认并自动重放请求。Demo Mode 仍然保留给联调和演示使用。
                         </p>
                     </details>
                     <details class="faq-item soft-card rounded-3xl p-6">
@@ -486,31 +486,33 @@
             <div class="absolute -top-16 -right-12 w-32 h-32 bg-[#33f0b2]/20 blur-3xl pointer-events-none"></div>
             <div class="relative">
                 <h3 class="text-3xl font-bold text-center" data-i18n="wallet.title">Connect Wallet</h3>
-                <p class="text-slate-500 text-center mt-2" data-i18n="wallet.subtitle">当前仍然以 demo 联调为主，真实钱包接入仅做地址读取。</p>
+                <p class="text-slate-500 text-center mt-2" data-i18n="wallet.subtitle">优先支持 Rabby 的 Base USDC 真实支付闭环。Coinbase Wallet 与 MetaMask 正在开发。</p>
                 <div class="mt-8 space-y-3">
                     <button data-wallet-type="coinbase"
-                        class="w-full secondary-btn rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
+                        data-wallet-state="pending"
+                        class="w-full secondary-btn wallet-option wallet-option-pending rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
                         <span class="flex items-center gap-3">
                             <i class="fas fa-wallet text-[#3c7dff]"></i>
                             <span data-i18n="wallet.coinbase">Coinbase Wallet</span>
                         </span>
-                        <i class="fas fa-chevron-right text-slate-600"></i>
+                        <span class="wallet-state-badge badge-amber rounded-full px-3 py-1 text-[11px] mono" data-i18n="wallet.inDevelopment">开发中</span>
                     </button>
                     <button data-wallet-type="metamask"
-                        class="w-full secondary-btn rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
+                        data-wallet-state="pending"
+                        class="w-full secondary-btn wallet-option wallet-option-pending rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
                         <span class="flex items-center gap-3">
                             <i class="fab fa-ethereum text-[#ffcf66]"></i>
                             <span data-i18n="wallet.metamask">MetaMask</span>
                         </span>
-                        <i class="fas fa-chevron-right text-slate-600"></i>
+                        <span class="wallet-state-badge badge-amber rounded-full px-3 py-1 text-[11px] mono" data-i18n="wallet.inDevelopment">开发中</span>
                     </button>
                     <button data-wallet-type="rabby"
-                        class="w-full secondary-btn rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
+                        class="w-full secondary-btn wallet-option rounded-2xl px-5 py-4 text-left font-medium transition flex items-center justify-between">
                         <span class="flex items-center gap-3">
                             <i class="fas fa-wallet text-[#8b5cf6]"></i>
                             <span data-i18n="wallet.rabby">Rabby Wallet</span>
                         </span>
-                        <i class="fas fa-chevron-right text-slate-600"></i>
+                        <span class="wallet-state-badge badge-green rounded-full px-3 py-1 text-[11px] mono" data-i18n="wallet.priorityBadge">优先支持</span>
                     </button>
                     <button data-demo-connect="true"
                         class="w-full primary-btn rounded-2xl px-5 py-4 text-left font-semibold transition text-white flex items-center justify-between">

@@ -1,12 +1,28 @@
 import './styles.css';
 
+import { BrowserProvider, Interface, parseUnits } from 'ethers';
 import type { CatalogEndpoint, CatalogResponse, HealthResponse } from './types';
+import type { EthereumProvider } from './types';
 
 const REMOTE_API_BASE = 'https://api-market-x402.sonic980828.workers.dev';
 const SITE_URL = 'https://api-402.com/';
 const DEFAULT_GATEWAY_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
 const BASE_USDC_CONTRACT = '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913';
 const SAME_ORIGIN_HOST_PATTERNS = [/api-402\.com$/, /workers\.dev$/];
+const BASE_CHAIN_ID = 8453;
+const BASE_CHAIN_ID_HEX = '0x2105';
+const BASE_CHAIN_CONFIG = {
+  chainId: BASE_CHAIN_ID_HEX,
+  chainName: 'Base',
+  nativeCurrency: {
+    name: 'Ether',
+    symbol: 'ETH',
+    decimals: 18,
+  },
+  rpcUrls: ['https://mainnet.base.org'],
+  blockExplorerUrls: ['https://basescan.org'],
+};
+const USDC_INTERFACE = new Interface(['function transfer(address to, uint256 amount) returns (bool)']);
 type Language = 'zh' | 'en';
 const LANGUAGE_STORAGE_KEY = 'api-market-language';
 
@@ -118,20 +134,22 @@ const translations: Record<Language, Record<string, string>> = {
     'faq.title': '开发时最容易问的几个问题',
     'faq.q1': '现在是真实链上扣款吗？',
     'faq.a1':
-      '还不是。这一版保留 demo 授权路径，同时把 catalog、挑战格式和前后端模型统一，为接入真实 EIP-3009 / x402 验证做准备。',
+      '是。当前网页已经优先打通 Rabby Wallet 的 Base 主网 USDC 支付闭环：先拿 402 挑战，再签名、转账、等待确认并自动重放请求。Demo Mode 仍然保留给联调和演示使用。',
     'faq.q2': '为什么还保留 demo token？',
     'faq.a2':
-      '因为它能保证产品页、联调页和 SDK 示例在没有真实钱包支付的情况下也能完整演示 402 -> replay -> data 的工作流。',
+      '因为它能保证产品页、联调页和 SDK 示例在没有真实钱包、没有 Base USDC 或只做前端演示时，仍然能完整跑通 402 -> replay -> data 的工作流。',
     'faq.q3': '本地调试时怎么连 API？',
     'faq.a3':
       '页面会优先使用线上 Worker 作为 API 基地址。部署到 `api-402.com` 或 `workers.dev` 后，会自动切换成同源调用。',
     'footer.tagline': '基于 Cloudflare Worker 的 x402 API 支付网关演示',
     'wallet.title': '连接钱包',
-    'wallet.subtitle': '当前仍然以 demo 联调为主，真实钱包接入仅做地址读取。',
+    'wallet.subtitle': '优先支持 Rabby 的 Base USDC 真实支付闭环。Coinbase Wallet 与 MetaMask 正在开发。',
     'wallet.coinbase': 'Coinbase 钱包',
     'wallet.metamask': 'MetaMask',
     'wallet.rabby': 'Rabby 钱包',
     'wallet.demo': '演示模式',
+    'wallet.priorityBadge': '优先支持',
+    'wallet.inDevelopment': '开发中',
     'common.cancel': '取消',
     'common.close': '关闭',
     'modal.liveTest': '实时测试',
@@ -143,14 +161,15 @@ const translations: Record<Language, Record<string, string>> = {
       '无法从 {apiBase} 读取 catalog。请确认 Worker 已部署，或继续使用远端联调环境。',
     'dynamic.gatewayLive': '在线 / {count} 个接口',
     'dynamic.gatewayRemote': '远程',
-    'dynamic.walletConnectedAlert': '已连接地址: {address}\n连接类型: {walletType}\n\n当前仍以 demo 支付流为主。',
+    'dynamic.walletConnectedAlert': '已连接地址: {address}\n连接类型: {walletType}\n\n{modeDescription}',
     'dynamic.walletLabel': '钱包',
     'dynamic.walletNotConnected': '未连接',
     'dynamic.gatewayReceiver': '收款地址',
     'dynamic.baseUsdcOnly': '仅接受 Base 主网原生 USDC',
     'dynamic.replayMode': '重放模式',
     'dynamic.replayDemo': 'Authorization: Bearer demo',
-    'dynamic.replayManual': '需要手动签名',
+    'dynamic.replayRabby': 'Rabby: Base USDC + PAYMENT-SIGNATURE',
+    'dynamic.replayManual': '功能开发中',
     'dynamic.endpoint': '接口',
     'dynamic.price': '价格',
     'dynamic.flow': '流程',
@@ -162,9 +181,15 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.payTo': 'payTo => {value}',
     'dynamic.priceValue': 'price => {value} {currency}',
     'dynamic.replaying': '使用 demo 授权重放请求...',
+    'dynamic.replayingRabby': '使用 Rabby 钱包执行 Base USDC 支付并重放请求...',
     'dynamic.replayFailed': '重放失败，状态 {status}',
     'dynamic.replaySucceeded': '重放成功，响应如下：',
     'dynamic.connectDemo': '连接 Demo Mode 可在浏览器内完成完整请求闭环。',
+    'dynamic.connectRabby': '连接 Rabby Wallet 可在浏览器内完成 Base USDC 的真实支付闭环。',
+    'dynamic.walletInDevelopment': '{walletType} 浏览器内支付流程仍在开发，当前请使用 Rabby Wallet 或 Demo Mode。',
+    'dynamic.walletFeatureActive': '当前钱包支持浏览器内真实支付闭环。',
+    'dynamic.walletFeatureDemo': '当前钱包只支持 demo 浏览器联调闭环。',
+    'dynamic.walletFeaturePending': '当前钱包浏览器内支付闭环正在开发。',
     'dynamic.requestSucceeded': '请求成功，无需重放。',
     'dynamic.unexpectedStatus': '异常状态 {status}',
     'dynamic.networkError': '网络错误: {message}',
@@ -172,6 +197,22 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.selectedUnknown': '未知',
     'dynamic.exampleResponse': '// 示例响应',
     'dynamic.copyFailed': '复制失败，请手动复制地址。',
+    'dynamic.preparingPayment': '正在准备支付载荷与请求体...',
+    'dynamic.switchingBase': '正在切换到 Base 主网...',
+    'dynamic.baseReady': '已连接 Base 主网。',
+    'dynamic.signingPayload': '正在请求 Rabby 对支付载荷签名...',
+    'dynamic.signatureReady': '支付签名已生成。',
+    'dynamic.submittingTransfer': '正在发起 Base USDC 转账...',
+    'dynamic.transferSubmitted': '支付交易已提交，txHash => {txHash}',
+    'dynamic.waitingConfirmations': '等待链上确认，目标 {count} confirmations...',
+    'dynamic.confirmationsReady': '确认数已达到要求，开始重放请求。',
+    'dynamic.walletRejected': '钱包操作已取消。',
+    'dynamic.walletMissing': '未检测到可用的钱包提供器。',
+    'dynamic.challengeInvalid': '网关返回的支付挑战缺少必要字段。',
+    'dynamic.requestBody': 'request body => {value}',
+    'dynamic.methodLine': '{method} {url}',
+    'dynamic.connectWalletFirst': '请先连接 Rabby Wallet 或 Demo Mode。',
+    'dynamic.txMissing': '未获得有效的支付交易哈希。',
     'freshness.label': '数据新鲜度',
     'freshness.updatedAt': '更新时间',
     'freshness.fresh': '新鲜',
@@ -272,21 +313,23 @@ const translations: Record<Language, Record<string, string>> = {
     'faq.title': 'Common questions during development',
     'faq.q1': 'Is this doing real on-chain settlement now?',
     'faq.a1':
-      'Not yet. The current version keeps the demo authorization path while aligning catalog, challenge format, and frontend/backend models for real x402-style verification.',
+      'Yes. The browser flow now prioritizes Rabby Wallet for live Base mainnet USDC settlement: fetch the 402 challenge, sign the payment payload, submit the transfer, wait for confirmations, then replay the request automatically. Demo Mode still exists for integration demos.',
     'faq.q2': 'Why keep the demo token?',
     'faq.a2':
-      'It guarantees that the product page, integration demo, and future SDK examples can still show the full 402 -> replay -> data loop without requiring live payment.',
+      'It guarantees that the product page, integration demo, and future SDK examples can still show the full 402 -> replay -> data loop without requiring a live wallet payment or Base USDC.',
     'faq.q3': 'How should I connect APIs in local development?',
     'faq.a3':
       'The page prefers the remote Worker by default. Once deployed to `api-402.com` or `workers.dev`, it automatically uses same-origin requests.',
     'footer.tagline': 'Cloudflare Worker based x402 API payment gateway demo',
     'wallet.title': 'Connect Wallet',
     'wallet.subtitle':
-      'The current flow is still optimized for demo integration. Real wallet access is only used for reading addresses.',
+      'Rabby is the first wallet with a live Base USDC payment flow. Coinbase Wallet and MetaMask are marked as in development.',
     'wallet.coinbase': 'Coinbase Wallet',
     'wallet.metamask': 'MetaMask',
     'wallet.rabby': 'Rabby Wallet',
     'wallet.demo': 'Demo Mode',
+    'wallet.priorityBadge': 'Priority',
+    'wallet.inDevelopment': 'In development',
     'common.cancel': 'Cancel',
     'common.close': 'Close',
     'modal.liveTest': 'Live Test',
@@ -299,14 +342,15 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.gatewayLive': 'LIVE / {count} endpoints',
     'dynamic.gatewayRemote': 'REMOTE',
     'dynamic.walletConnectedAlert':
-      'Connected address: {address}\nWallet type: {walletType}\n\nThe current browser flow still defaults to demo replay.',
+      'Connected address: {address}\nWallet type: {walletType}\n\n{modeDescription}',
     'dynamic.walletLabel': 'Wallet',
     'dynamic.walletNotConnected': 'Not connected',
     'dynamic.gatewayReceiver': 'Gateway receiver',
     'dynamic.baseUsdcOnly': 'Only Base mainnet native USDC is accepted',
     'dynamic.replayMode': 'Replay mode',
     'dynamic.replayDemo': 'Authorization: Bearer demo',
-    'dynamic.replayManual': 'Manual signature required',
+    'dynamic.replayRabby': 'Rabby: Base USDC + PAYMENT-SIGNATURE',
+    'dynamic.replayManual': 'In development',
     'dynamic.endpoint': 'Endpoint',
     'dynamic.price': 'Price',
     'dynamic.flow': 'Flow',
@@ -318,9 +362,15 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.payTo': 'payTo => {value}',
     'dynamic.priceValue': 'price => {value} {currency}',
     'dynamic.replaying': 'Replaying request with demo authorization...',
+    'dynamic.replayingRabby': 'Executing Base USDC payment and replay with Rabby...',
     'dynamic.replayFailed': 'Replay failed with status {status}',
     'dynamic.replaySucceeded': 'Replay succeeded. Response body:',
     'dynamic.connectDemo': 'Connect Demo Mode to complete the full request loop inside the browser.',
+    'dynamic.connectRabby': 'Connect Rabby Wallet to complete the live Base USDC payment loop in the browser.',
+    'dynamic.walletInDevelopment': '{walletType} browser payment flow is still in development. Use Rabby Wallet or Demo Mode for now.',
+    'dynamic.walletFeatureActive': 'This wallet supports the live browser payment flow.',
+    'dynamic.walletFeatureDemo': 'This wallet only supports the demo browser loop.',
+    'dynamic.walletFeaturePending': 'This wallet browser payment flow is still in development.',
     'dynamic.requestSucceeded': 'Request succeeded without replay.',
     'dynamic.unexpectedStatus': 'Unexpected status {status}',
     'dynamic.networkError': 'Network error: {message}',
@@ -328,6 +378,22 @@ const translations: Record<Language, Record<string, string>> = {
     'dynamic.selectedUnknown': 'unknown',
     'dynamic.exampleResponse': '// example response',
     'dynamic.copyFailed': 'Copy failed. Please copy the address manually.',
+    'dynamic.preparingPayment': 'Preparing payment payload and request body...',
+    'dynamic.switchingBase': 'Switching wallet to Base mainnet...',
+    'dynamic.baseReady': 'Connected to Base mainnet.',
+    'dynamic.signingPayload': 'Requesting Rabby signature for the payment payload...',
+    'dynamic.signatureReady': 'Payment signature ready.',
+    'dynamic.submittingTransfer': 'Submitting Base USDC transfer...',
+    'dynamic.transferSubmitted': 'Payment transaction submitted, txHash => {txHash}',
+    'dynamic.waitingConfirmations': 'Waiting for on-chain confirmations, target {count} confirmations...',
+    'dynamic.confirmationsReady': 'Required confirmations reached. Replaying request.',
+    'dynamic.walletRejected': 'Wallet action was rejected.',
+    'dynamic.walletMissing': 'No compatible wallet provider was detected.',
+    'dynamic.challengeInvalid': 'The gateway returned an incomplete payment challenge.',
+    'dynamic.requestBody': 'request body => {value}',
+    'dynamic.methodLine': '{method} {url}',
+    'dynamic.connectWalletFirst': 'Connect Rabby Wallet or Demo Mode first.',
+    'dynamic.txMissing': 'Did not receive a valid payment transaction hash.',
     'freshness.label': 'Freshness',
     'freshness.updatedAt': 'Updated At',
     'freshness.fresh': 'Fresh',
@@ -351,6 +417,7 @@ const translations: Record<Language, Record<string, string>> = {
 let walletConnected = false;
 let walletAddress = '';
 let walletType = '';
+let walletProvider: EthereumProvider | null = null;
 let currentAPI = '';
 let catalog: CatalogResponse | null = null;
 let selectedEndpoint: CatalogEndpoint | null = null;
@@ -479,6 +546,10 @@ function getGatewayExplorerUrl(address: string): string {
   return `https://basescan.org/address/${address}`;
 }
 
+function getGatewayTxExplorerUrl(txHash: string): string {
+  return `https://basescan.org/tx/${txHash}`;
+}
+
 function getLocalizedFields(endpoint: CatalogEndpoint) {
   return (
     endpoint.locales?.[currentLanguage] ||
@@ -592,6 +663,235 @@ function logLine(message: string, tone: 'default' | 'info' | 'success' | 'warnin
   };
 
   return `<div class="${palette[tone] || palette.default}">${escapeHtml(message)}</div>`;
+}
+
+function getWalletCapability(type: string): 'demo' | 'live' | 'pending' {
+  if (type === 'Demo') {
+    return 'demo';
+  }
+
+  if (type === 'Rabby Wallet') {
+    return 'live';
+  }
+
+  return 'pending';
+}
+
+function getWalletModeDescription(type: string): string {
+  const capability = getWalletCapability(type);
+  if (capability === 'live') {
+    return t('dynamic.walletFeatureActive');
+  }
+
+  if (capability === 'demo') {
+    return t('dynamic.walletFeatureDemo');
+  }
+
+  return t('dynamic.walletFeaturePending');
+}
+
+function getReplayModeLabel(type: string): string {
+  const capability = getWalletCapability(type);
+  if (capability === 'live') {
+    return t('dynamic.replayRabby');
+  }
+
+  if (capability === 'demo') {
+    return t('dynamic.replayDemo');
+  }
+
+  return t('dynamic.replayManual');
+}
+
+function encodeBase64Json(value: Record<string, unknown>): string {
+  const bytes = new TextEncoder().encode(JSON.stringify(value));
+  let binary = '';
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+  return window.btoa(binary);
+}
+
+function getEndpointRequestConfig(endpoint: CatalogEndpoint): {
+  method: string;
+  body: string | null;
+  headers: Record<string, string>;
+} {
+  const method = (endpoint.method || 'GET').toUpperCase();
+  if (method === 'POST') {
+    const requestBody = endpoint.path === '/api/qwen'
+      ? {
+          prompt: 'Summarize why x402 micropayments are useful for API monetization in one sentence.',
+        }
+      : {
+          messages: [{ role: 'user', content: 'Explain x402 payments in one sentence.' }],
+        };
+
+    return {
+      method,
+      body: JSON.stringify(requestBody),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
+  return {
+    method,
+    body: null,
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  };
+}
+
+function getConfirmationTarget(): number {
+  return catalog?.payment.settlementConfirmationsRequired || 2;
+}
+
+async function ensureBaseNetwork(provider: EthereumProvider) {
+  try {
+    await provider.request({
+      method: 'wallet_switchEthereumChain',
+      params: [{ chainId: BASE_CHAIN_ID_HEX }],
+    });
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error && typeof error.code === 'number' ? error.code : null;
+    if (code !== 4902) {
+      throw error;
+    }
+
+    await provider.request({
+      method: 'wallet_addEthereumChain',
+      params: [BASE_CHAIN_CONFIG],
+    });
+  }
+}
+
+function getWalletErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: number }).code;
+    if (code === 4001) {
+      return t('dynamic.walletRejected');
+    }
+  }
+
+  return error instanceof Error ? error.message : 'Unknown wallet error';
+}
+
+async function executeDemoReplay(
+  requestUrl: string,
+  requestConfig: ReturnType<typeof getEndpointRequestConfig>,
+  resultEl: HTMLDivElement,
+) {
+  resultEl.innerHTML += logLine(t('dynamic.replaying'), 'success');
+  const paid = await fetch(requestUrl, {
+    method: requestConfig.method,
+    headers: {
+      ...requestConfig.headers,
+      Authorization: 'Bearer demo',
+    },
+    body: requestConfig.body,
+  });
+
+  if (!paid.ok) {
+    resultEl.innerHTML += logLine(t('dynamic.replayFailed', { status: paid.status }), 'danger');
+    return;
+  }
+
+  const data = await paid.json();
+  resultEl.innerHTML += logLine(t('dynamic.replaySucceeded'), 'success');
+  resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+}
+
+async function executeRabbyReplay(
+  requestUrl: string,
+  endpoint: CatalogEndpoint,
+  requestConfig: ReturnType<typeof getEndpointRequestConfig>,
+  challenge: { payTo?: string; price?: string; currency?: string; tokenContract?: string },
+  resultEl: HTMLDivElement,
+) {
+  if (!walletProvider || !walletAddress) {
+    throw new Error(t('dynamic.walletMissing'));
+  }
+
+  const payTo = challenge.payTo || getGatewayPayTo();
+  const amount = challenge.price || endpoint.price;
+  const tokenContract = challenge.tokenContract || catalog?.payment.tokenContract || BASE_USDC_CONTRACT;
+  if (!payTo || !amount || !tokenContract) {
+    throw new Error(t('dynamic.challengeInvalid'));
+  }
+
+  resultEl.innerHTML += logLine(t('dynamic.replayingRabby'), 'success');
+  resultEl.innerHTML += logLine(t('dynamic.switchingBase'), 'info');
+  await ensureBaseNetwork(walletProvider);
+  resultEl.innerHTML += logLine(t('dynamic.baseReady'), 'success');
+
+  const browserProvider = new BrowserProvider(walletProvider);
+  const signer = await browserProvider.getSigner();
+  const now = Date.now();
+  const payload = {
+    version: '1',
+    scheme: 'exact',
+    network: 'base',
+    currency: 'USDC',
+    payTo,
+    from: walletAddress,
+    amount,
+    resource: endpoint.path,
+    nonce: crypto.randomUUID(),
+    deadline: new Date(now + 10 * 60 * 1000).toISOString(),
+    issuedAt: new Date(now).toISOString(),
+  };
+
+  resultEl.innerHTML += logLine(t('dynamic.signingPayload'), 'info');
+  const signature = await signer.signMessage(JSON.stringify(payload));
+  resultEl.innerHTML += logLine(t('dynamic.signatureReady'), 'success');
+
+  resultEl.innerHTML += logLine(t('dynamic.submittingTransfer'), 'info');
+  const txRequest = {
+    to: tokenContract,
+    data: USDC_INTERFACE.encodeFunctionData('transfer', [payTo, parseUnits(amount, 6)]),
+  };
+  const txResponse = await signer.sendTransaction(txRequest);
+  if (!txResponse.hash) {
+    throw new Error(t('dynamic.txMissing'));
+  }
+
+  resultEl.innerHTML += logLine(t('dynamic.transferSubmitted', { txHash: txResponse.hash }), 'success');
+  resultEl.innerHTML += `<div class="text-slate-400"><a href="${escapeHtml(getGatewayTxExplorerUrl(txResponse.hash))}" target="_blank" rel="noreferrer" class="underline">${escapeHtml(getGatewayTxExplorerUrl(txResponse.hash))}</a></div>`;
+
+  const confirmations = getConfirmationTarget();
+  resultEl.innerHTML += logLine(t('dynamic.waitingConfirmations', { count: confirmations }), 'info');
+  await browserProvider.waitForTransaction(txResponse.hash, confirmations, 180000);
+  resultEl.innerHTML += logLine(t('dynamic.confirmationsReady'), 'success');
+
+  const paid = await fetch(requestUrl, {
+    method: requestConfig.method,
+    headers: {
+      ...requestConfig.headers,
+      'PAYMENT-SIGNATURE': encodeBase64Json({
+        ...payload,
+        signature,
+      }),
+      'X-PAYMENT-TX-HASH': txResponse.hash,
+    },
+    body: requestConfig.body,
+  });
+
+  if (!paid.ok) {
+    resultEl.innerHTML += logLine(t('dynamic.replayFailed', { status: paid.status }), 'danger');
+    const responseText = await paid.text();
+    if (responseText) {
+      resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#ff8f8f]">${escapeHtml(responseText)}</pre>`;
+    }
+    return;
+  }
+
+  const data = await paid.json();
+  resultEl.innerHTML += logLine(t('dynamic.replaySucceeded'), 'success');
+  resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
 }
 
 function setHeroTerminal(endpoint: CatalogEndpoint | null) {
@@ -844,24 +1144,37 @@ function closeWalletModal() {
 }
 
 async function connectWallet(type: 'coinbase' | 'metamask' | 'rabby') {
+  const provider = getWalletProvider(type);
+  if (type !== 'rabby') {
+    closeWalletModal();
+    walletConnected = true;
+    walletType = type === 'coinbase' ? 'Coinbase Wallet' : 'MetaMask';
+    walletAddress = provider ? walletAddress || getGatewayPayTo() : getGatewayPayTo();
+    walletProvider = provider;
+    updateWalletUI();
+    window.alert(t('dynamic.walletInDevelopment', { walletType }));
+    return;
+  }
+
   closeWalletModal();
 
   let address = '';
   try {
-    const provider = getWalletProvider(type);
     if (provider && typeof provider.request === 'function') {
       const accounts = await provider.request({ method: 'eth_requestAccounts' });
-      address = accounts[0] || '';
-      walletType =
-        type === 'coinbase' ? 'Coinbase Wallet' : type === 'rabby' ? 'Rabby Wallet' : 'MetaMask';
+      if (Array.isArray(accounts)) {
+        address = String(accounts[0] || '');
+      }
+      walletType = 'Rabby Wallet';
+      walletProvider = provider;
     }
   } catch (error) {
     console.log('wallet connect failed, fallback to demo', error);
   }
 
   if (!address) {
-    address = `0x${Math.random().toString(16).slice(2, 10)}...${Math.random().toString(16).slice(2, 6)}`;
-    walletType = 'Demo';
+    walletProvider = null;
+    throw new Error(t('dynamic.walletMissing'));
   }
 
   walletConnected = true;
@@ -873,6 +1186,7 @@ function connectDemo() {
   walletConnected = true;
   walletType = 'Demo';
   walletAddress = getGatewayPayTo();
+  walletProvider = null;
   closeWalletModal();
   updateWalletUI();
 }
@@ -883,7 +1197,7 @@ function updateWalletUI() {
   getElement<HTMLDivElement>('paymentDetails').innerHTML = `
     <div>${t('dynamic.walletLabel')}: <span class="text-white">${escapeHtml(walletType || t('dynamic.walletNotConnected'))}</span></div>
     <div>${t('dynamic.gatewayReceiver')}: <span class="text-white">${escapeHtml(shortenAddress(getGatewayPayTo()))}</span></div>
-    <div>${t('dynamic.replayMode')}: <span class="text-[#33f0b2]">${walletType === 'Demo' ? t('dynamic.replayDemo') : t('dynamic.replayManual')}</span></div>
+    <div>${t('dynamic.replayMode')}: <span class="text-[#33f0b2]">${escapeHtml(getReplayModeLabel(walletType))}</span></div>
   `;
 }
 
@@ -906,23 +1220,41 @@ function testAPI(endpointPath: string) {
 async function executeRequest() {
   const resultEl = getElement<HTMLDivElement>('apiResult');
   const button = getElement<HTMLButtonElement>('sendRequest');
-  const requestUrl = `${API_BASE}${currentAPI}`;
+  const endpoint = catalog?.endpoints.find((item) => item.path === currentAPI) || selectedEndpoint;
+  if (!endpoint) {
+    resultEl.innerHTML = logLine(t('dynamic.catalogLoadFailed'), 'danger');
+    return;
+  }
+
+  if (!walletConnected) {
+    resultEl.innerHTML = logLine(t('dynamic.connectWalletFirst'), 'warning');
+    return;
+  }
+
+  const requestUrl = `${API_BASE}${endpoint.path}`;
+  const requestConfig = getEndpointRequestConfig(endpoint);
 
   button.disabled = true;
   button.textContent = t('dynamic.execute');
 
   resultEl.innerHTML = [
-    logLine(`GET ${requestUrl}`, 'info'),
+    logLine(t('dynamic.methodLine', { method: requestConfig.method, url: requestUrl }), 'info'),
+    logLine(t('dynamic.preparingPayment'), 'default'),
+    requestConfig.body ? logLine(t('dynamic.requestBody', { value: requestConfig.body }), 'default') : '',
     logLine(t('dynamic.initialRequest'), 'default'),
-  ].join('');
+  ]
+    .filter(Boolean)
+    .join('');
 
   try {
     const response = await fetch(requestUrl, {
-      headers: { 'Content-Type': 'application/json' },
+      method: requestConfig.method,
+      headers: requestConfig.headers,
+      body: requestConfig.body,
     });
 
     if (response.status === 402) {
-      const challenge = (await response.json()) as { payTo?: string; price?: string; currency?: string };
+      const challenge = (await response.json()) as { payTo?: string; price?: string; currency?: string; tokenContract?: string };
       resultEl.innerHTML += [
         logLine(t('dynamic.received402'), 'warning'),
         logLine(t('dynamic.payTo', { value: challenge.payTo || '' }), 'default'),
@@ -930,20 +1262,11 @@ async function executeRequest() {
       ].join('');
 
       if (walletType === 'Demo') {
-        resultEl.innerHTML += logLine(t('dynamic.replaying'), 'success');
-        const paid = await fetch(requestUrl, {
-          headers: { Authorization: 'Bearer demo' },
-        });
-
-        if (!paid.ok) {
-          resultEl.innerHTML += logLine(t('dynamic.replayFailed', { status: paid.status }), 'danger');
-        } else {
-          const data = await paid.json();
-          resultEl.innerHTML += logLine(t('dynamic.replaySucceeded'), 'success');
-          resultEl.innerHTML += `<pre class="mt-3 whitespace-pre-wrap break-all text-[#8de7ff]">${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
-        }
+        await executeDemoReplay(requestUrl, requestConfig, resultEl);
+      } else if (walletType === 'Rabby Wallet') {
+        await executeRabbyReplay(requestUrl, endpoint, requestConfig, challenge, resultEl);
       } else {
-        resultEl.innerHTML += logLine(t('dynamic.connectDemo'), 'warning');
+        resultEl.innerHTML += logLine(t('dynamic.walletInDevelopment', { walletType }), 'warning');
       }
     } else if (response.ok) {
       const data = await response.json();
@@ -953,7 +1276,7 @@ async function executeRequest() {
       resultEl.innerHTML += logLine(t('dynamic.unexpectedStatus', { status: response.status }), 'danger');
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown network error';
+    const message = getWalletErrorMessage(error);
     resultEl.innerHTML += logLine(t('dynamic.networkError', { message }), 'danger');
   } finally {
     button.disabled = false;
@@ -1005,7 +1328,13 @@ function bindEvents() {
 
   getElement<HTMLButtonElement>('connectWallet').addEventListener('click', () => {
     if (walletConnected) {
-      window.alert(t('dynamic.walletConnectedAlert', { address: walletAddress, walletType }));
+      window.alert(
+        t('dynamic.walletConnectedAlert', {
+          address: walletAddress,
+          walletType,
+          modeDescription: getWalletModeDescription(walletType),
+        }),
+      );
       return;
     }
 
@@ -1014,9 +1343,22 @@ function bindEvents() {
 
   document.querySelectorAll<HTMLElement>('[data-wallet-type]').forEach((button) => {
     button.addEventListener('click', () => {
+      if (button.getAttribute('data-wallet-state') === 'pending') {
+        const pendingType =
+          button.dataset.walletType === 'coinbase'
+            ? 'Coinbase Wallet'
+            : button.dataset.walletType === 'metamask'
+              ? 'MetaMask'
+              : 'Wallet';
+        window.alert(t('dynamic.walletInDevelopment', { walletType: pendingType }));
+        return;
+      }
+
       const walletTypeValue = button.dataset.walletType;
       if (walletTypeValue === 'coinbase' || walletTypeValue === 'metamask' || walletTypeValue === 'rabby') {
-        void connectWallet(walletTypeValue);
+        void connectWallet(walletTypeValue).catch((error) => {
+          window.alert(getWalletErrorMessage(error));
+        });
       }
     });
   });
