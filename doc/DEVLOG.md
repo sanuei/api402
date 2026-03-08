@@ -4,6 +4,48 @@
 
 ### 本轮目标
 
+- 开始落地第一批真正更容易赚钱的高价值接口，优先做 `wallet-risk`
+
+### 已完成
+
+- 新增付费接口 `GET /api/wallet-risk?address=0x...`
+- 接口现在会在付费前先校验 `address` 参数，避免无效请求先进入 402 支付流程
+- 上游实现接入 Base Blockscout 公共 API：
+  - 地址详情
+  - 地址计数器
+  - 近期交易
+  - 近期 token transfers
+- 返回结构现在包含：
+  - `riskScore`
+  - `riskLevel`
+  - `identity`
+  - `activity`
+  - `signals`
+- 当前风险画像第一版重点是“结构化前置筛查”，适合给 agent 或自动化工作流做预检查
+- catalog、API 目录、README 与 backlog 文档已同步更新
+- 测试已补：
+  - 缺少 `address` 时返回 `400`
+  - 正常上游数据可返回结构化风险摘要
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker/upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)
+- [worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [API_EXPANSION.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/API_EXPANSION.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 继续做 `approval-audit`
+2. 再做 `tx-simulate-explain`
+3. 把首页主推接口文案改成“Frontier Models + Wallet Risk”
+
+## 2026-03-08
+
+### 本轮目标
+
 - 从“功能堆叠”转向“产品重构”，补商业化方向文档、网页 API 快速目录，并把最新旗舰模型入口接进真实上游
 
 ### 已完成

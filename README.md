@@ -52,6 +52,8 @@
 - 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
 - `/api/deepseek` 与 `/api/qwen` 已接入 OpenRouter 真实上游，支持 `POST application/json` 的 `prompt` / `messages` 请求
+- `/api/gpt-5.4`、`/api/gpt-5.4-pro`、`/api/claude-4.6` 已接入 OpenRouter 真实上游，支持最新旗舰模型按次调用
+- `/api/wallet-risk?address=0x...` 已接入 Base Blockscout 公共数据源，返回结构化钱包风险画像
 - AI 请求体不合法时会先返回 `400`，避免开发者因参数错误先进入付费流程
 - AI 接口已加入 24 小时预算保护与请求数上限，超额时返回 `429` 和机器可读错误码：`AI_BUDGET_EXCEEDED` / `AI_REQUEST_LIMIT_EXCEEDED`
 
@@ -94,16 +96,17 @@ npm run deploy
 - 浏览器内真实支付当前只优先支持 Rabby Wallet；其余钱包先保持“开发中”状态
 - 建议使用 `BASE_RPC_URLS`（逗号分隔）配置主备 RPC
 - AI 实时上游需通过 `wrangler secret put OPENROUTER_API_KEY` 配置 OpenRouter key
-- 可通过 `OPENROUTER_DEEPSEEK_MODEL`、`OPENROUTER_QWEN_MODEL`、`OPENROUTER_MAX_OUTPUT_TOKENS` 控制模型与成本（默认 Qwen 走更快且实测可用的 `qwen/qwen-plus-2025-07-28`）
-- 可通过 `AI_GLOBAL_DAILY_BUDGET_USD`、`AI_DEEPSEEK_DAILY_BUDGET_USD`、`AI_QWEN_DAILY_BUDGET_USD` 控制 24h 预算上限
-- 可通过 `AI_GLOBAL_DAILY_REQUEST_LIMIT`、`AI_DEEPSEEK_DAILY_REQUEST_LIMIT`、`AI_QWEN_DAILY_REQUEST_LIMIT` 控制 24h 请求数上限
+- 可通过 `OPENROUTER_DEEPSEEK_MODEL`、`OPENROUTER_QWEN_MODEL`、`OPENROUTER_GPT54_MODEL`、`OPENROUTER_GPT54_PRO_MODEL`、`OPENROUTER_CLAUDE46_MODEL` 控制模型映射
+- 可通过 `AI_GLOBAL_DAILY_BUDGET_USD` 以及各 endpoint 的 `AI_*_DAILY_BUDGET_USD` 控制 24h 预算上限
+- 可通过 `AI_GLOBAL_DAILY_REQUEST_LIMIT` 以及各 endpoint 的 `AI_*_DAILY_REQUEST_LIMIT` 控制 24h 请求数上限
 - 防重放依赖 `REPLAY_GUARD` Durable Object
 
 ## Current Scope
 
 - BTC / ETH 价格可尝试代理 Binance
 - K 线接口已接入 Binance 上游
-- `DeepSeek` / `Qwen` 已接入 OpenRouter 实时上游
+- `DeepSeek` / `Qwen` / `GPT-5.4` / `GPT-5.4 Pro` / `Claude 4.6` 已接入 OpenRouter 实时上游
+- `wallet-risk` 已接入 Base Blockscout 公共上游
 - 仍有部分接口保留 demo/mock 数据
 - 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验、nonce 防重放和 demo token
 - 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证和 nonce 重放

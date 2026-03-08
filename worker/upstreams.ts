@@ -108,6 +108,12 @@ export type AIUsageSummary = {
 
 export type AIQuotaCode = 'AI_BUDGET_EXCEEDED' | 'AI_REQUEST_LIMIT_EXCEEDED';
 
+type WalletRiskSignal = {
+  code: string;
+  severity: 'info' | 'warning' | 'high' | 'critical';
+  message: string;
+};
+
 export type AIProfitPolicy = {
   windowMs: number;
   provider: 'openrouter';
@@ -273,6 +279,7 @@ type FetchUpstreamDependencies = {
 
 export async function fetchUpstreamData(
   path: string,
+  requestUrl: URL,
   env: UpstreamEnv,
   aiContext: AIRequestContext | null,
   deps: FetchUpstreamDependencies,
@@ -285,6 +292,7 @@ export async function fetchUpstreamData(
     '/api/gpt-5.4': 'openrouter',
     '/api/gpt-5.4-pro': 'openrouter',
     '/api/claude-4.6': 'openrouter',
+    '/api/wallet-risk': 'blockscout',
     '/api/whale-positions': 'hyperliquid',
     '/api/kline': 'binance',
   };
@@ -460,6 +468,39 @@ export async function fetchUpstreamData(
       };
     }
 
+    if (path === '/api/wallet-risk') {
+      const address = requestUrl.searchParams.get('address')?.trim();
+      if (!address) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing wallet address', retryable: false } as UpstreamFailure;
+      }
+
+      const [details, counters, transactions, tokenTransfers] = (await Promise.all([
+        fetchJsonWithTimeout(`https://base.blockscout.com/api/v2/addresses/${address}`, { method: 'GET' }),
+        fetchJsonWithTimeout(`https://base.blockscout.com/api/v2/addresses/${address}/counters`, { method: 'GET' }),
+        fetchJsonWithTimeout(
+          `https://base.blockscout.com/api/v2/addresses/${address}/transactions?items_count=10`,
+          { method: 'GET' },
+        ),
+        fetchJsonWithTimeout(
+          `https://base.blockscout.com/api/v2/addresses/${address}/token-transfers?items_count=10`,
+          { method: 'GET' },
+        ),
+      ])) as [
+        BlockscoutAddressDetails,
+        BlockscoutAddressCounters,
+        BlockscoutItemsResponse<BlockscoutTransactionItem>,
+        BlockscoutItemsResponse<BlockscoutTokenTransferItem>
+      ];
+
+      const riskProfile = buildWalletRiskProfile(address, details, counters, transactions.items || [], tokenTransfers.items || []);
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+
+      return {
+        data: riskProfile,
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
     if (path === '/api/kline') {
       const data = (await fetchJsonWithTimeout(
         'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=6',
@@ -599,6 +640,230 @@ export async function fetchUpstreamData(
       },
     };
   }
+}
+
+type BlockscoutAddressEntity = {
+  hash?: string;
+  name?: string | null;
+  is_contract?: boolean;
+  is_scam?: boolean;
+  is_verified?: boolean;
+  reputation?: string | null;
+  public_tags?: Array<{ name?: string }>;
+};
+
+type BlockscoutAddressDetails = BlockscoutAddressEntity & {
+  token?: {
+    symbol?: string | null;
+    type?: string | null;
+  } | null;
+};
+
+type BlockscoutAddressCounters = {
+  transactions_count?: string;
+  token_transfers_count?: string;
+  validations_count?: string;
+};
+
+type BlockscoutItemsResponse<T> = {
+  items?: T[];
+};
+
+type BlockscoutTransactionItem = {
+  hash?: string;
+  timestamp?: string;
+  result?: string | null;
+  from?: BlockscoutAddressEntity | null;
+  to?: BlockscoutAddressEntity | null;
+  method?: string | null;
+  value?: string | null;
+};
+
+type BlockscoutTokenTransferItem = {
+  timestamp?: string;
+  method?: string | null;
+  from?: BlockscoutAddressEntity | null;
+  to?: BlockscoutAddressEntity | null;
+  token?: {
+    symbol?: string | null;
+    type?: string | null;
+  } | null;
+  total?: {
+    value?: string | null;
+    decimals?: string | null;
+  } | null;
+};
+
+function parseCount(value: string | number | undefined | null): number {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeSeverityScore(severity: WalletRiskSignal['severity']): number {
+  switch (severity) {
+    case 'critical':
+      return 45;
+    case 'high':
+      return 22;
+    case 'warning':
+      return 10;
+    default:
+      return -4;
+  }
+}
+
+function buildWalletRiskProfile(
+  address: string,
+  details: BlockscoutAddressDetails,
+  counters: BlockscoutAddressCounters,
+  transactions: BlockscoutTransactionItem[],
+  tokenTransfers: BlockscoutTokenTransferItem[],
+) {
+  const signals: WalletRiskSignal[] = [];
+  const txCount = parseCount(counters.transactions_count);
+  const tokenTransferCount = parseCount(counters.token_transfers_count);
+  const publicTags = Array.isArray(details.public_tags)
+    ? details.public_tags.map((tag) => tag?.name).filter((name): name is string => Boolean(name))
+    : [];
+
+  if (details.is_scam) {
+    signals.push({ code: 'SCAM_FLAGGED', severity: 'critical', message: 'Blockscout marks this address as scam-related.' });
+  }
+
+  if ((details.reputation || '').toLowerCase() !== 'ok') {
+    signals.push({
+      code: 'REPUTATION_NOT_OK',
+      severity: 'high',
+      message: `Address reputation is reported as ${details.reputation || 'unknown'}.`,
+    });
+  }
+
+  if (details.is_contract && !details.is_verified) {
+    signals.push({
+      code: 'UNVERIFIED_CONTRACT',
+      severity: 'high',
+      message: 'Contract address is not verified on Blockscout.',
+    });
+  }
+
+  if (txCount <= 5) {
+    signals.push({
+      code: 'LOW_HISTORY',
+      severity: 'warning',
+      message: 'Very limited transaction history on Base.',
+    });
+  }
+
+  if (tokenTransferCount === 0) {
+    signals.push({
+      code: 'NO_TOKEN_HISTORY',
+      severity: 'warning',
+      message: 'No token transfer history detected.',
+    });
+  }
+
+  if (details.is_contract && details.is_verified) {
+    signals.push({
+      code: 'VERIFIED_CONTRACT',
+      severity: 'info',
+      message: 'Verified contract with discoverable metadata.',
+    });
+  }
+
+  if (!details.is_contract && txCount > 50 && tokenTransferCount > 10) {
+    signals.push({
+      code: 'ESTABLISHED_EOA',
+      severity: 'info',
+      message: 'Externally owned account with established activity history.',
+    });
+  }
+
+  if (publicTags.length > 0) {
+    signals.push({
+      code: 'PUBLIC_TAGS_PRESENT',
+      severity: 'info',
+      message: `Public tags available: ${publicTags.slice(0, 3).join(', ')}.`,
+    });
+  }
+
+  const uniqueCounterparties = new Set<string>();
+  let pendingTransactions = 0;
+  for (const transaction of transactions) {
+    if ((transaction.result || '').toLowerCase() === 'pending') {
+      pendingTransactions += 1;
+    }
+    const fromHash = transaction.from?.hash?.toLowerCase();
+    const toHash = transaction.to?.hash?.toLowerCase();
+    if (fromHash && fromHash !== address.toLowerCase()) {
+      uniqueCounterparties.add(fromHash);
+    }
+    if (toHash && toHash !== address.toLowerCase()) {
+      uniqueCounterparties.add(toHash);
+    }
+  }
+
+  if (pendingTransactions >= 3) {
+    signals.push({
+      code: 'MANY_PENDING_TXS',
+      severity: 'warning',
+      message: 'Recent activity includes multiple pending transactions.',
+    });
+  }
+
+  const rawScore = signals.reduce((sum, signal) => sum + normalizeSeverityScore(signal.severity), 18);
+  const riskScore = Math.max(0, Math.min(100, rawScore));
+  const riskLevel =
+    riskScore >= 75 ? 'critical' : riskScore >= 50 ? 'high' : riskScore >= 25 ? 'moderate' : 'low';
+
+  return {
+    address,
+    chain: 'base',
+    riskScore,
+    riskLevel,
+    identity: {
+      address,
+      isContract: Boolean(details.is_contract),
+      isVerified: Boolean(details.is_verified),
+      isScam: Boolean(details.is_scam),
+      reputation: details.reputation || 'unknown',
+      name: details.name || null,
+      publicTags,
+      tokenSymbol: details.token?.symbol || null,
+      tokenType: details.token?.type || null,
+    },
+    activity: {
+      transactionsCount: txCount,
+      tokenTransfersCount: tokenTransferCount,
+      validationsCount: parseCount(counters.validations_count),
+      pendingTransactionsRecent: pendingTransactions,
+      uniqueCounterpartiesRecent: uniqueCounterparties.size,
+      recentTransactions: transactions.slice(0, 5).map((transaction) => ({
+        hash: transaction.hash || null,
+        timestamp: transaction.timestamp || null,
+        result: transaction.result || null,
+        method: transaction.method || null,
+        counterparty:
+          transaction.from?.hash?.toLowerCase() === address.toLowerCase()
+            ? transaction.to?.hash || null
+            : transaction.from?.hash || null,
+      })),
+      recentTokenTransfers: tokenTransfers.slice(0, 5).map((transfer) => ({
+        timestamp: transfer.timestamp || null,
+        method: transfer.method || null,
+        tokenSymbol: transfer.token?.symbol || null,
+        tokenType: transfer.token?.type || null,
+        value: transfer.total?.value || null,
+        decimals: transfer.total?.decimals || null,
+        direction:
+          transfer.from?.hash?.toLowerCase() === address.toLowerCase()
+            ? 'outbound'
+            : transfer.to?.hash?.toLowerCase() === address.toLowerCase()
+              ? 'inbound'
+              : 'unknown',
+      })),
+    },
+    signals,
+  };
 }
 
 export function buildDefaultAIPrompt(path: string): string {

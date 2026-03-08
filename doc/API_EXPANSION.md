@@ -37,6 +37,11 @@
 
 ## 当前最值得先做的三组
 
+当前进度更新:
+
+- `Onchain Wallet Intelligence` 已开始落地，首个接口为 `GET /api/wallet-risk?address=0x...`
+- 下一步建议继续扩 `approval-audit` 与 `tx-simulate-explain`
+
 ### 1. Web Search
 
 - 价值：

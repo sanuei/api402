@@ -615,6 +615,23 @@ test('ai endpoint rejects invalid json body before payment challenge', async () 
   assert.equal(response.headers.get('X-Request-Id'), 'req-ai-invalid');
 });
 
+test('wallet-risk rejects missing address before payment challenge', async () => {
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/wallet-risk', {
+      headers: {
+        'X-Request-Id': 'req-wallet-risk-missing',
+      },
+    }),
+    createEnv(),
+  );
+  const body = (await response.json()) as { error?: string; message?: string; requestId?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request');
+  assert.equal(body.requestId, 'req-wallet-risk-missing');
+  assert.match(body.message || '', /wallet-risk requires \?address=/);
+});
+
 test('deepseek endpoint proxies live openrouter chat completion when configured', async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
@@ -828,6 +845,112 @@ test('claude-4.6 endpoint proxies live openrouter chat completion when configure
     assert.equal(body.model, 'anthropic/claude-sonnet-4.6');
     assert.equal(body.response, 'Claude 4.6 is available for writing and review tasks.');
     assert.equal(body._meta.origin, 'proxied');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('wallet-risk endpoint returns structured Base risk profile when upstream data is available', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (url.includes('/api/v2/addresses/0xabc0000000000000000000000000000000000000/counters')) {
+      return new Response(
+        JSON.stringify({
+          transactions_count: '123',
+          token_transfers_count: '41',
+          validations_count: '0',
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xabc0000000000000000000000000000000000000/transactions')) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              hash: '0xtx1',
+              timestamp: '2026-03-08T01:05:59.000000Z',
+              result: 'ok',
+              method: 'transfer',
+              from: { hash: '0x1111111111111111111111111111111111111111' },
+              to: { hash: '0xabc0000000000000000000000000000000000000' },
+            },
+          ],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xabc0000000000000000000000000000000000000/token-transfers')) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              timestamp: '2026-03-08T01:05:59.000000Z',
+              method: 'transfer',
+              from: { hash: '0x1111111111111111111111111111111111111111' },
+              to: { hash: '0xabc0000000000000000000000000000000000000' },
+              token: { symbol: 'USDC', type: 'ERC-20' },
+              total: { value: '2500000', decimals: '6' },
+            },
+          ],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xabc0000000000000000000000000000000000000')) {
+      return new Response(
+        JSON.stringify({
+          hash: '0xabc0000000000000000000000000000000000000',
+          is_contract: false,
+          is_scam: false,
+          is_verified: false,
+          reputation: 'ok',
+          name: null,
+          public_tags: [{ name: 'Active wallet' }],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    return new Response(JSON.stringify({ error: 'unexpected upstream target' }), { status: 500 });
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/wallet-risk?address=0xabc0000000000000000000000000000000000000', {
+        headers: {
+          Authorization: 'Bearer demo',
+        },
+      }),
+      createEnv(),
+    );
+    const body = (await response.json()) as {
+      address?: string;
+      riskLevel?: string;
+      activity?: { transactionsCount?: number; tokenTransfersCount?: number };
+      signals?: Array<{ code?: string }>;
+      _meta: { origin: string; upstream?: { source: string; status: string } };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.address, '0xabc0000000000000000000000000000000000000');
+    assert.equal(body.activity?.transactionsCount, 123);
+    assert.equal(body.activity?.tokenTransfersCount, 41);
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.source, 'blockscout');
+    assert.equal(body._meta.upstream?.status, 'live');
+    assert.ok((body.signals || []).some((signal) => signal.code === 'PUBLIC_TAGS_PRESENT'));
+    assert.ok(['low', 'moderate', 'high', 'critical'].includes(body.riskLevel || ''));
   } finally {
     globalThis.fetch = originalFetch;
   }

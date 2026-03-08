@@ -305,6 +305,38 @@ export const API_ENDPOINTS: APIEndpoint[] = [
     }),
   },
   {
+    path: '/api/wallet-risk',
+    price: '0.02',
+    label: { zh: '钱包风险画像', en: 'Wallet Risk Profile' },
+    description: {
+      zh: '基于 Base 地址标签、计数器和近期活动生成结构化钱包风险摘要，适合 agent 做前置筛查。',
+      en: 'Structured Base wallet risk summary built from labels, counters, and recent activity for agent-side screening.',
+    },
+    category: { zh: '链上情报', en: 'Onchain Intelligence' },
+    upstream: 'blockscout',
+    tags: ['wallet', 'risk', 'base', 'onchain', 'intel'],
+    status: 'live',
+    sample: () => ({
+      address: '0x4200000000000000000000000000000000000006',
+      chain: 'base',
+      riskScore: 18,
+      riskLevel: 'low',
+      identity: {
+        isContract: true,
+        isVerified: true,
+        isScam: false,
+        reputation: 'ok',
+        name: 'Wrapped Ether',
+      },
+      activity: {
+        transactionsCount: 20587009,
+        tokenTransfersCount: 4241455,
+        uniqueCounterpartiesRecent: 8,
+      },
+      signals: [{ code: 'VERIFIED_CONTRACT', severity: 'info', message: 'Verified contract with established onchain history.' }],
+    }),
+  },
+  {
     path: '/api/whale-positions',
     price: '0.00002',
     label: { zh: '巨鲸仓位', en: 'Whale Positions' },
@@ -2094,6 +2126,38 @@ function createBadRequestResponse(message: string, requestId: string): Response 
   );
 }
 
+function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, requestId: string): Response | null {
+  if (endpoint.path !== '/api/wallet-risk') {
+    return null;
+  }
+
+  if (request.method !== 'GET') {
+    return apiResponse(
+      {
+        error: 'Method not allowed',
+        requestId,
+        allowedMethods: ['GET'],
+      },
+      {
+        status: 405,
+        headers: { Allow: 'GET', [REQUEST_ID_HEADER]: requestId },
+      },
+    );
+  }
+
+  const url = new URL(request.url);
+  const address = url.searchParams.get('address')?.trim() || '';
+  if (!address) {
+    return createBadRequestResponse('wallet-risk requires ?address=0x... before payment can be evaluated.', requestId);
+  }
+
+  if (!isHexAddress(address)) {
+    return createBadRequestResponse('wallet-risk address must be a valid EVM hex address.', requestId);
+  }
+
+  return null;
+}
+
 function getInMemoryAIUsageSummary(path: string, now: number): AIUsageSummary {
   const store = getAIUsageState();
   const allEvents = [...store.values()].flatMap((events) => events);
@@ -2475,6 +2539,17 @@ const worker = {
     if (endpoint) {
       const now = Date.now();
       const requestId = getRequestId(request);
+      const specialRequestResponse = prepareSpecialEndpointRequest(request, endpoint, requestId);
+      if (specialRequestResponse) {
+        await recordEndpointRequestMetricWithDurable(env, path, {
+          at: now,
+          statusCode: specialRequestResponse.status,
+          requestId,
+          paymentCode: null,
+          upstreamReasonCode: null,
+        });
+        return specialRequestResponse;
+      }
       const preparedAIRequest = await prepareAIRequestContext(request, endpoint, env, requestId);
       if (preparedAIRequest.response) {
         await recordEndpointRequestMetricWithDurable(env, path, {
@@ -2544,7 +2619,7 @@ const worker = {
         return aiQuotaResponse;
       }
 
-      const upstreamResult = await fetchUpstreamData(path, env, preparedAIRequest.context, {
+      const upstreamResult = await fetchUpstreamData(path, url, env, preparedAIRequest.context, {
         getCircuitSnapshot: getUpstreamCircuitSnapshot,
         recordTelemetry: (event, source) => recordUpstreamTelemetryWithDurable(env, source, event),
         recordSuccess: (source, now, latencyMs) => recordUpstreamSuccessWithDurable(env, source, now, latencyMs),

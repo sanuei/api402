@@ -66,6 +66,7 @@
 - 已补网页内 API 快速目录，支持按分类快速选中接口
 - 已新增 `GPT-5.4`、`GPT-5.4 Pro`、`Claude 4.6` 三个按次调用入口，并纳入 OpenRouter 成本保护体系
 - 已补产品级重构方案文档 [PRODUCT_REBUILD_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PRODUCT_REBUILD_PLAN.md)，明确“最新模型获客 + Web3 AI 高价值接口盈利”的主线
+- 已新增 `GET /api/wallet-risk?address=0x...`，基于 Base Blockscout 地址详情、计数器和近期活动输出结构化钱包风险画像
 
 ## Phase 1
 
@@ -143,9 +144,9 @@
 
 建议下一轮直接做下面 4 项:
 
-1. 开始第一批高价值新接口，优先 `wallet-risk`
-2. 为最新模型入口补更明确的产品位和对比说明，提升付费转化
-3. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
+1. 继续扩展高价值链上接口，优先 `approval-audit`
+2. 增加 `tx-simulate-explain`
+3. 为最新模型入口补更明确的产品位和对比说明，提升付费转化
 4. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
 
 ## Operations
