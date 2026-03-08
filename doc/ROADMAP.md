@@ -60,6 +60,7 @@
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 - 已新增 `doc/API_EXPANSION.md`，集中维护后续高价值 API 扩展清单与优先级
 - 已完成前端模块化第一步：`src/main.ts` 拆分为 `config/state/i18n/catalog/wallet/bootstrap`
+- 已完成后端模块化第一步：支付协议层从 `worker/index.ts` 抽离到 `worker/payment.ts`
 
 ## Phase 1
 

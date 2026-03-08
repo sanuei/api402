@@ -13,6 +13,7 @@
 - `src/app/wallet.ts`：钱包连接、Rabby 支付闭环和 replay
 - `src/app/bootstrap.ts`：前端启动与事件绑定
 - `worker/`：Cloudflare Worker 后端
+- `worker/payment.ts`：支付协议类型、错误码映射、payment helper 与 remediation 规则
 - `test/`：Worker 集成测试
 - `public/`：Logo、favicon、OG 图、robots、sitemap 等静态资源
 - `dist/`：Vite 构建产物

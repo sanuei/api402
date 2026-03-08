@@ -4,6 +4,44 @@
 
 ### 本轮目标
 
+- 继续做后端结构优化，先把支付协议层从超大 `worker/index.ts` 中抽离出来
+
+### 已完成
+
+- 新增独立支付模块 [payment.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/payment.ts)，承接：
+  - payment payload / settlement / remediation 类型
+  - payment 常量与错误码映射
+  - Base USDC 相关 helper
+  - payment payload builder
+  - settlement policy / remediation builder
+- `worker/index.ts` 继续保留路由与主流程，但支付协议层知识不再散落在主文件前半段
+- 为兼容测试与现有导入路径，`worker/index.ts` 继续导出：
+  - `buildPaymentMessage`
+  - `PaymentPayload`
+- 当前后端主文件规模已从 `3715` 行降到 `3340` 行
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [payment.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/payment.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 27 个测试全部通过
+
+### 下一步建议
+
+1. 继续拆 `worker/index.ts`，优先分出 `settlement/status route` 和 `upstreams`
+2. 然后再拆 `metrics` 持久层聚合逻辑
+3. 结构清完后开始第一组新接口：`Web Search`
+
+## 2026-03-08
+
+### 本轮目标
+
 - 先做结构优化而不是继续堆功能，把前端从单个超大入口文件拆成可维护模块
 
 ### 已完成
