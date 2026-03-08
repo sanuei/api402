@@ -4,6 +4,54 @@
 
 ### 本轮目标
 
+- 先做结构优化而不是继续堆功能，把前端从单个超大入口文件拆成可维护模块
+
+### 已完成
+
+- 前端模块化第一步已完成：
+  - `src/main.ts` 现在只负责启动
+  - `src/app/config.ts` 负责配置与 API base
+  - `src/app/state.ts` 负责共享状态
+  - `src/app/i18n.ts` 负责中英文文案与静态翻译同步
+  - `src/app/format.ts` 负责格式化与网关展示辅助函数
+  - `src/app/catalog.ts` 负责 catalog 渲染、数据加载、接口测试弹窗
+  - `src/app/wallet.ts` 负责钱包连接、Rabby 支付闭环、replay
+  - `src/app/bootstrap.ts` 负责事件绑定和应用启动
+- 保持了现有行为不变：
+  - Demo Mode 仍可用
+  - Rabby 真实支付闭环仍保留
+  - Coinbase Wallet / MetaMask 仍明确为开发中
+- 当前前端结构已经从“单入口堆逻辑”变成“按职责拆分”，后续继续加功能时不需要反复改一个 1400 行文件
+
+### 涉及文件
+
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [config.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/config.ts)
+- [state.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/state.ts)
+- [i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [format.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/format.ts)
+- [catalog.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/catalog.ts)
+- [wallet.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/wallet.ts)
+- [bootstrap.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/bootstrap.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 27 个测试全部通过
+- `npm run build:frontend` 通过
+
+### 下一步建议
+
+1. 继续拆 `worker/index.ts`，优先分出 `payment`、`metrics`、`upstreams`
+2. 拆完后再开始第一组高价值新接口：`Web Search`
+3. 后续再处理 `DEVLOG` 月度归档
+
+## 2026-03-08
+
+### 本轮目标
+
 - 回答当前项目的结构与支付现状问题，并把后续高价值 API 扩展清单固化到仓库文档
 
 ### 已完成

@@ -59,6 +59,7 @@
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 - 已新增 `doc/API_EXPANSION.md`，集中维护后续高价值 API 扩展清单与优先级
+- 已完成前端模块化第一步：`src/main.ts` 拆分为 `config/state/i18n/catalog/wallet/bootstrap`
 
 ## Phase 1
 
@@ -136,8 +137,8 @@
 
 建议下一轮直接做下面 4 项:
 
-1. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
-2. 将 request funnel 聚合升级为分片聚合/预计算索引，降低高流量下 DO 单实例读取压力
+1. 对 `worker/index.ts` 做后端分层，优先拆 `routes`、`payment`、`metrics`、`upstreams`
+2. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
 3. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
 4. 扩充高价值 live API 列表，优先评估 search / crawl / extract 与 OCR / PDF 结构化解析
 

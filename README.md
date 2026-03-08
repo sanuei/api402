@@ -6,6 +6,12 @@
 
 - `index.html`：Vite 入口 HTML
 - `src/`：前端 TypeScript 和样式
+- `src/app/config.ts`：前端运行时常量与 API 基地址解析
+- `src/app/state.ts`：前端共享状态
+- `src/app/i18n.ts`：中英文文案与静态翻译同步
+- `src/app/catalog.ts`：catalog 渲染、接口测试和支付模块展示
+- `src/app/wallet.ts`：钱包连接、Rabby 支付闭环和 replay
+- `src/app/bootstrap.ts`：前端启动与事件绑定
 - `worker/`：Cloudflare Worker 后端
 - `test/`：Worker 集成测试
 - `public/`：Logo、favicon、OG 图、robots、sitemap 等静态资源
