@@ -1,0 +1,13 @@
+<svg width="960" height="280" viewBox="0 0 960 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="960" height="280" rx="44" fill="#05070B"/>
+  <g transform="translate(28,28)">
+    <rect width="224" height="224" rx="52" fill="#0A1018" stroke="rgba(255,255,255,0.08)"/>
+    <rect x="50" y="50" width="124" height="124" rx="30" fill="none" stroke="#E7EDF4" stroke-width="14"/>
+    <path d="M68 90H155" stroke="#3C7DFF" stroke-width="16" stroke-linecap="round"/>
+    <path d="M68 134H138" stroke="#33F0B2" stroke-width="16" stroke-linecap="round"/>
+    <circle cx="162" cy="134" r="13" fill="#33F0B2"/>
+    <path d="M68 112H120" stroke="#E7EDF4" stroke-width="14" stroke-linecap="round"/>
+  </g>
+  <text x="290" y="116" fill="#E7EDF4" font-family="Space Grotesk, Arial, sans-serif" font-size="64" font-weight="700">api-402</text>
+  <text x="290" y="164" fill="#8B97A7" font-family="JetBrains Mono, monospace" font-size="22">settlement-first API gateway</text>
+</svg>

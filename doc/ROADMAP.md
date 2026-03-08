@@ -68,6 +68,8 @@
 - 已补产品级重构方案文档 [PRODUCT_REBUILD_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PRODUCT_REBUILD_PLAN.md)，明确“最新模型获客 + Web3 AI 高价值接口盈利”的主线
 - 已新增 `GET /api/wallet-risk?address=0x...`，基于 Base Blockscout 地址详情、计数器和近期活动输出结构化钱包风险画像
 - 已新增 `GET /api/v1/metrics/overview`，首页可实时轮询展示累计 API 调用总次数
+- 首页统计面板已升级为更偏专业产品页的布局，包含累计调用、已结算 USDC、24h 趋势、成功率和 402 比率
+- 已补 3 个新的 logo 概念稿到 `public/logo-concepts/`
 
 ## Phase 1
 

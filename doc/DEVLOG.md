@@ -4,6 +4,39 @@
 
 ### 本轮目标
 
+- 提升首页的专业度，优化统计卡片布局、FAQ 表达和中段卖点区，并补新的 logo 备选方案
+
+### 已完成
+
+- 首页统计卡片从拥挤的多块平铺，改成更有层次的 5 卡布局：
+  - 总调用次数
+  - 累计已结算 USDC
+  - 24h 活跃数据
+  - 24h 趋势
+  - 网关状态与成功率 / 402 比率
+- 中段原有“为什么这样设计 / 当前架构 / 下一步”已替换成更偏客户视角的卖点卡：
+  - 为什么值得买
+  - 结算可验证
+  - 现在能买什么
+- FAQ 改成更像正式产品页的对外问答，不再偏内部开发说明
+- footer tagline 改成更接近产品定位的表述
+- 新增 3 个 logo 备选 SVG：
+  - [logo-concept-01-orbit.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-concepts/logo-concept-01-orbit.svg)
+  - [logo-concept-02-grid.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-concepts/logo-concept-02-grid.svg)
+  - [logo-concept-03-signal.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-concepts/logo-concept-03-signal.svg)
+- 已补预览页：
+  - [preview.html](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-concepts/preview.html)
+
+### 下一步建议
+
+1. 从 3 个 logo 方案里选 1 个，替换现有主 logo
+2. 把 Hero 文案继续收紧成更明确的购买理由
+3. 继续做收入排行和利润面板
+
+## 2026-03-08
+
+### 本轮目标
+
 - 给首页增加“累计 API 调用总次数”的真实统计，并保持实时更新
 
 ### 已完成
