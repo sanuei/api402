@@ -436,6 +436,84 @@ export const API_ENDPOINTS: APIEndpoint[] = [
     }),
   },
   {
+    path: '/api/polymarket/topic',
+    price: '0.004',
+    label: { zh: 'Polymarket 主题雷达', en: 'Polymarket Topic Radar' },
+    description: {
+      zh: '按主题聚合热门预测市场，适合把 crypto、election、macro 等高流量方向直接变成首页入口。',
+      en: 'Clusters hot Polymarket markets by topic such as crypto, election, and macro for discovery and dashboard surfacing.',
+    },
+    category: { zh: '预测市场', en: 'Prediction Markets' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'topic', 'discovery', 'attention', 'live'],
+    status: 'live',
+    sample: () => ({
+      source: 'polymarket',
+      tag: 'crypto',
+      markets: [
+        {
+          question: 'Will BTC hit $100k this month?',
+          slug: 'btc-100k-this-month',
+          matchedKeywords: ['btc', 'bitcoin'],
+          volume24hr: 155000.22,
+        },
+      ],
+      timestamp: Date.now(),
+    }),
+  },
+  {
+    path: '/api/polymarket/related',
+    price: '0.005',
+    label: { zh: 'Polymarket 相似市场', en: 'Polymarket Related Markets' },
+    description: {
+      zh: '按 slug 找出语义和事件上下文相近的其他市场，适合做链式探索和自动 watchlist 扩展。',
+      en: 'Finds semantically related Polymarket markets from one slug to expand watchlists and discovery flows.',
+    },
+    category: { zh: '预测市场', en: 'Prediction Markets' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'related', 'watchlist', 'discovery', 'live'],
+    status: 'live',
+    sample: () => ({
+      source: 'polymarket',
+      slug: 'btc-100k-this-month',
+      anchorQuestion: 'Will BTC hit $100k this month?',
+      relatedMarkets: [
+        {
+          slug: 'btc-above-95k-this-month',
+          similarityScore: 8.4,
+        },
+      ],
+      timestamp: Date.now(),
+    }),
+  },
+  {
+    path: '/api/polymarket/mispricing',
+    price: '0.006',
+    label: { zh: 'Polymarket 错价候选', en: 'Polymarket Mispricing Candidates' },
+    description: {
+      zh: '基于盘口中点、最新成交价、点差和 24h 成交量筛出启发式错价候选，适合自动交易前扫描。',
+      en: 'Screens heuristic Polymarket mispricing candidates using midpoint, last trade, spread, and 24h volume before automation.',
+    },
+    category: { zh: '预测市场交易', en: 'Prediction Market Trading' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'trading', 'mispricing', 'signal', 'scanner'],
+    status: 'live',
+    sample: () => ({
+      source: 'polymarket',
+      methodology: 'heuristic',
+      candidates: [
+        {
+          slug: 'btc-100k-this-month',
+          lastTradePrice: 0.47,
+          midpoint: 0.43,
+          dislocationPct: 9.3,
+          opportunityScore: 27.8,
+        },
+      ],
+      timestamp: Date.now(),
+    }),
+  },
+  {
     path: '/api/wallet-risk',
     price: '0.02',
     label: { zh: '钱包风险画像', en: 'Wallet Risk Profile' },
@@ -2478,7 +2556,9 @@ function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, 
     endpoint.path === '/api/polymarket/event' ||
     endpoint.path === '/api/polymarket/orderbook' ||
     endpoint.path === '/api/polymarket/quote' ||
-    endpoint.path === '/api/polymarket/price-history';
+    endpoint.path === '/api/polymarket/price-history' ||
+    endpoint.path === '/api/polymarket/topic' ||
+    endpoint.path === '/api/polymarket/related';
 
   if (!requiresValidatedGet) {
     return null;
@@ -2539,6 +2619,24 @@ function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, 
 
     if (!outcome) {
       return createBadRequestResponse('polymarket trading endpoints require ?outcome=Yes|No before payment can be evaluated.', requestId);
+    }
+
+    return null;
+  }
+
+  if (endpoint.path === '/api/polymarket/topic') {
+    const tag = url.searchParams.get('tag')?.trim() || '';
+    if (!tag) {
+      return createBadRequestResponse('polymarket topic requires ?tag=crypto|election|macro|ai before payment can be evaluated.', requestId);
+    }
+
+    return null;
+  }
+
+  if (endpoint.path === '/api/polymarket/related') {
+    const slug = url.searchParams.get('slug')?.trim() || '';
+    if (!slug) {
+      return createBadRequestResponse('polymarket related requires ?slug=market-slug before payment can be evaluated.', requestId);
     }
 
     return null;

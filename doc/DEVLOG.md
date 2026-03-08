@@ -1953,3 +1953,45 @@
 1. 继续做 `Polymarket topic / related / mispricing`
 2. 如果你要进入真实自动下单，再单独接签名下单链路和风险限制
 3. 继续把 BTC 类热门市场作为 `Polymarket` 交易入口的默认展示样例
+
+## 2026-03-08
+
+### 本轮目标
+
+- 继续沿 `Polymarket` 高价值路线扩展 `topic`、`related`、`mispricing`
+- 让网站不只是能查单个市场，而是能围绕 BTC 等热门主题做发现、关联和机会扫描
+
+### 已完成
+
+- 新增 `GET /api/polymarket/topic?tag=crypto|election|macro|ai`
+- 新增 `GET /api/polymarket/related?slug=...`
+- 新增 `GET /api/polymarket/mispricing?limit=...`
+- `topic` 会按主题关键词聚合活跃市场，并按 attention score 排序
+- `related` 会基于 anchor 市场的问题、slug 和事件上下文召回相似市场
+- `mispricing` 会基于 best bid / best ask / midpoint / last trade / volume24hr 产出启发式候选，不宣称确定套利
+- 为 `topic` 和 `related` 增加了 402 前参数校验
+- 同步更新了 `README.md`、`API_EXPANSION.md`、`ROADMAP.md`、`POLYMARKET_TRADING.md`
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker/upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/API_EXPANSION.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/API_EXPANSION.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+- [doc/POLYMARKET_TRADING.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/POLYMARKET_TRADING.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `47/47`
+- `npm run build:frontend` 通过
+- `npx wrangler deploy --dry-run` 通过
+- `npm run deploy` 通过，Cloudflare 当前版本 `df7413ed-68cc-49dc-9855-f2b836221fcc`
+
+### 下一步建议
+
+1. 做 `GET /api/polymarket/entry-signal?slug=...&outcome=...`
+2. 做 `GET /api/polymarket/rotation?topic=crypto`
+3. 如果你要真正自动下单，再单独接签名、下单、撤单和风控

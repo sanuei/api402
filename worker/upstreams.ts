@@ -296,10 +296,13 @@ export async function fetchUpstreamData(
   '/api/polymarket/trending': 'polymarket',
   '/api/polymarket/search': 'polymarket',
   '/api/polymarket/event': 'polymarket',
-  '/api/polymarket/orderbook': 'polymarket',
-  '/api/polymarket/quote': 'polymarket',
-  '/api/polymarket/price-history': 'polymarket',
-  '/api/wallet-risk': 'blockscout',
+    '/api/polymarket/orderbook': 'polymarket',
+    '/api/polymarket/quote': 'polymarket',
+    '/api/polymarket/price-history': 'polymarket',
+    '/api/polymarket/topic': 'polymarket',
+    '/api/polymarket/related': 'polymarket',
+    '/api/polymarket/mispricing': 'polymarket',
+    '/api/wallet-risk': 'blockscout',
   '/api/whale-positions': 'hyperliquid',
   '/api/kline': 'binance',
   };
@@ -682,6 +685,86 @@ export async function fetchUpstreamData(
       };
     }
 
+    if (path === '/api/polymarket/topic') {
+      const tag = requestUrl.searchParams.get('tag')?.trim().toLowerCase();
+      if (!tag) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket topic tag', retryable: false } as UpstreamFailure;
+      }
+
+      const keywords = POLYMARKET_TOPIC_KEYWORDS[tag];
+      if (!keywords) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'unsupported polymarket topic tag', retryable: false } as UpstreamFailure;
+      }
+
+      const markets = await fetchActivePolymarketMarkets(80);
+      const matches = markets
+        .map((market) => scorePolymarketTopicMarket(market, keywords))
+        .filter((market): market is PolymarketTopicMatch => market !== null)
+        .sort((left, right) => right.attentionScore - left.attentionScore)
+        .slice(0, 10);
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          mode: 'topic',
+          tag,
+          keywords,
+          markets: matches,
+          total: matches.length,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/related') {
+      const slug = requestUrl.searchParams.get('slug')?.trim();
+      if (!slug) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket related slug', retryable: false } as UpstreamFailure;
+      }
+
+      const anchor = await fetchPolymarketMarketBySlug(slug);
+      const markets = await fetchActivePolymarketMarkets(80);
+      const relatedMarkets = buildRelatedPolymarketMarkets(anchor, markets).slice(0, 8);
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          slug,
+          anchorQuestion: anchor.question || null,
+          relatedMarkets,
+          total: relatedMarkets.length,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/mispricing') {
+      const limit = Math.min(20, Math.max(1, Number(requestUrl.searchParams.get('limit')?.trim() || '8')));
+      const markets = await fetchActivePolymarketMarkets(100);
+      const candidates = markets
+        .map((market) => scorePolymarketMispricing(market))
+        .filter((candidate): candidate is PolymarketMispricingCandidate => candidate !== null)
+        .sort((left, right) => right.opportunityScore - left.opportunityScore)
+        .slice(0, limit);
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          methodology: 'heuristic',
+          warning: 'Candidates are heuristic signals, not guaranteed arbitrage.',
+          candidates,
+          total: candidates.length,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
     if (path === '/api/wallet-risk') {
       const address = requestUrl.searchParams.get('address')?.trim();
       if (!address) {
@@ -886,6 +969,9 @@ type PolymarketMarket = {
   lastTradePrice?: string | number;
   spread?: string | number;
   volume24hr?: string | number;
+  oneDayPriceChange?: string | number;
+  featured?: boolean;
+  events?: Array<{ title?: string; slug?: string }>;
 };
 
 type PolymarketEvent = {
@@ -952,6 +1038,32 @@ type PolymarketPriceHistoryResponse = {
   history?: Array<{ t?: number; p?: number }>;
 };
 
+type PolymarketTopicMatch = PolymarketMarketSummary & {
+  matchedKeywords: string[];
+  attentionScore: number;
+  volume24hr: number;
+  oneDayPriceChange: number | null;
+};
+
+type PolymarketRelatedMatch = PolymarketMarketSummary & {
+  similarityScore: number;
+  sharedKeywords: string[];
+  volume24hr: number;
+};
+
+type PolymarketMispricingCandidate = PolymarketMarketSummary & {
+  bestBid: number;
+  bestAsk: number;
+  midpoint: number;
+  spread: number;
+  spreadPct: number;
+  lastTradePrice: number;
+  dislocationPct: number;
+  oneDayPriceChange: number;
+  volume24hr: number;
+  opportunityScore: number;
+};
+
 type BlockscoutAddressDetails = BlockscoutAddressEntity & {
   token?: {
     symbol?: string | null;
@@ -998,6 +1110,13 @@ function parseCount(value: string | number | undefined | null): number {
   const parsed = Number(value || 0);
   return Number.isFinite(parsed) ? parsed : 0;
 }
+
+const POLYMARKET_TOPIC_KEYWORDS: Record<string, string[]> = {
+  crypto: ['btc', 'bitcoin', 'eth', 'ethereum', 'sol', 'solana', 'crypto', 'token', 'doge'],
+  election: ['election', 'president', 'senate', 'house', 'vote', 'candidate', 'trump', 'biden'],
+  macro: ['fed', 'inflation', 'cpi', 'recession', 'rates', 'tariff', 'gdp', 'economy'],
+  ai: ['ai', 'openai', 'anthropic', 'gpt', 'claude', 'gemini', 'deepseek', 'minimax'],
+};
 
 function parsePolymarketStringArray(value: string | undefined): string[] {
   if (!value) {
@@ -1072,6 +1191,22 @@ function summarizePolymarketMarket(market: PolymarketMarket): PolymarketMarketSu
   };
 }
 
+function normalizeKeywordTokens(...values: Array<string | undefined | null>): string[] {
+  const text = values
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ');
+
+  const stopwords = new Set(['will', 'this', 'that', 'with', 'from', 'what', 'when', 'into', 'than', 'have', 'been', 'after', 'before']);
+  const tokens = text
+    .split(/\s+/)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 3 && !stopwords.has(token));
+
+  return [...new Set(tokens)];
+}
+
 function summarizePolymarketEvent(event: PolymarketEvent): PolymarketEventSummary | null {
   const title = (event.title || '').trim();
   const slug = (event.slug || '').trim();
@@ -1127,6 +1262,15 @@ async function fetchPolymarketMarketBySlug(slug: string): Promise<PolymarketMark
     `${POLYMARKET_GAMMA_API_BASE}/markets/slug/${encodeURIComponent(slug)}`,
     { method: 'GET' },
   )) as PolymarketMarket;
+}
+
+async function fetchActivePolymarketMarkets(limit: number): Promise<PolymarketMarket[]> {
+  const payload = (await fetchJsonWithTimeout(
+    `${POLYMARKET_GAMMA_API_BASE}/markets?limit=${encodeURIComponent(String(limit))}&closed=false&active=true`,
+    { method: 'GET' },
+  )) as PolymarketMarket[];
+
+  return Array.isArray(payload) ? payload : [];
 }
 
 function resolvePolymarketOutcomeToken(market: PolymarketMarket, requestedOutcome: string) {
@@ -1239,6 +1383,154 @@ function buildPolymarketTradeQuote(
     enoughLiquidity,
     slippagePct,
     fillPct: requestedSize > 0 ? Number(((filledSize / requestedSize) * 100).toFixed(2)) : 0,
+  };
+}
+
+function scorePolymarketTopicMarket(market: PolymarketMarket, keywords: string[]): PolymarketTopicMatch | null {
+  const summary = summarizePolymarketMarket(market);
+  if (!summary) {
+    return null;
+  }
+
+  const haystack = normalizeKeywordTokens(
+    market.question,
+    market.slug,
+    market.eventSlug,
+    ...(Array.isArray(market.events) ? market.events.map((event) => event.title || '') : []),
+  );
+  const matchedKeywords = keywords.filter((keyword) => haystack.includes(keyword));
+  if (matchedKeywords.length === 0) {
+    return null;
+  }
+
+  const volume24hr = Number(parseCount(market.volume24hr).toFixed(2));
+  const oneDayPriceChange = Number.isFinite(Number(market.oneDayPriceChange))
+    ? Number(Number(market.oneDayPriceChange).toFixed(4))
+    : null;
+  const attentionScore = Number(
+    (
+      matchedKeywords.length * 4 +
+      Math.min(volume24hr / 10000, 18) +
+      Math.min(summary.liquidity / 5000, 12) +
+      (market.featured ? 2 : 0)
+    ).toFixed(2),
+  );
+
+  return {
+    ...summary,
+    matchedKeywords,
+    attentionScore,
+    volume24hr,
+    oneDayPriceChange,
+  };
+}
+
+function buildRelatedPolymarketMarkets(anchor: PolymarketMarket, candidates: PolymarketMarket[]): PolymarketRelatedMatch[] {
+  const anchorSummary = summarizePolymarketMarket(anchor);
+  if (!anchorSummary) {
+    return [];
+  }
+
+  const anchorTokens = normalizeKeywordTokens(
+    anchor.question,
+    anchor.slug,
+    anchor.eventSlug,
+    ...(Array.isArray(anchor.events) ? anchor.events.map((event) => event.title || '') : []),
+  );
+  const anchorSet = new Set(anchorTokens);
+
+  return candidates
+    .map((candidate) => {
+      const summary = summarizePolymarketMarket(candidate);
+      if (!summary || summary.slug === anchorSummary.slug) {
+        return null;
+      }
+
+      const candidateTokens = normalizeKeywordTokens(
+        candidate.question,
+        candidate.slug,
+        candidate.eventSlug,
+        ...(Array.isArray(candidate.events) ? candidate.events.map((event) => event.title || '') : []),
+      );
+      const sharedKeywords = candidateTokens.filter((token) => anchorSet.has(token));
+      if (sharedKeywords.length === 0) {
+        return null;
+      }
+
+      const volume24hr = Number(parseCount(candidate.volume24hr).toFixed(2));
+      const similarityScore = Number(
+        (
+          sharedKeywords.length * 3 +
+          Math.min(volume24hr / 10000, 12) +
+          Math.min(summary.liquidity / 5000, 8)
+        ).toFixed(2),
+      );
+
+      return {
+        ...summary,
+        similarityScore,
+        sharedKeywords,
+        volume24hr,
+      };
+    })
+    .filter((candidate): candidate is PolymarketRelatedMatch => candidate !== null)
+    .sort((left, right) => right.similarityScore - left.similarityScore);
+}
+
+function scorePolymarketMispricing(market: PolymarketMarket): PolymarketMispricingCandidate | null {
+  const summary = summarizePolymarketMarket(market);
+  if (!summary) {
+    return null;
+  }
+
+  const bestBid = Number(market.bestBid);
+  const bestAsk = Number(market.bestAsk);
+  const lastTradePrice = Number(market.lastTradePrice);
+  const volume24hr = Number(parseCount(market.volume24hr).toFixed(2));
+  const oneDayPriceChange = Number(Number(market.oneDayPriceChange || 0).toFixed(4));
+
+  if (![bestBid, bestAsk, lastTradePrice].every((value) => Number.isFinite(value) && value > 0)) {
+    return null;
+  }
+
+  if (bestAsk <= bestBid) {
+    return null;
+  }
+
+  const midpoint = Number((((bestBid + bestAsk) / 2)).toFixed(4));
+  if (midpoint <= 0) {
+    return null;
+  }
+
+  const spread = Number((bestAsk - bestBid).toFixed(4));
+  const spreadPct = Number(((spread / midpoint) * 100).toFixed(4));
+  const dislocationPct = Number((Math.abs(lastTradePrice - midpoint) / midpoint * 100).toFixed(4));
+  const opportunityScore = Number(
+    (
+      dislocationPct * 2.4 +
+      Math.min(volume24hr / 15000, 12) +
+      Math.min(summary.liquidity / 6000, 10) +
+      Math.abs(oneDayPriceChange) * 10 -
+      Math.min(spreadPct, 25) * 0.8
+    ).toFixed(2),
+  );
+
+  if (opportunityScore <= 0 || volume24hr < 1000) {
+    return null;
+  }
+
+  return {
+    ...summary,
+    bestBid: Number(bestBid.toFixed(4)),
+    bestAsk: Number(bestAsk.toFixed(4)),
+    midpoint,
+    spread,
+    spreadPct,
+    lastTradePrice: Number(lastTradePrice.toFixed(4)),
+    dislocationPct,
+    oneDayPriceChange,
+    volume24hr,
+    opportunityScore,
   };
 }
 

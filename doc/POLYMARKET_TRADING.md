@@ -27,6 +27,9 @@
 - `GET /api/polymarket/orderbook?slug=...&outcome=Yes|No`
 - `GET /api/polymarket/quote?slug=...&outcome=Yes|No&side=buy|sell&size=...`
 - `GET /api/polymarket/price-history?slug=...&outcome=Yes|No&interval=1d&fidelity=60`
+- `GET /api/polymarket/topic?tag=crypto|election|macro|ai`
+- `GET /api/polymarket/related?slug=...`
+- `GET /api/polymarket/mispricing?limit=...`
 
 这三类接口已经足够支撑:
 
@@ -35,6 +38,12 @@
 - 趋势信号生成
 - 简单回测输入
 - BTC 等热门市场的策略监控
+
+新增这三类接口后，还能直接支撑:
+
+- BTC / 宏观 / election 主题 watchlist
+- 相似市场扩展和链式探索
+- 启发式错价候选扫描
 
 ## 为什么现在不直接开放下单接口
 
@@ -50,13 +59,12 @@
 
 ## 推荐的下一阶段
 
-1. 继续补交易前接口
-2. 优先做 BTC / 宏观 / election 主题的 `topic` 与 `mispricing`
+1. 继续补交易信号接口
+2. 优先做 `entry-signal`、`rotation`、`range-breakout`
 3. 等你确认要做真实执行，再单独接签名下单链路
 
 ## 下一批建议接口
 
-- `GET /api/polymarket/topic?tag=crypto`
-- `GET /api/polymarket/related?slug=...`
-- `GET /api/polymarket/mispricing`
 - `GET /api/polymarket/entry-signal?slug=...&outcome=...`
+- `GET /api/polymarket/rotation?topic=crypto`
+- `GET /api/polymarket/range-breakout?slug=...`
