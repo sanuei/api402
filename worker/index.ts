@@ -13,6 +13,13 @@ export interface Env {
   APP_NAME?: string;
   BASE_RPC_URL?: string;
   BASE_RPC_URLS?: string;
+  OPENROUTER_API_KEY?: string;
+  OPENROUTER_API_BASE?: string;
+  OPENROUTER_DEEPSEEK_MODEL?: string;
+  OPENROUTER_QWEN_MODEL?: string;
+  OPENROUTER_MAX_INPUT_CHARS?: string;
+  OPENROUTER_MAX_MESSAGES?: string;
+  OPENROUTER_MAX_OUTPUT_TOKENS?: string;
   PAYMENT_MIN_CONFIRMATIONS?: string;
   PAYMENT_MAX_AGE_SECONDS?: string;
   PAYMENT_MAX_FUTURE_SKEW_SECONDS?: string;
@@ -39,6 +46,7 @@ declare global {
 export interface APIEndpoint {
   path: string;
   price: string;
+  method?: 'GET' | 'POST';
   label: LocalizedText;
   description: LocalizedText;
   category: LocalizedText;
@@ -143,6 +151,16 @@ export interface PaymentVerificationResult {
 
 const DEFAULT_PAY_TO = '0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18';
 const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
+const DEFAULT_OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
+const DEFAULT_OPENROUTER_DEEPSEEK_MODEL = 'deepseek/deepseek-v3.2';
+const DEFAULT_OPENROUTER_QWEN_MODEL = 'qwen/qwen-plus-2025-07-28';
+const DEFAULT_OPENROUTER_MAX_INPUT_CHARS = 4000;
+const DEFAULT_OPENROUTER_MAX_MESSAGES = 12;
+const DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS = 256;
+const DEFAULT_OPENROUTER_TEMPERATURE = 0.7;
+const OPENROUTER_HTTP_REFERER = 'https://api-402.com';
+const OPENROUTER_X_TITLE = 'API Market';
+const OPENROUTER_TIMEOUT_MS = 20_000;
 const BASE_RPC_TIMEOUT_MS = 6000;
 const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
 const DEFAULT_PAYMENT_MAX_AGE_SECONDS = 15 * 60;
@@ -266,35 +284,41 @@ export const API_ENDPOINTS: APIEndpoint[] = [
   {
     path: '/api/deepseek',
     price: '0.003',
+    method: 'POST',
     label: { zh: 'DeepSeek 对话', en: 'DeepSeek Chat' },
     description: {
-      zh: 'DeepSeek 对话响应示例。',
-      en: 'Demo DeepSeek chat completion response.',
+      zh: '基于 OpenRouter 的 DeepSeek 实时对话接口，支持 prompt 或 messages 请求。',
+      en: 'Live DeepSeek chat completions via OpenRouter with prompt or messages input.',
     },
     category: { zh: '人工智能', en: 'AI' },
-    tags: ['ai', 'chat', 'demo'],
-    status: 'demo',
+    upstream: 'openrouter',
+    tags: ['ai', 'chat', 'deepseek', 'openrouter', 'live'],
+    status: 'live',
     sample: () => ({
-      model: 'deepseek-v3',
-      response: 'Hello! How can I help you today?',
-      usage: { tokens: 128 },
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_DEEPSEEK_MODEL,
+      response: 'API402 lets agents pay per request on Base with USDC.',
+      usage: { promptTokens: 18, completionTokens: 14, totalTokens: 32 },
     }),
   },
   {
     path: '/api/qwen',
     price: '0.01',
+    method: 'POST',
     label: { zh: 'Qwen 对话', en: 'Qwen Chat' },
     description: {
-      zh: 'Qwen Max 对话响应示例。',
-      en: 'Demo Qwen3 Max chat completion response.',
+      zh: '基于 OpenRouter 的 Qwen 实时对话接口，支持 prompt 或 messages 请求。',
+      en: 'Live Qwen chat completions via OpenRouter with prompt or messages input.',
     },
     category: { zh: '人工智能', en: 'AI' },
-    tags: ['ai', 'chat', 'demo'],
-    status: 'demo',
+    upstream: 'openrouter',
+    tags: ['ai', 'chat', 'qwen', 'openrouter', 'live'],
+    status: 'live',
     sample: () => ({
-      model: 'qwen3-max',
-      response: '您好！有什么我可以帮您的？',
-      usage: { tokens: 256 },
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_QWEN_MODEL,
+      response: 'API402 支持在 Base 上用 USDC 按次付费调用 API。',
+      usage: { promptTokens: 20, completionTokens: 16, totalTokens: 36 },
     }),
   },
   {
@@ -1092,7 +1116,7 @@ function getCatalogEndpoint(
   return {
     path: endpoint.path,
     url: `${baseUrl}${endpoint.path}`,
-    method: 'GET',
+    method: endpoint.method || 'GET',
     label: endpoint.label.en,
     price: endpoint.price,
     currency: 'USDC',
@@ -1115,14 +1139,29 @@ function getCatalogEndpoint(
       },
     },
     exampleRequest: {
-      curl: [
-        `curl -H "PAYMENT-SIGNATURE: <base64-signed-payload>" \\`,
-        `  -H "${PAYMENT_TX_HASH_HEADER}: 0xreplace-with-base-usdc-transaction-hash" \\`,
-        `  ${baseUrl}${endpoint.path}`,
-        '',
-        `# demo mode`,
-        `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" ${baseUrl}${endpoint.path}`,
-      ].join('\n'),
+      curl:
+        endpoint.method === 'POST'
+          ? [
+              `curl -X POST ${baseUrl}${endpoint.path} \\`,
+              '  -H "Content-Type: application/json" \\',
+              `  -H "PAYMENT-SIGNATURE: <base64-signed-payload>" \\`,
+              `  -H "${PAYMENT_TX_HASH_HEADER}: 0xreplace-with-base-usdc-transaction-hash" \\`,
+              `  -d '{"messages":[{"role":"user","content":"Explain x402 payments in one sentence."}]}'`,
+              '',
+              '# demo mode',
+              `curl -X POST ${baseUrl}${endpoint.path} \\`,
+              '  -H "Content-Type: application/json" \\',
+              `  -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" \\`,
+              `  -d '{"prompt":"Explain x402 payments in one sentence."}'`,
+            ].join('\n')
+          : [
+              `curl -H "PAYMENT-SIGNATURE: <base64-signed-payload>" \\`,
+              `  -H "${PAYMENT_TX_HASH_HEADER}: 0xreplace-with-base-usdc-transaction-hash" \\`,
+              `  ${baseUrl}${endpoint.path}`,
+              '',
+              `# demo mode`,
+              `curl -H "Authorization: Bearer ${DEMO_PAYMENT_TOKEN}" ${baseUrl}${endpoint.path}`,
+            ].join('\n'),
       paymentPayload: samplePayload,
     },
     exampleResponse: endpoint.sample(),
@@ -2220,6 +2259,19 @@ type UpstreamResult = {
   meta: UpstreamMeta;
 };
 
+type OpenRouterChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content: string;
+};
+
+type AIRequestContext = {
+  messages: OpenRouterChatMessage[];
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+  requestMode: 'preview_get' | 'post_chat';
+};
+
 type EndpointRequestMetricEvent = {
   at: number;
   statusCode: number;
@@ -2499,6 +2551,232 @@ function getUpstreamCircuitSnapshot(source: string, now: number): { open: boolea
   return { open: state.openUntil > now, openUntil: state.openUntil };
 }
 
+function isAIEndpointPath(path: string): boolean {
+  return path === '/api/deepseek' || path === '/api/qwen';
+}
+
+function getOpenRouterModel(path: string, env: Env): string {
+  if (path === '/api/qwen') {
+    return env.OPENROUTER_QWEN_MODEL || DEFAULT_OPENROUTER_QWEN_MODEL;
+  }
+
+  return env.OPENROUTER_DEEPSEEK_MODEL || DEFAULT_OPENROUTER_DEEPSEEK_MODEL;
+}
+
+function buildDefaultAIPrompt(path: string): string {
+  if (path === '/api/qwen') {
+    return '请用一句中文介绍 API402 的按次付费 API 调用方式。';
+  }
+
+  return 'Explain API402 pay-per-call APIs in one concise sentence.';
+}
+
+function normalizeAIMessageContent(content: unknown): string | null {
+  if (typeof content === 'string') {
+    const normalized = content.trim();
+    return normalized ? normalized : null;
+  }
+
+  if (!Array.isArray(content)) {
+    return null;
+  }
+
+  const text = content
+    .map((part) => {
+      if (typeof part === 'string') {
+        return part;
+      }
+
+      if (
+        part &&
+        typeof part === 'object' &&
+        'text' in part &&
+        typeof (part as { text?: unknown }).text === 'string'
+      ) {
+        return (part as { text: string }).text;
+      }
+
+      return '';
+    })
+    .join('')
+    .trim();
+
+  return text || null;
+}
+
+function createBadRequestResponse(message: string, requestId: string): Response {
+  return apiResponse(
+    {
+      error: 'Invalid request',
+      message,
+      requestId,
+    },
+    {
+      status: 400,
+      headers: { [REQUEST_ID_HEADER]: requestId },
+    },
+  );
+}
+
+async function prepareAIRequestContext(
+  request: Request,
+  endpoint: APIEndpoint,
+  env: Env,
+  requestId: string,
+): Promise<{ context: AIRequestContext | null; response: Response | null }> {
+  if (!isAIEndpointPath(endpoint.path)) {
+    return { context: null, response: null };
+  }
+
+  if (request.method !== 'GET' && request.method !== 'POST') {
+    return {
+      context: null,
+      response: apiResponse(
+        {
+          error: 'Method not allowed',
+          requestId,
+          allowedMethods: ['GET', 'POST'],
+        },
+        {
+          status: 405,
+          headers: { Allow: 'GET, POST', [REQUEST_ID_HEADER]: requestId },
+        },
+      ),
+    };
+  }
+
+  const maxMessages = parsePositiveInt(env.OPENROUTER_MAX_MESSAGES, DEFAULT_OPENROUTER_MAX_MESSAGES);
+  const maxInputChars = parsePositiveInt(env.OPENROUTER_MAX_INPUT_CHARS, DEFAULT_OPENROUTER_MAX_INPUT_CHARS);
+  const maxOutputTokens = parsePositiveInt(
+    env.OPENROUTER_MAX_OUTPUT_TOKENS,
+    DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS,
+  );
+
+  let messages: OpenRouterChatMessage[] = [];
+  let prompt = '';
+  let maxTokens = maxOutputTokens;
+  let temperature = DEFAULT_OPENROUTER_TEMPERATURE;
+
+  if (request.method === 'GET') {
+    const url = new URL(request.url);
+    prompt = (url.searchParams.get('prompt') || buildDefaultAIPrompt(endpoint.path)).trim();
+    messages = [{ role: 'user', content: prompt }];
+  } else {
+    const contentType = request.headers.get('Content-Type') || '';
+    if (!contentType.toLowerCase().includes('application/json')) {
+      return {
+        context: null,
+        response: createBadRequestResponse('AI chat requests must use application/json.', requestId),
+      };
+    }
+
+    const body = (await request.clone().json().catch(() => null)) as
+      | {
+          prompt?: unknown;
+          system?: unknown;
+          messages?: Array<{ role?: unknown; content?: unknown }>;
+          max_tokens?: unknown;
+          temperature?: unknown;
+        }
+      | null;
+
+    if (!body || typeof body !== 'object') {
+      return {
+        context: null,
+        response: createBadRequestResponse('AI chat request body must be valid JSON.', requestId),
+      };
+    }
+
+    if (Array.isArray(body.messages) && body.messages.length > 0) {
+      messages = body.messages
+        .map((message) => {
+          const role = message?.role;
+          const content = normalizeAIMessageContent(message?.content);
+          if (!content || (role !== 'system' && role !== 'user' && role !== 'assistant')) {
+            return null;
+          }
+
+          return { role, content } as OpenRouterChatMessage;
+        })
+        .filter((message): message is OpenRouterChatMessage => Boolean(message));
+
+      if (messages.length !== body.messages.length) {
+        return {
+          context: null,
+          response: createBadRequestResponse(
+            'Each AI message must include a valid role and non-empty string content.',
+            requestId,
+          ),
+        };
+      }
+    } else if (typeof body.prompt === 'string' && body.prompt.trim()) {
+      prompt = body.prompt.trim();
+      messages = [{ role: 'user', content: prompt }];
+    } else {
+      return {
+        context: null,
+        response: createBadRequestResponse(
+          'Provide either a non-empty prompt or a non-empty messages array.',
+          requestId,
+        ),
+      };
+    }
+
+    if (typeof body.system === 'string' && body.system.trim()) {
+      messages = [{ role: 'system', content: body.system.trim() }, ...messages];
+    }
+
+    if (typeof body.max_tokens === 'number' && Number.isFinite(body.max_tokens)) {
+      maxTokens = Math.max(1, Math.min(maxOutputTokens, Math.floor(body.max_tokens)));
+    }
+
+    if (typeof body.temperature === 'number' && Number.isFinite(body.temperature)) {
+      temperature = Math.max(0, Math.min(2, body.temperature));
+    }
+  }
+
+  if (messages.length === 0) {
+    return {
+      context: null,
+      response: createBadRequestResponse('AI chat request resolved to an empty messages array.', requestId),
+    };
+  }
+
+  if (messages.length > maxMessages) {
+    return {
+      context: null,
+      response: createBadRequestResponse(`Too many messages. Maximum is ${maxMessages}.`, requestId),
+    };
+  }
+
+  const totalChars = messages.reduce((sum, message) => sum + message.content.length, 0);
+  if (totalChars > maxInputChars) {
+    return {
+      context: null,
+      response: createBadRequestResponse(
+        `AI input is too large. Maximum total content length is ${maxInputChars} characters.`,
+        requestId,
+      ),
+    };
+  }
+
+  if (!prompt) {
+    const firstUserMessage = messages.find((message) => message.role === 'user');
+    prompt = firstUserMessage?.content || messages[0].content;
+  }
+
+  return {
+    context: {
+      messages,
+      prompt,
+      maxTokens,
+      temperature,
+      requestMode: request.method === 'POST' ? 'post_chat' : 'preview_get',
+    },
+    response: null,
+  };
+}
+
 async function recordUpstreamSuccess(env: Env, source: string, now: number, latencyMs: number): Promise<void> {
   const store = getUpstreamCircuitState();
   store.set(source, { failures: 0, openUntil: 0 });
@@ -2541,16 +2819,16 @@ async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = 
 
     return (await response.json()) as unknown;
   } catch (error) {
-    if (typeof error === 'object' && error && 'code' in error) {
-      throw error;
-    }
-
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw {
         code: 'UPSTREAM_TIMEOUT',
         message: 'upstream timeout',
         retryable: true,
       } as UpstreamFailure;
+    }
+
+    if (typeof error === 'object' && error && 'code' in error && typeof (error as { code?: unknown }).code === 'string') {
+      throw error;
     }
 
     throw {
@@ -2582,10 +2860,16 @@ async function fetchHyperliquidRecentTrades(coin: string): Promise<HyperliquidTr
   return Array.isArray(payload) ? (payload as HyperliquidTrade[]) : [];
 }
 
-async function fetchUpstreamData(path: string, env: Env): Promise<UpstreamResult> {
+async function fetchUpstreamData(
+  path: string,
+  env: Env,
+  aiContext: AIRequestContext | null = null,
+): Promise<UpstreamResult> {
   const sourceByPath: Record<string, string | undefined> = {
     '/api/btc-price': 'binance',
     '/api/eth-price': 'binance',
+    '/api/deepseek': 'openrouter',
+    '/api/qwen': 'openrouter',
     '/api/whale-positions': 'hyperliquid',
     '/api/kline': 'binance',
   };
@@ -2595,6 +2879,13 @@ async function fetchUpstreamData(path: string, env: Env): Promise<UpstreamResult
     return {
       data: null,
       meta: { source: 'none', status: 'fallback', reasonCode: 'UPSTREAM_INVALID_RESPONSE', retryable: false },
+    };
+  }
+
+  if (source === 'openrouter' && !env.OPENROUTER_API_KEY) {
+    return {
+      data: null,
+      meta: { source, status: 'fallback', reasonCode: 'UPSTREAM_FETCH_FAILED', retryable: false },
     };
   }
 
@@ -2781,6 +3072,78 @@ async function fetchUpstreamData(path: string, env: Env): Promise<UpstreamResult
       };
     }
 
+    if (path === '/api/deepseek' || path === '/api/qwen') {
+      if (!aiContext) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing ai request context', retryable: false } as UpstreamFailure;
+      }
+
+      const model = getOpenRouterModel(path, env);
+      const payload = (await fetchJsonWithTimeout(
+        `${env.OPENROUTER_API_BASE || DEFAULT_OPENROUTER_API_BASE}/chat/completions`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': OPENROUTER_HTTP_REFERER,
+            'X-Title': OPENROUTER_X_TITLE,
+          },
+          body: JSON.stringify({
+            model,
+            messages: aiContext.messages,
+            temperature: aiContext.temperature,
+            max_tokens: aiContext.maxTokens,
+          }),
+        },
+        OPENROUTER_TIMEOUT_MS,
+      )) as {
+        id?: string;
+        model?: string;
+        provider?: string;
+        choices?: Array<{
+          finish_reason?: string;
+          message?: { role?: string; content?: unknown };
+        }>;
+        usage?: {
+          prompt_tokens?: number;
+          completion_tokens?: number;
+          total_tokens?: number;
+        };
+      };
+
+      const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
+      const content = normalizeAIMessageContent(choice?.message?.content);
+      if (!content) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing ai response content', retryable: true } as UpstreamFailure;
+      }
+
+      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'openrouter',
+          provider: payload.provider || 'openrouter',
+          model: payload.model || model,
+          response: content,
+          finishReason: choice?.finish_reason || null,
+          request: {
+            mode: aiContext.requestMode,
+            prompt: aiContext.prompt,
+            maxTokens: aiContext.maxTokens,
+            temperature: aiContext.temperature,
+            messageCount: aiContext.messages.length,
+          },
+          usage: {
+            promptTokens: payload.usage?.prompt_tokens ?? null,
+            completionTokens: payload.usage?.completion_tokens ?? null,
+            totalTokens: payload.usage?.total_tokens ?? null,
+          },
+          timestamp: Date.now(),
+          id: payload.id || null,
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
     throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'unsupported path', retryable: false } as UpstreamFailure;
   } catch (error) {
     const failure = (error || { code: 'UPSTREAM_FETCH_FAILED', message: 'unknown upstream error', retryable: true }) as UpstreamFailure;
@@ -2927,6 +3290,18 @@ const worker = {
     if (endpoint) {
       const now = Date.now();
       const requestId = getRequestId(request);
+      const preparedAIRequest = await prepareAIRequestContext(request, endpoint, env, requestId);
+      if (preparedAIRequest.response) {
+        await recordEndpointRequestMetricWithDurable(env, path, {
+          at: now,
+          statusCode: preparedAIRequest.response.status,
+          requestId,
+          paymentCode: null,
+          upstreamReasonCode: null,
+        });
+        return preparedAIRequest.response;
+      }
+
       const rateLimitResponse = enforceRateLimit(request);
       if (rateLimitResponse) {
         const limitedHeaders = new Headers(rateLimitResponse.headers);
@@ -2972,7 +3347,7 @@ const worker = {
         return response;
       }
 
-      const upstreamResult = await fetchUpstreamData(path, env);
+      const upstreamResult = await fetchUpstreamData(path, env, preparedAIRequest.context);
       const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
 
       const response = apiResponse(

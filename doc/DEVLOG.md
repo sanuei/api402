@@ -4,6 +4,43 @@
 
 ### 本轮目标
 
+- 将 `/api/deepseek` 与 `/api/qwen` 从 demo/mock 升级为真实可付费 AI 上游，并接入用户提供的 OpenRouter key
+
+### 已完成
+
+- Worker 已接入 OpenRouter `chat/completions`
+- `/api/deepseek` 默认模型切到 `deepseek/deepseek-v3.2`
+- `/api/qwen` 默认模型切到更快且实测可用的 `qwen/qwen-plus-2025-07-28`
+- AI 接口现在支持：
+  - `GET` 预览模式（站内 demo / 轻量探活）
+  - `POST application/json` 正式模式（`prompt` 或 `messages`）
+- AI 请求在参数无效时先返回 `400 Invalid request`，避免开发者因请求体错误先进入 402 付费流程
+- catalog 已把 AI 接口标记为 `status: live`、`method: POST`，并输出新的 OpenRouter 调用示例
+- 前端接口详情 JS 示例已改成 AI 接口优先展示 `POST` 调用方式
+- 已新增测试覆盖：
+  - AI 无效 JSON 请求返回 `400`
+  - `deepseek` 在配置 OpenRouter key 时可代理真实聊天响应
+- 修复上游超时异常归类，避免 `AbortError.code=20` 被错误暴露为上游 reason code
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [src/main.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/main.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 把 OpenRouter 成本统计和 quota 错误码补进 catalog / response metadata
+2. 将 metrics Durable Object 升级为按 endpoint/source 分片，降低单实例压力
+3. 继续替换剩余 demo API
+
+## 2026-03-08
+
+### 本轮目标
+
 - 提供机器可读的长期漏斗导出接口（24h / 7d），提升外部 dashboard / SDK 的转化分析可用性（conversion + developer adoption）
 
 ### 已完成

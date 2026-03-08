@@ -40,6 +40,8 @@
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
 - 链上结算证明新增区块年龄限制：默认只接受最近 `7200` 块内的 Base 交易，避免历史旧交易被延迟重放
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
+- `/api/deepseek` 与 `/api/qwen` 已接入 OpenRouter 真实上游，支持 `POST application/json` 的 `prompt` / `messages` 请求
+- AI 请求体不合法时会先返回 `400`，避免开发者因参数错误先进入付费流程
 
 ## Core Routes
 
@@ -78,13 +80,16 @@ npm run deploy
 - 生产收款地址由 `PAY_TO` 指定（当前默认 `0x0A5312e03C1fb2b64569fAF61aD2c6517cCB0D18`）
 - 支付资产固定为 Base 主网原生 USDC（`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`）
 - 建议使用 `BASE_RPC_URLS`（逗号分隔）配置主备 RPC
+- AI 实时上游需通过 `wrangler secret put OPENROUTER_API_KEY` 配置 OpenRouter key
+- 可通过 `OPENROUTER_DEEPSEEK_MODEL`、`OPENROUTER_QWEN_MODEL`、`OPENROUTER_MAX_OUTPUT_TOKENS` 控制模型与成本（默认 Qwen 走更快且实测可用的 `qwen/qwen-plus-2025-07-28`）
 - 防重放依赖 `REPLAY_GUARD` Durable Object
 
 ## Current Scope
 
 - BTC / ETH 价格可尝试代理 Binance
 - K 线接口已接入 Binance 上游
-- 其余部分接口仍然以 demo/mock 数据为主
+- `DeepSeek` / `Qwen` 已接入 OpenRouter 实时上游
+- 仍有部分接口保留 demo/mock 数据
 - 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验、nonce 防重放和 demo token
 - 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证和 nonce 重放
 

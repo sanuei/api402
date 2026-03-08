@@ -214,6 +214,8 @@ function createEnv(): Env {
   return {
     APP_NAME: 'API Market',
     PAY_TO: TEST_PAY_TO,
+    OPENROUTER_DEEPSEEK_MODEL: 'deepseek/deepseek-v3.2',
+    OPENROUTER_QWEN_MODEL: 'qwen/qwen-plus-2025-07-28',
     REPLAY_GUARD: createReplayGuardNamespace(),
     METRICS_STORE: createMetricsStoreNamespace(),
     ASSETS: {
@@ -362,6 +364,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
       paymentReasonRemediation?: Record<string, { retryable: boolean; action: string }>;
     };
     endpoints: Array<{
+      path?: string;
+      method?: string;
       exampleRequest: unknown;
       exampleResponse: unknown;
       status: string;
@@ -448,6 +452,9 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.equal(Array.isArray(body.endpoints[0].tags), true);
   assert.ok(body.endpoints[0].exampleRequest);
   assert.ok(body.endpoints[0].exampleResponse);
+  const deepseek = body.endpoints.find((endpoint) => endpoint.path === '/api/deepseek');
+  assert.equal(deepseek?.method, 'POST');
+  assert.equal(deepseek?.status, 'live');
   assert.equal(typeof body.endpoints[0].locales?.zh?.label, 'string');
   assert.equal(typeof body.endpoints[0].locales?.en?.label, 'string');
   assert.equal(body.endpoints[0].requestMetrics?.windowMs, 3600000);
@@ -530,6 +537,144 @@ test('demo bearer token can access a paid endpoint', async () => {
   assert.equal(response.status, 200);
   assert.equal(body._meta.paid, true);
   assert.equal(body._meta.paymentMode, 'DEMO_PAYMENT');
+});
+
+test('ai endpoint rejects invalid json body before payment challenge', async () => {
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/deepseek', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Request-Id': 'req-ai-invalid',
+      },
+      body: '{"messages":',
+    }),
+    createEnv(),
+  );
+  const body = (await response.json()) as { error: string; requestId?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.error, 'Invalid request');
+  assert.equal(body.requestId, 'req-ai-invalid');
+  assert.equal(response.headers.get('X-Request-Id'), 'req-ai-invalid');
+});
+
+test('deepseek endpoint proxies live openrouter chat completion when configured', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (!url.includes('/chat/completions')) {
+      return new Response(JSON.stringify({ error: 'unexpected upstream target' }), { status: 500 });
+    }
+
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          model?: string;
+          messages?: Array<{ role: string; content: string }>;
+          max_tokens?: number;
+        })
+      : {};
+
+    assert.equal(body.model, 'deepseek/deepseek-v3.2');
+    assert.equal(body.messages?.[0]?.role, 'user');
+    assert.equal(body.max_tokens, 64);
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-test',
+        model: body.model,
+        provider: 'OpenRouter',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'x402 enables paid API replay.' } }],
+        usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/deepseek', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: 'Explain x402 payments in one sentence.',
+          max_tokens: 64,
+        }),
+      }),
+      {
+        ...createEnv(),
+        OPENROUTER_API_KEY: 'test-openrouter-key',
+      },
+    );
+    const body = (await response.json()) as {
+      source?: string;
+      model?: string;
+      response?: string;
+      usage?: { totalTokens?: number };
+      _meta: {
+        origin: string;
+        upstream?: { source: string; status: string; reasonCode: string };
+      };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.source, 'openrouter');
+    assert.equal(body.model, 'deepseek/deepseek-v3.2');
+    assert.equal(body.response, 'x402 enables paid API replay.');
+    assert.equal(body.usage?.totalTokens, 20);
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.source, 'openrouter');
+    assert.equal(body._meta.upstream?.status, 'live');
+    assert.equal(body._meta.upstream?.reasonCode, 'OK');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('qwen endpoint maps abort errors to machine-readable upstream timeout', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new DOMException('timed out', 'AbortError');
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/qwen', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          prompt: '请用一句中文介绍 API402。',
+        }),
+      }),
+      {
+        ...createEnv(),
+        OPENROUTER_API_KEY: 'test-openrouter-key',
+      },
+    );
+    const body = (await response.json()) as {
+      _meta: { origin: string; upstream?: { source: string; status: string; reasonCode: string } };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body._meta.origin, 'mock');
+    assert.equal(body._meta.upstream?.source, 'openrouter');
+    assert.equal(body._meta.upstream?.status, 'fallback');
+    assert.equal(body._meta.upstream?.reasonCode, 'UPSTREAM_TIMEOUT');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('catalog requestMetrics expose endpoint request volume and error trend', async () => {

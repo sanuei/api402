@@ -651,20 +651,48 @@ function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
       `  ${endpoint.url}`,
     ].join('\n');
 
-  const jsExample = [
-    `const response = await fetch("${endpoint.url}");`,
-    'if (response.status === 402) {',
-    '  const challenge = await response.json();',
-    '  const paid = await fetch(challenge.path, {',
-    '    headers: { Authorization: "Bearer demo" }',
-    '  });',
-    '  const data = await paid.json();',
-    '  console.log(data);',
-    '}',
-    '',
-    t('dynamic.exampleResponse'),
-    JSON.stringify(endpoint.exampleResponse || {}, null, 2),
-  ].join('\n');
+  const jsExample =
+    endpoint.method === 'POST'
+      ? [
+          'const requestBody = {',
+          '  messages: [{ role: "user", content: "Explain x402 payments in one sentence." }]',
+          '};',
+          `const response = await fetch("${endpoint.url}", {`,
+          '  method: "POST",',
+          '  headers: { "Content-Type": "application/json" },',
+          '  body: JSON.stringify(requestBody)',
+          '});',
+          'if (response.status === 402) {',
+          '  const challenge = await response.json();',
+          `  const paid = await fetch("${endpoint.url}", {`,
+          '    method: "POST",',
+          '    headers: {',
+          '      "Content-Type": "application/json",',
+          '      Authorization: "Bearer demo"',
+          '    },',
+          '    body: JSON.stringify(requestBody)',
+          '  });',
+          '  const data = await paid.json();',
+          '  console.log(data);',
+          '}',
+          '',
+          t('dynamic.exampleResponse'),
+          JSON.stringify(endpoint.exampleResponse || {}, null, 2),
+        ].join('\n')
+      : [
+          `const response = await fetch("${endpoint.url}");`,
+          'if (response.status === 402) {',
+          '  const challenge = await response.json();',
+          '  const paid = await fetch(challenge.path, {',
+          '    headers: { Authorization: "Bearer demo" }',
+          '  });',
+          '  const data = await paid.json();',
+          '  console.log(data);',
+          '}',
+          '',
+          t('dynamic.exampleResponse'),
+          JSON.stringify(endpoint.exampleResponse || {}, null, 2),
+        ].join('\n');
 
   getElement<HTMLPreElement>('curlExample').textContent = curlExample;
   getElement<HTMLPreElement>('jsExample').textContent = jsExample;
