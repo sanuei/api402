@@ -291,14 +291,17 @@ export async function fetchUpstreamData(
     '/api/deepseek': 'openrouter',
     '/api/qwen': 'openrouter',
     '/api/gpt-5.4': 'openrouter',
-    '/api/gpt-5.4-pro': 'openrouter',
-    '/api/claude-4.6': 'openrouter',
-    '/api/polymarket/trending': 'polymarket',
-    '/api/polymarket/search': 'polymarket',
-    '/api/polymarket/event': 'polymarket',
-    '/api/wallet-risk': 'blockscout',
-    '/api/whale-positions': 'hyperliquid',
-    '/api/kline': 'binance',
+  '/api/gpt-5.4-pro': 'openrouter',
+  '/api/claude-4.6': 'openrouter',
+  '/api/polymarket/trending': 'polymarket',
+  '/api/polymarket/search': 'polymarket',
+  '/api/polymarket/event': 'polymarket',
+  '/api/polymarket/orderbook': 'polymarket',
+  '/api/polymarket/quote': 'polymarket',
+  '/api/polymarket/price-history': 'polymarket',
+  '/api/wallet-risk': 'blockscout',
+  '/api/whale-positions': 'hyperliquid',
+  '/api/kline': 'binance',
   };
 
   const source = sourceByPath[path];
@@ -568,6 +571,117 @@ export async function fetchUpstreamData(
       };
     }
 
+    if (path === '/api/polymarket/orderbook') {
+      const slug = requestUrl.searchParams.get('slug')?.trim();
+      const outcome = requestUrl.searchParams.get('outcome')?.trim();
+      if (!slug || !outcome) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing polymarket trading params', retryable: false } as UpstreamFailure;
+      }
+
+      const market = await fetchPolymarketMarketBySlug(slug);
+      const token = resolvePolymarketOutcomeToken(market, outcome);
+      const book = await fetchPolymarketBook(token.tokenId);
+      const summary = summarizePolymarketOrderBook(book);
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          slug,
+          question: market.question || null,
+          outcome: token.outcome,
+          tokenId: token.tokenId,
+          bestBid: summary.bestBid,
+          bestAsk: summary.bestAsk,
+          midpoint: summary.midpoint,
+          spread: summary.spread,
+          bids: summary.bids,
+          asks: summary.asks,
+          timestamp: summary.timestamp,
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/quote') {
+      const slug = requestUrl.searchParams.get('slug')?.trim();
+      const outcome = requestUrl.searchParams.get('outcome')?.trim();
+      const side = requestUrl.searchParams.get('side')?.trim().toLowerCase();
+      const requestedSize = Number(requestUrl.searchParams.get('size')?.trim() || '0');
+      if (!slug || !outcome || (side !== 'buy' && side !== 'sell') || !Number.isFinite(requestedSize) || requestedSize <= 0) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'invalid polymarket quote params', retryable: false } as UpstreamFailure;
+      }
+
+      const market = await fetchPolymarketMarketBySlug(slug);
+      const token = resolvePolymarketOutcomeToken(market, outcome);
+      const book = await fetchPolymarketBook(token.tokenId);
+      const summary = summarizePolymarketOrderBook(book);
+      const quote = buildPolymarketTradeQuote(summary, side, requestedSize);
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          slug,
+          question: market.question || null,
+          outcome: token.outcome,
+          tokenId: token.tokenId,
+          side,
+          requestedSize: Number(requestedSize.toFixed(4)),
+          ...quote,
+          timestamp: summary.timestamp,
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/polymarket/price-history') {
+      const slug = requestUrl.searchParams.get('slug')?.trim();
+      const outcome = requestUrl.searchParams.get('outcome')?.trim();
+      const interval = requestUrl.searchParams.get('interval')?.trim() || '1d';
+      const fidelity = Number(requestUrl.searchParams.get('fidelity')?.trim() || '60');
+      if (!slug || !outcome || !Number.isFinite(fidelity) || fidelity <= 0) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'invalid polymarket price history params', retryable: false } as UpstreamFailure;
+      }
+
+      const market = await fetchPolymarketMarketBySlug(slug);
+      const token = resolvePolymarketOutcomeToken(market, outcome);
+      const history = (await fetchJsonWithTimeout(
+        `${POLYMARKET_CLOB_API_BASE}/prices-history?market=${encodeURIComponent(token.tokenId)}&interval=${encodeURIComponent(interval)}&fidelity=${encodeURIComponent(String(Math.round(fidelity)))}`,
+        { method: 'GET' },
+      )) as PolymarketPriceHistoryResponse;
+
+      const points = Array.isArray(history.history)
+        ? history.history
+            .map((point) => ({
+              timestamp: Number(point.t),
+              price: Number(Number(point.p).toFixed(4)),
+            }))
+            .filter((point) => Number.isFinite(point.timestamp) && Number.isFinite(point.price))
+        : [];
+
+      if (points.length === 0) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'empty polymarket price history', retryable: true } as UpstreamFailure;
+      }
+
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+      return {
+        data: {
+          source: 'polymarket',
+          slug,
+          question: market.question || null,
+          outcome: token.outcome,
+          tokenId: token.tokenId,
+          interval,
+          fidelity: Math.round(fidelity),
+          points,
+          latestPrice: points[points.length - 1]?.price ?? null,
+          timestamp: Date.now(),
+        },
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
     if (path === '/api/wallet-risk') {
       const address = requestUrl.searchParams.get('address')?.trim();
       if (!address) {
@@ -766,6 +880,12 @@ type PolymarketMarket = {
   closed?: boolean;
   outcomes?: string;
   outcomePrices?: string;
+  clobTokenIds?: string;
+  bestBid?: string | number;
+  bestAsk?: string | number;
+  lastTradePrice?: string | number;
+  spread?: string | number;
+  volume24hr?: string | number;
 };
 
 type PolymarketEvent = {
@@ -814,6 +934,22 @@ type PolymarketEventSummary = {
   active: boolean;
   closed: boolean;
   markets: PolymarketMarketSummary[];
+};
+
+type PolymarketOrderBookLevel = {
+  price?: string | number;
+  size?: string | number;
+};
+
+type PolymarketOrderBook = {
+  asset_id?: string;
+  bids?: PolymarketOrderBookLevel[];
+  asks?: PolymarketOrderBookLevel[];
+  timestamp?: string | number;
+};
+
+type PolymarketPriceHistoryResponse = {
+  history?: Array<{ t?: number; p?: number }>;
 };
 
 type BlockscoutAddressDetails = BlockscoutAddressEntity & {
@@ -898,6 +1034,21 @@ function parsePolymarketNumberArray(value: string | undefined): number[] {
   }
 }
 
+function parsePolymarketTokenIds(value: string | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.map((entry) => String(entry || '').trim()).filter((entry) => entry.length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
 function summarizePolymarketMarket(market: PolymarketMarket): PolymarketMarketSummary | null {
   const question = (market.question || '').trim();
   const slug = (market.slug || '').trim();
@@ -966,6 +1117,128 @@ function summarizePolymarketEventDetail(event: PolymarketEvent) {
     active: summary.active,
     closed: summary.closed,
     markets: summary.markets,
+  };
+}
+
+const POLYMARKET_CLOB_API_BASE = 'https://clob.polymarket.com';
+
+async function fetchPolymarketMarketBySlug(slug: string): Promise<PolymarketMarket> {
+  return (await fetchJsonWithTimeout(
+    `${POLYMARKET_GAMMA_API_BASE}/markets/slug/${encodeURIComponent(slug)}`,
+    { method: 'GET' },
+  )) as PolymarketMarket;
+}
+
+function resolvePolymarketOutcomeToken(market: PolymarketMarket, requestedOutcome: string) {
+  const outcomes = parsePolymarketStringArray(market.outcomes);
+  const tokenIds = parsePolymarketTokenIds(market.clobTokenIds);
+  const normalizedRequested = requestedOutcome.trim().toLowerCase();
+  const outcomeIndex = outcomes.findIndex((outcome) => outcome.toLowerCase() === normalizedRequested);
+
+  if (outcomeIndex < 0 || !tokenIds[outcomeIndex]) {
+    throw {
+      code: 'UPSTREAM_INVALID_RESPONSE',
+      message: `unknown polymarket outcome ${requestedOutcome}`,
+      retryable: false,
+    } as UpstreamFailure;
+  }
+
+  return {
+    outcome: outcomes[outcomeIndex],
+    tokenId: tokenIds[outcomeIndex],
+  };
+}
+
+async function fetchPolymarketBook(tokenId: string): Promise<PolymarketOrderBook> {
+  return (await fetchJsonWithTimeout(
+    `${POLYMARKET_CLOB_API_BASE}/book?token_id=${encodeURIComponent(tokenId)}`,
+    { method: 'GET' },
+  )) as PolymarketOrderBook;
+}
+
+function normalizePolymarketBookSide(levels: PolymarketOrderBookLevel[] | undefined, direction: 'bid' | 'ask') {
+  const normalized = Array.isArray(levels)
+    ? levels
+        .map((level) => ({
+          price: Number(Number(level.price).toFixed(4)),
+          size: Number(Number(level.size).toFixed(4)),
+        }))
+        .filter((level) => Number.isFinite(level.price) && Number.isFinite(level.size) && level.size > 0)
+    : [];
+
+  return normalized.sort((left, right) =>
+    direction === 'bid' ? right.price - left.price : left.price - right.price,
+  );
+}
+
+function summarizePolymarketOrderBook(book: PolymarketOrderBook) {
+  const bids = normalizePolymarketBookSide(book.bids, 'bid');
+  const asks = normalizePolymarketBookSide(book.asks, 'ask');
+  const bestBid = bids[0]?.price ?? null;
+  const bestAsk = asks[0]?.price ?? null;
+  const midpoint =
+    bestBid != null && bestAsk != null ? Number((((bestBid + bestAsk) / 2)).toFixed(4)) : null;
+  const spread =
+    bestBid != null && bestAsk != null ? Number((bestAsk - bestBid).toFixed(4)) : null;
+  const timestampValue = Number(book.timestamp);
+
+  return {
+    bestBid,
+    bestAsk,
+    midpoint,
+    spread,
+    bids: bids.slice(0, 20),
+    asks: asks.slice(0, 20),
+    timestamp: Number.isFinite(timestampValue) ? timestampValue : Date.now(),
+  };
+}
+
+function buildPolymarketTradeQuote(
+  book: ReturnType<typeof summarizePolymarketOrderBook>,
+  side: 'buy' | 'sell',
+  requestedSize: number,
+) {
+  const levels = side === 'buy' ? book.asks : book.bids;
+  const referencePrice = side === 'buy' ? book.bestAsk : book.bestBid;
+  let remaining = requestedSize;
+  let filledSize = 0;
+  let estimatedNotionalUsd = 0;
+  let worstPrice: number | null = null;
+
+  for (const level of levels) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    const executed = Math.min(remaining, level.size);
+    filledSize += executed;
+    estimatedNotionalUsd += executed * level.price;
+    remaining -= executed;
+    worstPrice = level.price;
+  }
+
+  const averagePrice = filledSize > 0 ? Number((estimatedNotionalUsd / filledSize).toFixed(4)) : null;
+  const enoughLiquidity = filledSize >= requestedSize;
+  const slippagePct =
+    averagePrice != null && referencePrice != null && referencePrice > 0
+      ? Number(
+          (
+            (side === 'buy'
+              ? (averagePrice - referencePrice) / referencePrice
+              : (referencePrice - averagePrice) / referencePrice) * 100
+          ).toFixed(4),
+        )
+      : null;
+
+  return {
+    filledSize: Number(filledSize.toFixed(4)),
+    remainingSize: Number(Math.max(remaining, 0).toFixed(4)),
+    averagePrice,
+    worstPrice,
+    estimatedNotionalUsd: Number(estimatedNotionalUsd.toFixed(4)),
+    enoughLiquidity,
+    slippagePct,
+    fillPct: requestedSize > 0 ? Number(((filledSize / requestedSize) * 100).toFixed(2)) : 0,
   };
 }
 

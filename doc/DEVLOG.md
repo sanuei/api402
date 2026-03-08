@@ -1912,3 +1912,44 @@
 1. 继续做 `Polymarket related / topic / mispricing` 这类更容易形成分享和复购的预测市场接口
 2. 将 `approval-audit` 和 `tx-simulate-explain` 继续作为高客单价 Web3 + AI 风控主线推进
 3. 如果首页目录继续扩展，下一步考虑增加“热门接口”分组，而不是只依赖单一排序
+
+## 2026-03-08
+
+### 本轮目标
+
+- 研究 `Polymarket` 自动交易相关接口应该先做哪一层
+- 在不引入用户私钥和下单签名的前提下，优先落地公开可卖的交易前数据接口
+
+### 已完成
+
+- 确认 `Gamma API` 和 `CLOB API` 足以支撑公开交易前接口
+- 新增 `GET /api/polymarket/orderbook?slug=...&outcome=...`
+- 新增 `GET /api/polymarket/quote?slug=...&outcome=...&side=buy|sell&size=...`
+- 新增 `GET /api/polymarket/price-history?slug=...&outcome=...&interval=...&fidelity=...`
+- `quote` 会基于实时订单簿估算成交均价、剩余未成交量、滑点和是否有足够流动性
+- 为新的交易接口增加了 402 前参数校验，避免缺参数先进入付费流程
+- 新增研究文档 [doc/POLYMARKET_TRADING.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/POLYMARKET_TRADING.md)，明确当前先做公开交易数据、暂不开放真实下单
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker/upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [doc/API_EXPANSION.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/API_EXPANSION.md)
+- [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+- [doc/POLYMARKET_TRADING.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/POLYMARKET_TRADING.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `42/42`
+- `npm run build:frontend` 通过
+- `npx wrangler deploy --dry-run` 通过
+- `npm run deploy` 通过，Cloudflare 当前版本 `342789e3-76a8-48ed-9eda-71c9a95b40f4`
+
+### 下一步建议
+
+1. 继续做 `Polymarket topic / related / mispricing`
+2. 如果你要进入真实自动下单，再单独接签名下单链路和风险限制
+3. 继续把 BTC 类热门市场作为 `Polymarket` 交易入口的默认展示样例

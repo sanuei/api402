@@ -358,6 +358,84 @@ export const API_ENDPOINTS: APIEndpoint[] = [
     }),
   },
   {
+    path: '/api/polymarket/orderbook',
+    price: '0.005',
+    label: { zh: 'Polymarket 订单簿', en: 'Polymarket Order Book' },
+    description: {
+      zh: '按 market slug 和 outcome 拉取实时订单簿，返回买卖盘、盘口摘要和可交易 token 映射。',
+      en: 'Loads the live Polymarket order book for a market slug and outcome with bids, asks, and marketable token mapping.',
+    },
+    category: { zh: '预测市场交易', en: 'Prediction Market Trading' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'trading', 'orderbook', 'liquidity', 'live'],
+    status: 'live',
+    sample: () => ({
+      source: 'polymarket',
+      slug: 'bitcoin-above-on-march-31',
+      outcome: 'Yes',
+      tokenId: '123456789',
+      bestBid: 0.41,
+      bestAsk: 0.43,
+      midpoint: 0.42,
+      spread: 0.02,
+      bids: [{ price: 0.41, size: 250 }],
+      asks: [{ price: 0.43, size: 190 }],
+      timestamp: Date.now(),
+    }),
+  },
+  {
+    path: '/api/polymarket/quote',
+    price: '0.006',
+    label: { zh: 'Polymarket 成交报价', en: 'Polymarket Trade Quote' },
+    description: {
+      zh: '按 slug、outcome、side 和 size 估算成交均价、滑点和可成交深度，适合自动交易前风控。',
+      en: 'Estimates fill price, slippage, and executable depth from the live book before an automated Polymarket trade.',
+    },
+    category: { zh: '预测市场交易', en: 'Prediction Market Trading' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'trading', 'quote', 'slippage', 'execution'],
+    status: 'live',
+    sample: () => ({
+      source: 'polymarket',
+      slug: 'bitcoin-above-on-march-31',
+      outcome: 'Yes',
+      side: 'buy',
+      requestedSize: 150,
+      filledSize: 150,
+      averagePrice: 0.425,
+      estimatedNotionalUsd: 63.75,
+      slippagePct: 1.19,
+      enoughLiquidity: true,
+      timestamp: Date.now(),
+    }),
+  },
+  {
+    path: '/api/polymarket/price-history',
+    price: '0.004',
+    label: { zh: 'Polymarket 价格历史', en: 'Polymarket Price History' },
+    description: {
+      zh: '按 slug 和 outcome 拉取价格历史序列，适合做趋势判断、回测和自动交易信号输入。',
+      en: 'Returns Polymarket price history for a market slug and outcome to power trend analysis, backtests, and trading signals.',
+    },
+    category: { zh: '预测市场交易', en: 'Prediction Market Trading' },
+    upstream: 'polymarket',
+    tags: ['polymarket', 'trading', 'history', 'backtest', 'signal'],
+    status: 'live',
+    sample: () => ({
+      source: 'polymarket',
+      slug: 'bitcoin-above-on-march-31',
+      outcome: 'Yes',
+      interval: '1d',
+      fidelity: 60,
+      points: [
+        { timestamp: 1772856025, price: 0.1425 },
+        { timestamp: 1772941702, price: 0.1755 },
+      ],
+      latestPrice: 0.1755,
+      timestamp: Date.now(),
+    }),
+  },
+  {
     path: '/api/wallet-risk',
     price: '0.02',
     label: { zh: '钱包风险画像', en: 'Wallet Risk Profile' },
@@ -2397,7 +2475,10 @@ function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, 
   const requiresValidatedGet =
     endpoint.path === '/api/wallet-risk' ||
     endpoint.path === '/api/polymarket/search' ||
-    endpoint.path === '/api/polymarket/event';
+    endpoint.path === '/api/polymarket/event' ||
+    endpoint.path === '/api/polymarket/orderbook' ||
+    endpoint.path === '/api/polymarket/quote' ||
+    endpoint.path === '/api/polymarket/price-history';
 
   if (!requiresValidatedGet) {
     return null;
@@ -2444,6 +2525,45 @@ function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, 
     const slug = url.searchParams.get('slug')?.trim() || '';
     if (!slug) {
       return createBadRequestResponse('polymarket event requires ?slug=event-slug before payment can be evaluated.', requestId);
+    }
+
+    return null;
+  }
+
+  if (endpoint.path === '/api/polymarket/orderbook' || endpoint.path === '/api/polymarket/price-history') {
+    const slug = url.searchParams.get('slug')?.trim() || '';
+    const outcome = url.searchParams.get('outcome')?.trim() || '';
+    if (!slug) {
+      return createBadRequestResponse('polymarket trading endpoints require ?slug=market-slug before payment can be evaluated.', requestId);
+    }
+
+    if (!outcome) {
+      return createBadRequestResponse('polymarket trading endpoints require ?outcome=Yes|No before payment can be evaluated.', requestId);
+    }
+
+    return null;
+  }
+
+  if (endpoint.path === '/api/polymarket/quote') {
+    const slug = url.searchParams.get('slug')?.trim() || '';
+    const outcome = url.searchParams.get('outcome')?.trim() || '';
+    const side = url.searchParams.get('side')?.trim().toLowerCase() || '';
+    const size = Number(url.searchParams.get('size')?.trim() || '0');
+
+    if (!slug) {
+      return createBadRequestResponse('polymarket quote requires ?slug=market-slug before payment can be evaluated.', requestId);
+    }
+
+    if (!outcome) {
+      return createBadRequestResponse('polymarket quote requires ?outcome=Yes|No before payment can be evaluated.', requestId);
+    }
+
+    if (side !== 'buy' && side !== 'sell') {
+      return createBadRequestResponse('polymarket quote requires ?side=buy or ?side=sell before payment can be evaluated.', requestId);
+    }
+
+    if (!Number.isFinite(size) || size <= 0) {
+      return createBadRequestResponse('polymarket quote requires a positive ?size=<shares> before payment can be evaluated.', requestId);
     }
 
     return null;

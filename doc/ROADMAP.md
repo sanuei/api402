@@ -152,6 +152,7 @@
 3. 为最新模型入口补更明确的产品位和对比说明，提升付费转化
 4. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
 5. 继续扩展 `Polymarket` 相关的高流量预测市场接口，把首页目录和默认曝光位优先给更容易被点击和传播的能力
+6. 先把 `Polymarket` 交易前接口做完整，包括 orderbook / quote / price-history / topic / mispricing，再评估是否进入真实下单执行
 
 ## Operations
 
