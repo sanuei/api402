@@ -58,6 +58,7 @@
 - 钱包策略已收紧为“先跑通一个再扩多钱包”，Coinbase Wallet / MetaMask 在 UI 中明确标注为开发中
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
+- 已新增 `doc/API_EXPANSION.md`，集中维护后续高价值 API 扩展清单与优先级
 
 ## Phase 1
 

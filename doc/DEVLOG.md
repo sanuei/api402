@@ -4,6 +4,36 @@
 
 ### 本轮目标
 
+- 回答当前项目的结构与支付现状问题，并把后续高价值 API 扩展清单固化到仓库文档
+
+### 已完成
+
+- 评估了当前前后端和文档规模：
+  - `src/main.ts`: 1411 行
+  - `worker/index.ts`: 3715 行
+  - `doc/DEVLOG.md`: 1530 行
+- 确认当前网页中“连接钱包”的作用：
+  - Demo Mode：浏览器内 demo replay
+  - Rabby Wallet：浏览器内真实 Base USDC 支付闭环
+  - Coinbase Wallet / MetaMask：当前仅在 UI 标注为开发中，不承诺可用
+- 新增后续 API 扩展清单文档 [API_EXPANSION.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/API_EXPANSION.md)
+- 将 search / crawl / extract、PDF / OCR、onchain intelligence 等方向按变现优先级集中整理，避免后续只停留在聊天记录中
+
+### 涉及文件
+
+- [API_EXPANSION.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/API_EXPANSION.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 对 `src/main.ts` 做前端模块拆分，优先拆 `wallet`、`api-client`、`i18n`、`catalog`、`modal`
+2. 对 `worker/index.ts` 做后端分层，优先拆 `routes`、`payment`、`metrics`、`upstreams`
+3. 将 `DEVLOG` 改成按月归档，例如 `doc/devlog/2026-03.md`
+
+## 2026-03-08
+
+### 本轮目标
+
 - 先优先跑通一个真实钱包，不再同时推进多钱包半成品；将 Rabby Wallet 浏览器内支付闭环接到现有 Worker，其他钱包在 UI 中明确标注为开发中
 
 ### 已完成
