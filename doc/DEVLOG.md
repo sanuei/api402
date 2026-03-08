@@ -26,6 +26,12 @@
   - [logo-concept-03-signal.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-concepts/logo-concept-03-signal.svg)
 - 已补预览页：
   - [preview.html](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-concepts/preview.html)
+- 用户已选定 `logo-concept-03-signal.svg` 作为主方向
+- 主品牌资源已同步替换：
+  - [logo-mark.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-mark.svg)
+  - [logo-wordmark.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/logo-wordmark.svg)
+  - [favicon.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/favicon.svg)
+  - [og-card.svg](/Users/yangshangwei/Desktop/网页项目/api402/public/og-card.svg)
 
 ### 下一步建议
 
