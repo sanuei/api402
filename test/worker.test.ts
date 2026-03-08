@@ -76,7 +76,7 @@ class FakeMetricsStoreStub {
 
     if (resolvedRequest.method === 'POST' && url.pathname === '/append') {
       const payload = (await resolvedRequest.json()) as {
-        kind?: 'upstream' | 'endpoint';
+        kind?: 'upstream' | 'endpoint' | 'ai';
         key?: string;
         event?: unknown;
       };
@@ -183,6 +183,37 @@ class FakeMetricsStoreStub {
       });
     }
 
+    if (resolvedRequest.method === 'POST' && url.pathname === '/ai-usage-summary') {
+      const payload = (await resolvedRequest.json().catch(() => ({}))) as {
+        now?: number;
+        path?: string;
+      };
+      const now = Number(payload.now) || Date.now();
+      const from = now - 24 * 60 * 60 * 1000;
+      const all = Array.from(metricsStore.entries())
+        .filter(([key, value]) => key.startsWith('ai:') && Array.isArray(value))
+        .flatMap(([, value]) =>
+          (value as Array<{ at: number; costUsd?: number }>)
+            .filter((event) => typeof event.at === 'number' && event.at >= from)
+            .map((event) => ({ at: event.at, costUsd: Number(event.costUsd || 0) })),
+        );
+      const endpoint = ((metricsStore.get(`ai:${payload.path || ''}`) as Array<{ at: number; costUsd?: number }> | undefined) || [])
+        .filter((event) => typeof event.at === 'number' && event.at >= from)
+        .map((event) => ({ at: event.at, costUsd: Number(event.costUsd || 0) }));
+
+      const summarize = (events: Array<{ at: number; costUsd: number }>) => ({
+        totalRequests: events.length,
+        totalCostUsd: Number(events.reduce((sum, event) => sum + event.costUsd, 0).toFixed(6)),
+        oldestAt: events[0] ? new Date(events[0].at).toISOString() : null,
+      });
+
+      return Response.json({
+        windowMs: 24 * 60 * 60 * 1000,
+        global: summarize(all),
+        endpoint: summarize(endpoint),
+      });
+    }
+
     return Response.json({ error: 'not found' }, { status: 404 });
   }
 }
@@ -210,7 +241,7 @@ function createMetricsStoreNamespace(): DurableObjectNamespace {
   } as unknown as DurableObjectNamespace;
 }
 
-function createEnv(): Env {
+function createEnv(overrides: Partial<Env> = {}): Env {
   return {
     APP_NAME: 'API Market',
     PAY_TO: TEST_PAY_TO,
@@ -221,6 +252,7 @@ function createEnv(): Env {
     ASSETS: {
       fetch: async () => new Response('<html>ok</html>', { headers: { 'Content-Type': 'text/html' } }),
     } as unknown as Fetcher,
+    ...overrides,
   };
 }
 
@@ -330,6 +362,7 @@ test.beforeEach(() => {
   globalThis.upstreamCircuitState = new Map();
   globalThis.upstreamTelemetryState = new Map();
   globalThis.endpointRequestMetricsState = new Map();
+  globalThis.aiUsageState = new Map();
   replayGuardStore = new Map();
   metricsStore = new Map();
 });
@@ -411,6 +444,16 @@ test('catalog exposes enriched endpoint metadata', async () => {
           updatedAt: string | null;
         } | null;
       } | null;
+      aiPolicy?: {
+        provider: string;
+        model: string;
+        maxInputChars: number;
+        maxMessages: number;
+        maxOutputTokens: number;
+        requestLimit: { global: number; endpoint: number };
+        dailyBudgetUsd: { global: number; endpoint: number };
+        quotaErrorCodes: string[];
+      } | null;
     }>;
   };
 
@@ -455,6 +498,8 @@ test('catalog exposes enriched endpoint metadata', async () => {
   const deepseek = body.endpoints.find((endpoint) => endpoint.path === '/api/deepseek');
   assert.equal(deepseek?.method, 'POST');
   assert.equal(deepseek?.status, 'live');
+  assert.equal(deepseek?.aiPolicy?.provider, 'openrouter');
+  assert.ok((deepseek?.aiPolicy?.quotaErrorCodes || []).includes('AI_BUDGET_EXCEEDED'));
   assert.equal(typeof body.endpoints[0].locales?.zh?.label, 'string');
   assert.equal(typeof body.endpoints[0].locales?.en?.label, 'string');
   assert.equal(body.endpoints[0].requestMetrics?.windowMs, 3600000);
@@ -672,6 +717,130 @@ test('qwen endpoint maps abort errors to machine-readable upstream timeout', asy
     assert.equal(body._meta.upstream?.source, 'openrouter');
     assert.equal(body._meta.upstream?.status, 'fallback');
     assert.equal(body._meta.upstream?.reasonCode, 'UPSTREAM_TIMEOUT');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('ai endpoint blocks requests when rolling budget is exceeded', async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-budget',
+        model: 'deepseek/deepseek-v3.2',
+        provider: 'OpenRouter',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'budget test ok' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16, cost: 0.25 },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  try {
+    const env = createEnv({
+      OPENROUTER_API_KEY: 'test-openrouter-key',
+      AI_GLOBAL_DAILY_BUDGET_USD: '0.1',
+      AI_DEEPSEEK_DAILY_BUDGET_USD: '0.1',
+    });
+
+    const first = await worker.fetch(
+      new Request('https://api-402.com/api/deepseek', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'first run' }),
+      }),
+      env,
+    );
+    const second = await worker.fetch(
+      new Request('https://api-402.com/api/deepseek', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+          'X-Request-Id': 'req-ai-budget',
+        },
+        body: JSON.stringify({ prompt: 'second run' }),
+      }),
+      env,
+    );
+    const body = (await second.json()) as {
+      code: string;
+      requestId?: string;
+      quota?: { current?: { endpointCostUsd?: number }; limits?: { endpointBudgetUsd?: number } };
+    };
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal(body.code, 'AI_BUDGET_EXCEEDED');
+    assert.equal(body.requestId, 'req-ai-budget');
+    assert.equal(body.quota?.current?.endpointCostUsd, 0.25);
+    assert.equal(body.quota?.limits?.endpointBudgetUsd, 0.1);
+    assert.equal(second.headers.get('X-Quota-Reason'), 'AI_BUDGET_EXCEEDED');
+    assert.equal(fetchCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('ai endpoint blocks requests when rolling request limit is exceeded', async () => {
+  const originalFetch = globalThis.fetch;
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-limit',
+        model: 'deepseek/deepseek-v3.2',
+        provider: 'OpenRouter',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'request limit ok' } }],
+        usage: { prompt_tokens: 10, completion_tokens: 6, total_tokens: 16, cost: 0.001 },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  try {
+    const env = createEnv({
+      OPENROUTER_API_KEY: 'test-openrouter-key',
+      AI_GLOBAL_DAILY_REQUEST_LIMIT: '1',
+      AI_DEEPSEEK_DAILY_REQUEST_LIMIT: '1',
+    });
+
+    const first = await worker.fetch(
+      new Request('https://api-402.com/api/deepseek', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'first run' }),
+      }),
+      env,
+    );
+    const second = await worker.fetch(
+      new Request('https://api-402.com/api/deepseek', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'second run' }),
+      }),
+      env,
+    );
+    const body = (await second.json()) as { code: string };
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 429);
+    assert.equal(body.code, 'AI_REQUEST_LIMIT_EXCEEDED');
+    assert.equal(second.headers.get('X-Quota-Reason'), 'AI_REQUEST_LIMIT_EXCEEDED');
+    assert.equal(fetchCalls, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

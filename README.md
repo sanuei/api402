@@ -42,6 +42,7 @@
 - nonce 和 tx hash 防重放现在优先走 Durable Objects 持久化，不再依赖单实例内存
 - `/api/deepseek` 与 `/api/qwen` 已接入 OpenRouter 真实上游，支持 `POST application/json` 的 `prompt` / `messages` 请求
 - AI 请求体不合法时会先返回 `400`，避免开发者因参数错误先进入付费流程
+- AI 接口已加入 24 小时预算保护与请求数上限，超额时返回 `429` 和机器可读错误码：`AI_BUDGET_EXCEEDED` / `AI_REQUEST_LIMIT_EXCEEDED`
 
 ## Core Routes
 
@@ -82,6 +83,8 @@ npm run deploy
 - 建议使用 `BASE_RPC_URLS`（逗号分隔）配置主备 RPC
 - AI 实时上游需通过 `wrangler secret put OPENROUTER_API_KEY` 配置 OpenRouter key
 - 可通过 `OPENROUTER_DEEPSEEK_MODEL`、`OPENROUTER_QWEN_MODEL`、`OPENROUTER_MAX_OUTPUT_TOKENS` 控制模型与成本（默认 Qwen 走更快且实测可用的 `qwen/qwen-plus-2025-07-28`）
+- 可通过 `AI_GLOBAL_DAILY_BUDGET_USD`、`AI_DEEPSEEK_DAILY_BUDGET_USD`、`AI_QWEN_DAILY_BUDGET_USD` 控制 24h 预算上限
+- 可通过 `AI_GLOBAL_DAILY_REQUEST_LIMIT`、`AI_DEEPSEEK_DAILY_REQUEST_LIMIT`、`AI_QWEN_DAILY_REQUEST_LIMIT` 控制 24h 请求数上限
 - 防重放依赖 `REPLAY_GUARD` Durable Object
 
 ## Current Scope

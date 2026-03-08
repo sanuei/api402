@@ -75,6 +75,23 @@ export interface CatalogEndpoint {
     paymentPayload?: Record<string, unknown>;
   };
   exampleResponse?: Record<string, unknown>;
+  aiPolicy?: {
+    windowMs: number;
+    provider: string;
+    model: string;
+    maxInputChars: number;
+    maxMessages: number;
+    maxOutputTokens: number;
+    requestLimit: {
+      global: number;
+      endpoint: number;
+    };
+    dailyBudgetUsd: {
+      global: number;
+      endpoint: number;
+    };
+    quotaErrorCodes: string[];
+  } | null;
 }
 
 export interface CatalogResponse {

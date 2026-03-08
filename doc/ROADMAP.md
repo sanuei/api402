@@ -53,6 +53,7 @@
 - upstream telemetry 与 endpoint requestMetrics 已持久化到 Durable Objects，并用于 catalog snapshot 聚合（降低冷启动窗口丢失）
 - 已新增 `GET /api/v1/metrics/funnel`，支持 `window=24h|7d` 的 requestId 漏斗聚合导出（challenged402 / settled / replayed / conversion）
 - 已将 `/api/deepseek` 与 `/api/qwen` 接入 OpenRouter 真实上游，并补输入校验与输出 token 上限控制
+- 已为 AI 接口加入 24h 成本与请求数保护（rolling budget / request caps），超限时返回 machine-readable quota 错误码
 - 已创建 OpenClaw 每 15 分钟自动巡检与持续开发任务
 - 已补 `doc/DEPLOYMENT.md`，明确发布、回滚与故障诊断路径
 
@@ -134,7 +135,7 @@
 
 1. 将 metrics 持久层从单实例 DO 升级为可分片时间序列（按 endpoint/source hash）
 2. 将 request funnel 聚合升级为分片聚合/预计算索引，降低高流量下 DO 单实例读取压力
-3. 为 AI 类接口补成本统计、调用上限与 machine-readable quota 错误码
+3. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
 4. 继续把剩余 demo API 替换为真实上游并评估成本控制
 
 ## Operations

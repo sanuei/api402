@@ -20,6 +20,12 @@ export interface Env {
   OPENROUTER_MAX_INPUT_CHARS?: string;
   OPENROUTER_MAX_MESSAGES?: string;
   OPENROUTER_MAX_OUTPUT_TOKENS?: string;
+  AI_GLOBAL_DAILY_BUDGET_USD?: string;
+  AI_DEEPSEEK_DAILY_BUDGET_USD?: string;
+  AI_QWEN_DAILY_BUDGET_USD?: string;
+  AI_GLOBAL_DAILY_REQUEST_LIMIT?: string;
+  AI_DEEPSEEK_DAILY_REQUEST_LIMIT?: string;
+  AI_QWEN_DAILY_REQUEST_LIMIT?: string;
   PAYMENT_MIN_CONFIRMATIONS?: string;
   PAYMENT_MAX_AGE_SECONDS?: string;
   PAYMENT_MAX_FUTURE_SKEW_SECONDS?: string;
@@ -41,6 +47,7 @@ declare global {
   var upstreamCircuitState: Map<string, { failures: number; openUntil: number; lastErrorCode?: string }>;
   var upstreamTelemetryState: Map<string, UpstreamTelemetryEvent[]>;
   var endpointRequestMetricsState: Map<string, EndpointRequestMetricEvent[]>;
+  var aiUsageState: Map<string, AIUsageEvent[]>;
 }
 
 export interface APIEndpoint {
@@ -161,6 +168,13 @@ const DEFAULT_OPENROUTER_TEMPERATURE = 0.7;
 const OPENROUTER_HTTP_REFERER = 'https://api-402.com';
 const OPENROUTER_X_TITLE = 'API Market';
 const OPENROUTER_TIMEOUT_MS = 20_000;
+const AI_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD = 3;
+const DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD = 1.5;
+const DEFAULT_AI_QWEN_DAILY_BUDGET_USD = 1.5;
+const DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT = 200;
+const DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT = 120;
+const DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT = 80;
 const BASE_RPC_TIMEOUT_MS = 6000;
 const DEFAULT_PAYMENT_MIN_CONFIRMATIONS = 2;
 const DEFAULT_PAYMENT_MAX_AGE_SECONDS = 15 * 60;
@@ -377,7 +391,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers':
     'Content-Type, Authorization, PAYMENT-SIGNATURE, X-Payment-Proof, X-PAYMENT-TX-HASH, X-Request-Id',
   'Access-Control-Expose-Headers':
-    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason, X-Request-Id',
+    'X-Payment-Required, X-Pay-To, X-Price, X-Currency, X-Chain, X-Scheme, X-Payment-Reason, X-Request-Id, X-Quota-Reason',
 };
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -568,6 +582,19 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallback;
+  }
+
+  return parsed;
+}
+
+function parsePositiveFloat(value: string | undefined, fallback: number): number {
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number.parseFloat(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     return fallback;
   }
 
@@ -863,7 +890,8 @@ export class MetricsStoreDurableObject {
     if (request.method === 'POST' && url.pathname === '/append') {
       const payload = (await request.json()) as
         | { kind?: 'upstream'; key?: string; event?: UpstreamTelemetryEvent }
-        | { kind?: 'endpoint'; key?: string; event?: EndpointRequestMetricEvent };
+        | { kind?: 'endpoint'; key?: string; event?: EndpointRequestMetricEvent }
+        | { kind?: 'ai'; key?: string; event?: AIUsageEvent };
 
       if (!payload || typeof payload !== 'object' || !payload.kind || !payload.key || !payload.event) {
         return jsonResponse({ error: 'Invalid metrics payload' }, { status: 400 });
@@ -873,6 +901,10 @@ export class MetricsStoreDurableObject {
       if (payload.kind === 'upstream') {
         const existing = ((await this.state.storage.get<UpstreamTelemetryEvent[]>(storageKey)) || []).filter(Boolean);
         const next = pruneTelemetryEvents([...existing, payload.event as UpstreamTelemetryEvent], Date.now());
+        await this.state.storage.put(storageKey, next);
+      } else if (payload.kind === 'ai') {
+        const existing = ((await this.state.storage.get<AIUsageEvent[]>(storageKey)) || []).filter(Boolean);
+        const next = pruneAIUsageEvents([...existing, payload.event as AIUsageEvent], Date.now());
         await this.state.storage.put(storageKey, next);
       } else {
         const existing = ((await this.state.storage.get<EndpointRequestMetricEvent[]>(storageKey)) || []).filter(Boolean);
@@ -920,6 +952,33 @@ export class MetricsStoreDurableObject {
       return jsonResponse({ upstreamTelemetry, endpointMetrics });
     }
 
+    if (request.method === 'POST' && url.pathname === '/ai-usage-summary') {
+      const payload = (await request.json().catch(() => ({}))) as { now?: number; path?: string };
+      const now = Number(payload.now) || Date.now();
+      const path = typeof payload.path === 'string' ? payload.path : '';
+      const entries = await this.state.storage.list<AIUsageEvent[]>({ prefix: 'ai:' });
+      const allEvents: AIUsageEvent[] = [];
+      let endpointEvents: AIUsageEvent[] = [];
+
+      for (const [key, value] of entries.entries()) {
+        if (!Array.isArray(value)) {
+          continue;
+        }
+
+        const pruned = pruneAIUsageEvents(value as AIUsageEvent[], now);
+        allEvents.push(...pruned);
+        if (key === `ai:${path}`) {
+          endpointEvents = pruned;
+        }
+      }
+
+      return jsonResponse({
+        windowMs: AI_USAGE_WINDOW_MS,
+        global: summarizeAIUsageAggregate(allEvents, now),
+        endpoint: summarizeAIUsageAggregate(endpointEvents, now),
+      });
+    }
+
     if (request.method === 'POST' && url.pathname === '/funnel') {
       const payload = (await request.json().catch(() => ({}))) as { now?: number; window?: FunnelWindow };
       const now = Number(payload.now) || Date.now();
@@ -943,7 +1002,7 @@ export class MetricsStoreDurableObject {
 
   async alarm(): Promise<void> {
     const now = Date.now();
-    const entries = await this.state.storage.list<UpstreamTelemetryEvent[] | EndpointRequestMetricEvent[]>();
+    const entries = await this.state.storage.list<UpstreamTelemetryEvent[] | EndpointRequestMetricEvent[] | AIUsageEvent[]>();
 
     for (const [key, value] of entries.entries()) {
       if (!Array.isArray(value)) {
@@ -967,6 +1026,16 @@ export class MetricsStoreDurableObject {
           ENDPOINT_METRICS_DURABLE_RETENTION_MS,
           ENDPOINT_METRICS_DURABLE_MAX_EVENTS,
         );
+        if (next.length === 0) {
+          await this.state.storage.delete(key);
+        } else {
+          await this.state.storage.put(key, next);
+        }
+        continue;
+      }
+
+      if (key.startsWith('ai:')) {
+        const next = pruneAIUsageEvents(value as AIUsageEvent[], now);
         if (next.length === 0) {
           await this.state.storage.delete(key);
         } else {
@@ -1091,6 +1160,7 @@ function getCatalogEndpoint(
   baseUrl: string,
   payTo: string,
   endpoint: APIEndpoint,
+  env: Env,
   snapshot: MetricsSnapshot | null,
 ) {
   const now = Date.now();
@@ -1112,6 +1182,7 @@ function getCatalogEndpoint(
     deadline: '2026-03-08T16:00:00.000Z',
     issuedAt: '2026-03-08T15:55:00.000Z',
   } as Omit<PaymentPayload, 'signature'>);
+  const aiPolicy = isAIEndpointPath(endpoint.path) ? getAIProfitPolicy(endpoint.path, env) : null;
 
   return {
     path: endpoint.path,
@@ -1168,6 +1239,7 @@ function getCatalogEndpoint(
     requestMetrics,
     lastUpdatedAt,
     freshness,
+    aiPolicy,
     upstreamPolicy: endpoint.upstream
       ? {
           timeoutMs: UPSTREAM_TIMEOUT_MS,
@@ -1613,7 +1685,7 @@ export async function createCatalog(
       health: `${baseUrl}${HEALTH_PATH}`,
       catalog: `${baseUrl}${CATALOG_PATH}`,
     },
-    endpoints: API_ENDPOINTS.map((endpoint) => getCatalogEndpoint(baseUrl, payTo, endpoint, snapshot)),
+    endpoints: API_ENDPOINTS.map((endpoint) => getCatalogEndpoint(baseUrl, payTo, endpoint, env, snapshot)),
   };
 }
 
@@ -2272,6 +2344,45 @@ type AIRequestContext = {
   requestMode: 'preview_get' | 'post_chat';
 };
 
+type AIUsageEvent = {
+  at: number;
+  model: string;
+  costUsd: number;
+  totalTokens: number;
+};
+
+type AIUsageAggregate = {
+  totalRequests: number;
+  totalCostUsd: number;
+  oldestAt: string | null;
+};
+
+type AIUsageSummary = {
+  windowMs: number;
+  global: AIUsageAggregate;
+  endpoint: AIUsageAggregate;
+};
+
+type AIQuotaCode = 'AI_BUDGET_EXCEEDED' | 'AI_REQUEST_LIMIT_EXCEEDED';
+
+type AIProfitPolicy = {
+  windowMs: number;
+  provider: 'openrouter';
+  model: string;
+  maxInputChars: number;
+  maxMessages: number;
+  maxOutputTokens: number;
+  requestLimit: {
+    global: number;
+    endpoint: number;
+  };
+  dailyBudgetUsd: {
+    global: number;
+    endpoint: number;
+  };
+  quotaErrorCodes: AIQuotaCode[];
+};
+
 type EndpointRequestMetricEvent = {
   at: number;
   statusCode: number;
@@ -2321,11 +2432,41 @@ type FunnelSummary = {
   endpoints: EndpointFunnelSummary[];
 };
 
+function getAIUsageState(): Map<string, AIUsageEvent[]> {
+  if (!globalThis.aiUsageState) {
+    globalThis.aiUsageState = new Map();
+  }
+
+  return globalThis.aiUsageState;
+}
+
+function pruneAIUsageEvents(events: AIUsageEvent[], now: number): AIUsageEvent[] {
+  const windowStart = now - AI_USAGE_WINDOW_MS;
+  return events.filter((event) => event.at >= windowStart);
+}
+
+function recordAIUsage(path: string, event: AIUsageEvent): void {
+  const store = getAIUsageState();
+  const existing = store.get(path) || [];
+  store.set(path, pruneAIUsageEvents([...existing, event], event.at));
+}
+
+function summarizeAIUsageAggregate(events: AIUsageEvent[], now: number): AIUsageAggregate {
+  const inWindow = pruneAIUsageEvents(events, now);
+  const oldest = inWindow[0];
+  return {
+    totalRequests: inWindow.length,
+    totalCostUsd: Number(inWindow.reduce((sum, event) => sum + event.costUsd, 0).toFixed(6)),
+    oldestAt: oldest ? new Date(oldest.at).toISOString() : null,
+  };
+}
+
 async function appendDurableMetric(
   env: Env,
   payload:
     | { kind: 'upstream'; key: string; event: UpstreamTelemetryEvent }
-    | { kind: 'endpoint'; key: string; event: EndpointRequestMetricEvent },
+    | { kind: 'endpoint'; key: string; event: EndpointRequestMetricEvent }
+    | { kind: 'ai'; key: string; event: AIUsageEvent },
 ): Promise<void> {
   if (!env.METRICS_STORE) {
     return;
@@ -2344,6 +2485,11 @@ async function appendDurableMetric(
   } catch (error) {
     console.error('metrics store append failed', error);
   }
+}
+
+async function recordAIUsageWithDurable(env: Env, path: string, event: AIUsageEvent): Promise<void> {
+  recordAIUsage(path, event);
+  await appendDurableMetric(env, { kind: 'ai', key: path, event });
 }
 
 async function getDurableMetricsSnapshot(env: Env, now: number): Promise<MetricsSnapshot | null> {
@@ -2365,6 +2511,33 @@ async function getDurableMetricsSnapshot(env: Env, now: number): Promise<Metrics
     return (await response.json()) as MetricsSnapshot;
   } catch (error) {
     console.error('metrics store snapshot failed', error);
+    return null;
+  }
+}
+
+async function getDurableAIUsageSummary(
+  env: Env,
+  path: string,
+  now: number,
+): Promise<AIUsageSummary | null> {
+  if (!env.METRICS_STORE) {
+    return null;
+  }
+
+  try {
+    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
+    const response = await stub.fetch('https://metrics-store/ai-usage-summary', {
+      method: 'POST',
+      body: JSON.stringify({ now, path }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`metrics store ai usage ${response.status}`);
+    }
+
+    return (await response.json()) as AIUsageSummary;
+  } catch (error) {
+    console.error('metrics store ai usage failed', error);
     return null;
   }
 }
@@ -2563,6 +2736,32 @@ function getOpenRouterModel(path: string, env: Env): string {
   return env.OPENROUTER_DEEPSEEK_MODEL || DEFAULT_OPENROUTER_DEEPSEEK_MODEL;
 }
 
+function getAIProfitPolicy(path: string, env: Env): AIProfitPolicy {
+  return {
+    windowMs: AI_USAGE_WINDOW_MS,
+    provider: 'openrouter',
+    model: getOpenRouterModel(path, env),
+    maxInputChars: parsePositiveInt(env.OPENROUTER_MAX_INPUT_CHARS, DEFAULT_OPENROUTER_MAX_INPUT_CHARS),
+    maxMessages: parsePositiveInt(env.OPENROUTER_MAX_MESSAGES, DEFAULT_OPENROUTER_MAX_MESSAGES),
+    maxOutputTokens: parsePositiveInt(env.OPENROUTER_MAX_OUTPUT_TOKENS, DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS),
+    requestLimit: {
+      global: parsePositiveInt(env.AI_GLOBAL_DAILY_REQUEST_LIMIT, DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT),
+      endpoint: parsePositiveInt(
+        path === '/api/qwen' ? env.AI_QWEN_DAILY_REQUEST_LIMIT : env.AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
+        path === '/api/qwen' ? DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT : DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
+      ),
+    },
+    dailyBudgetUsd: {
+      global: parsePositiveFloat(env.AI_GLOBAL_DAILY_BUDGET_USD, DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD),
+      endpoint: parsePositiveFloat(
+        path === '/api/qwen' ? env.AI_QWEN_DAILY_BUDGET_USD : env.AI_DEEPSEEK_DAILY_BUDGET_USD,
+        path === '/api/qwen' ? DEFAULT_AI_QWEN_DAILY_BUDGET_USD : DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD,
+      ),
+    },
+    quotaErrorCodes: ['AI_BUDGET_EXCEEDED', 'AI_REQUEST_LIMIT_EXCEEDED'],
+  };
+}
+
 function buildDefaultAIPrompt(path: string): string {
   if (path === '/api/qwen') {
     return '请用一句中文介绍 API402 的按次付费 API 调用方式。';
@@ -2616,6 +2815,95 @@ function createBadRequestResponse(message: string, requestId: string): Response 
       headers: { [REQUEST_ID_HEADER]: requestId },
     },
   );
+}
+
+function getInMemoryAIUsageSummary(path: string, now: number): AIUsageSummary {
+  const store = getAIUsageState();
+  const allEvents = [...store.values()].flatMap((events) => events);
+  const endpointEvents = store.get(path) || [];
+
+  return {
+    windowMs: AI_USAGE_WINDOW_MS,
+    global: summarizeAIUsageAggregate(allEvents, now),
+    endpoint: summarizeAIUsageAggregate(endpointEvents, now),
+  };
+}
+
+function buildAIQuotaResponse(
+  path: string,
+  requestId: string,
+  code: AIQuotaCode,
+  policy: AIProfitPolicy,
+  summary: AIUsageSummary,
+): Response {
+  const oldestAt = summary.endpoint.oldestAt || summary.global.oldestAt;
+  const retryAfterSeconds = oldestAt
+    ? Math.max(1, Math.ceil((Date.parse(oldestAt) + summary.windowMs - Date.now()) / 1000))
+    : Math.ceil(summary.windowMs / 1000);
+
+  return apiResponse(
+    {
+      error: 'AI quota exceeded',
+      code,
+      requestId,
+      path,
+      quota: {
+        windowHours: Math.round(summary.windowMs / (60 * 60 * 1000)),
+        provider: policy.provider,
+        model: policy.model,
+        current: {
+          globalRequests: summary.global.totalRequests,
+          endpointRequests: summary.endpoint.totalRequests,
+          globalCostUsd: summary.global.totalCostUsd,
+          endpointCostUsd: summary.endpoint.totalCostUsd,
+        },
+        limits: {
+          globalRequests: policy.requestLimit.global,
+          endpointRequests: policy.requestLimit.endpoint,
+          globalBudgetUsd: policy.dailyBudgetUsd.global,
+          endpointBudgetUsd: policy.dailyBudgetUsd.endpoint,
+        },
+      },
+    },
+    {
+      status: 429,
+      headers: {
+        [REQUEST_ID_HEADER]: requestId,
+        'Retry-After': String(retryAfterSeconds),
+        'X-Quota-Reason': code,
+      },
+    },
+  );
+}
+
+async function enforceAIProfitProtection(
+  path: string,
+  env: Env,
+  requestId: string,
+): Promise<Response | null> {
+  if (!isAIEndpointPath(path)) {
+    return null;
+  }
+
+  const now = Date.now();
+  const policy = getAIProfitPolicy(path, env);
+  const summary = (await getDurableAIUsageSummary(env, path, now)) || getInMemoryAIUsageSummary(path, now);
+
+  if (
+    summary.global.totalCostUsd >= policy.dailyBudgetUsd.global ||
+    summary.endpoint.totalCostUsd >= policy.dailyBudgetUsd.endpoint
+  ) {
+    return buildAIQuotaResponse(path, requestId, 'AI_BUDGET_EXCEEDED', policy, summary);
+  }
+
+  if (
+    summary.global.totalRequests >= policy.requestLimit.global ||
+    summary.endpoint.totalRequests >= policy.requestLimit.endpoint
+  ) {
+    return buildAIQuotaResponse(path, requestId, 'AI_REQUEST_LIMIT_EXCEEDED', policy, summary);
+  }
+
+  return null;
 }
 
 async function prepareAIRequestContext(
@@ -3108,6 +3396,10 @@ async function fetchUpstreamData(
           prompt_tokens?: number;
           completion_tokens?: number;
           total_tokens?: number;
+          cost?: number;
+          cost_details?: {
+            upstream_inference_cost?: number;
+          };
         };
       };
 
@@ -3118,6 +3410,19 @@ async function fetchUpstreamData(
       }
 
       await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
+      const costUsd = Number(
+        (
+          payload.usage?.cost ??
+          payload.usage?.cost_details?.upstream_inference_cost ??
+          0
+        ).toFixed?.(6) || 0,
+      );
+      await recordAIUsageWithDurable(env, path, {
+        at: Date.now(),
+        model: payload.model || model,
+        costUsd: Number.isFinite(costUsd) ? costUsd : 0,
+        totalTokens: payload.usage?.total_tokens ?? 0,
+      });
       return {
         data: {
           source: 'openrouter',
@@ -3345,6 +3650,18 @@ const worker = {
           upstreamReasonCode: null,
         });
         return response;
+      }
+
+      const aiQuotaResponse = await enforceAIProfitProtection(path, env, requestId);
+      if (aiQuotaResponse) {
+        await recordEndpointRequestMetricWithDurable(env, path, {
+          at: Date.now(),
+          statusCode: aiQuotaResponse.status,
+          requestId,
+          paymentCode: verification.code,
+          upstreamReasonCode: null,
+        });
+        return aiQuotaResponse;
       }
 
       const upstreamResult = await fetchUpstreamData(path, env, preparedAIRequest.context);

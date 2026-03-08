@@ -4,6 +4,48 @@
 
 ### 本轮目标
 
+- 为已接入 OpenRouter 的 AI 接口补上成本与利润保护，避免 demo / 外部流量把上游余额打穿
+
+### 已完成
+
+- Worker 新增 AI 24h 滚动配额保护：
+  - 预算上限：`AI_GLOBAL_DAILY_BUDGET_USD` / `AI_DEEPSEEK_DAILY_BUDGET_USD` / `AI_QWEN_DAILY_BUDGET_USD`
+  - 请求上限：`AI_GLOBAL_DAILY_REQUEST_LIMIT` / `AI_DEEPSEEK_DAILY_REQUEST_LIMIT` / `AI_QWEN_DAILY_REQUEST_LIMIT`
+- OpenRouter 成功响应的真实 `usage.cost` / token 使用量现在会持久化到 Metrics Durable Object
+- AI 调用在超额时会提前返回 `429`，不会继续请求上游
+- 新增机器可读错误码与响应头：
+  - `AI_BUDGET_EXCEEDED`
+  - `AI_REQUEST_LIMIT_EXCEEDED`
+  - `X-Quota-Reason`
+- catalog 已新增 `aiPolicy` 字段，暴露 AI 请求限制和 quota 错误码，方便后续 SDK / 前端使用
+- 测试新增覆盖：
+  - 预算超额阻断
+  - 请求数超额阻断
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [src/types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [wrangler.toml](/Users/yangshangwei/Desktop/网页项目/api402/wrangler.toml)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 27 个测试全部通过
+
+### 下一步建议
+
+1. 做 AI 成本 / 毛利可视化，直接看到收入与上游消耗差值
+2. 将 Metrics DO 升级为分片聚合，降低高流量单实例压力
+3. 继续扩充更高价值的 live API
+
+## 2026-03-08
+
+### 本轮目标
+
 - 将 `/api/deepseek` 与 `/api/qwen` 从 demo/mock 升级为真实可付费 AI 上游，并接入用户提供的 OpenRouter key
 
 ### 已完成
