@@ -4,6 +4,49 @@
 
 ### 本轮目标
 
+- 从“功能堆叠”转向“产品重构”，补商业化方向文档、网页 API 快速目录，并把最新旗舰模型入口接进真实上游
+
+### 已完成
+
+- 新增产品级方案文档 [PRODUCT_REBUILD_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PRODUCT_REBUILD_PLAN.md)，明确：
+  - `最新模型按次体验` 作为获客入口
+  - `Web3 + AI 风控 / 情报 / 执行辅助接口` 作为后续利润中心
+  - 低价值价格接口降级为 demo / 联调角色
+- 首页 catalog 新增左侧 API 快速目录：
+  - 支持按分类浏览
+  - 支持点击目录同步高亮右侧卡片
+  - 新模型变多后仍可快速定位
+- 新增三个真实 OpenRouter 模型入口：
+  - `/api/gpt-5.4`
+  - `/api/gpt-5.4-pro`
+  - `/api/claude-4.6`
+- AI 配额策略从只支持 `deepseek/qwen` 的分支判断，改成按 endpoint 配置映射，便于后续继续扩模型
+- `wrangler.toml` 已补对应模型、预算和请求上限配置
+- 测试已补 catalog 暴露与新模型代理验证
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker/upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [catalog.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/catalog.ts)
+- [bootstrap.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/bootstrap.ts)
+- [styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+- [i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [PRODUCT_REBUILD_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PRODUCT_REBUILD_PLAN.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 把 `wallet-risk` 做成下一批真正更容易赚钱的高价值接口
+2. 把首页 Hero 和 pricing 说明从“支付网关介绍”改成“按次体验最新模型”
+3. 给 `GPT-5.4` / `Claude 4.6` 补 quickstart 和真实调用示例
+
+## 2026-03-08
+
+### 本轮目标
+
 - 继续做后端结构优化，把 settlement/status 查询与证明校验路由从 `worker/index.ts` 中抽离出去
 
 ### 已完成

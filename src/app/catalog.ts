@@ -122,6 +122,58 @@ export function setSelectedEndpoint(endpoint: CatalogEndpoint | null) {
   document.querySelectorAll<HTMLElement>('.api-card').forEach((card) => {
     card.classList.toggle('active', card.dataset.endpointPath === endpoint.path);
   });
+  document.querySelectorAll<HTMLElement>('.api-directory-item').forEach((item) => {
+    item.classList.toggle('active', item.dataset.endpointPath === endpoint.path);
+  });
+}
+
+export function renderCatalogDirectory(endpoints: CatalogEndpoint[]) {
+  const directory = getElement<HTMLDivElement>('catalogDirectory');
+  const groups = new Map<string, CatalogEndpoint[]>();
+
+  endpoints.forEach((endpoint) => {
+    const localized = getLocalizedFields(endpoint);
+    const current = groups.get(localized.category) || [];
+    current.push(endpoint);
+    groups.set(localized.category, current);
+  });
+
+  directory.innerHTML = [...groups.entries()]
+    .map(([category, items]) => {
+      const itemHtml = items
+        .map((endpoint) => {
+          const localized = getLocalizedFields(endpoint);
+          return `
+            <button
+              type="button"
+              class="api-directory-item rounded-2xl px-4 py-3 mt-2"
+              data-endpoint-path="${escapeHtml(endpoint.path)}"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div>
+                  <div class="font-semibold">${escapeHtml(localized.label)}</div>
+                  <div class="mt-1 text-xs text-slate-500 mono">${escapeHtml(endpoint.path)}</div>
+                </div>
+                <div class="text-right">
+                  <div class="text-xs text-[#33f0b2] mono">${escapeHtml(endpoint.price)} USDC</div>
+                  <div class="mt-1 text-[10px] uppercase tracking-[0.15em] text-slate-500">${escapeHtml(
+                    endpoint.method || 'GET',
+                  )}</div>
+                </div>
+              </div>
+            </button>
+          `;
+        })
+        .join('');
+
+      return `
+        <div class="api-directory-section">
+          <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono">${escapeHtml(category)}</div>
+          ${itemHtml}
+        </div>
+      `;
+    })
+    .join('');
 }
 
 export function renderCatalog(endpoints: CatalogEndpoint[]) {
@@ -233,6 +285,7 @@ export async function loadCatalog() {
     getElement<HTMLAnchorElement>('catalogLink').href = `${API_BASE}/api/v1/catalog`;
 
     updatePaymentModule();
+    renderCatalogDirectory(state.catalog.endpoints);
     renderCatalog(state.catalog.endpoints);
     setSelectedEndpoint(state.catalog.endpoints[0] || null);
   } catch {
@@ -245,6 +298,7 @@ export async function loadCatalog() {
         </p>
       </div>
     `;
+    getElement<HTMLDivElement>('catalogDirectory').innerHTML = '';
     updatePaymentModule();
     setHeroTerminal(null);
   }

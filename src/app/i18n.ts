@@ -33,6 +33,8 @@ const translations: Record<Language, Record<string, string>> = {
     'catalog.title': '可直接给 Agent 调用的 API 目录',
     'catalog.description':
       '前端和 SDK 都从同一份 catalog 读取价格、说明和支付要求。避免页面说一套、网关跑一套。',
+    'catalog.directory': 'API 快速目录',
+    'catalog.directoryHint': '先按分类快速定位，再在右侧查看卡片细节与价格。',
     'catalog.openCatalog': '打开 /api/v1/catalog',
     'catalog.openHealth': '打开 /api/v1/health',
     'flow.kicker': '开发者工作流',
@@ -212,6 +214,8 @@ const translations: Record<Language, Record<string, string>> = {
     'catalog.title': 'API catalog built for agents and direct integrations',
     'catalog.description':
       'The frontend and future SDKs read the same catalog for price, descriptions, and payment requirements so the product page and gateway stay aligned.',
+    'catalog.directory': 'API Directory',
+    'catalog.directoryHint': 'Jump by category first, then inspect pricing and details on the right.',
     'catalog.openCatalog': 'Open /api/v1/catalog',
     'catalog.openHealth': 'Open /api/v1/health',
     'flow.kicker': 'Builder Workflow',

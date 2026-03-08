@@ -1,4 +1,4 @@
-import { executeRequest, loadCatalog, loadHealth, setHeroTerminal, setSelectedEndpoint, testAPI, updatePaymentModule, copyGatewayAddress, closeModal, renderCatalog } from './catalog';
+import { executeRequest, loadCatalog, loadHealth, setHeroTerminal, setSelectedEndpoint, testAPI, updatePaymentModule, copyGatewayAddress, closeModal, renderCatalog, renderCatalogDirectory } from './catalog';
 import { getElement } from './dom';
 import { applyStaticTranslations, syncLanguageUrl, t } from './i18n';
 import { state, LANGUAGE_STORAGE_KEY, type Language } from './state';
@@ -11,6 +11,7 @@ function setLanguage(language: Language) {
   applyStaticTranslations();
   updatePaymentModule();
   if (state.catalog) {
+    renderCatalogDirectory(state.catalog.endpoints);
     renderCatalog(state.catalog.endpoints);
     setSelectedEndpoint(state.selectedEndpoint || state.catalog.endpoints[0] || null);
   }
@@ -101,6 +102,17 @@ function bindEvents() {
     }
 
     const endpoint = state.catalog.endpoints.find((item) => item.path === card.dataset.endpointPath);
+    setSelectedEndpoint(endpoint || state.catalog.endpoints[0] || null);
+  });
+
+  getElement<HTMLDivElement>('catalogDirectory').addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    const item = target?.closest<HTMLElement>('[data-endpoint-path]');
+    if (!item?.dataset.endpointPath || !state.catalog) {
+      return;
+    }
+
+    const endpoint = state.catalog.endpoints.find((entry) => entry.path === item.dataset.endpointPath);
     setSelectedEndpoint(endpoint || state.catalog.endpoints[0] || null);
   });
 }

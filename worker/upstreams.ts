@@ -1,6 +1,9 @@
 export const DEFAULT_OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
 export const DEFAULT_OPENROUTER_DEEPSEEK_MODEL = 'deepseek/deepseek-v3.2';
 export const DEFAULT_OPENROUTER_QWEN_MODEL = 'qwen/qwen-plus-2025-07-28';
+export const DEFAULT_OPENROUTER_GPT54_MODEL = 'openai/gpt-5.4';
+export const DEFAULT_OPENROUTER_GPT54_PRO_MODEL = 'openai/gpt-5.4-pro';
+export const DEFAULT_OPENROUTER_CLAUDE46_MODEL = 'anthropic/claude-sonnet-4.6';
 export const DEFAULT_OPENROUTER_MAX_INPUT_CHARS = 4000;
 export const DEFAULT_OPENROUTER_MAX_MESSAGES = 12;
 export const DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS = 256;
@@ -8,9 +11,15 @@ export const DEFAULT_OPENROUTER_TEMPERATURE = 0.7;
 export const DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD = 3;
 export const DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD = 1.5;
 export const DEFAULT_AI_QWEN_DAILY_BUDGET_USD = 1.5;
+export const DEFAULT_AI_GPT54_DAILY_BUDGET_USD = 0.8;
+export const DEFAULT_AI_GPT54_PRO_DAILY_BUDGET_USD = 0.5;
+export const DEFAULT_AI_CLAUDE46_DAILY_BUDGET_USD = 0.8;
 export const DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT = 200;
 export const DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT = 120;
 export const DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT = 80;
+export const DEFAULT_AI_GPT54_DAILY_REQUEST_LIMIT = 30;
+export const DEFAULT_AI_GPT54_PRO_DAILY_REQUEST_LIMIT = 12;
+export const DEFAULT_AI_CLAUDE46_DAILY_REQUEST_LIMIT = 24;
 export const OPENROUTER_HTTP_REFERER = 'https://api-402.com';
 export const OPENROUTER_X_TITLE = 'API Market';
 export const OPENROUTER_TIMEOUT_MS = 20_000;
@@ -122,18 +131,79 @@ export interface UpstreamEnv {
   OPENROUTER_API_BASE?: string;
   OPENROUTER_DEEPSEEK_MODEL?: string;
   OPENROUTER_QWEN_MODEL?: string;
+  OPENROUTER_GPT54_MODEL?: string;
+  OPENROUTER_GPT54_PRO_MODEL?: string;
+  OPENROUTER_CLAUDE46_MODEL?: string;
 }
 
+export const AI_ENDPOINT_PATHS = [
+  '/api/deepseek',
+  '/api/qwen',
+  '/api/gpt-5.4',
+  '/api/gpt-5.4-pro',
+  '/api/claude-4.6',
+] as const;
+
+export type AIEndpointPath = (typeof AI_ENDPOINT_PATHS)[number];
+
+export const AI_ENDPOINT_DEFAULTS: Record<
+  AIEndpointPath,
+  {
+    model: string;
+    budgetUsd: number;
+    requestLimit: number;
+    prompt: string;
+  }
+> = {
+  '/api/deepseek': {
+    model: DEFAULT_OPENROUTER_DEEPSEEK_MODEL,
+    budgetUsd: DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD,
+    requestLimit: DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
+    prompt: 'Explain API402 pay-per-call APIs in one concise sentence.',
+  },
+  '/api/qwen': {
+    model: DEFAULT_OPENROUTER_QWEN_MODEL,
+    budgetUsd: DEFAULT_AI_QWEN_DAILY_BUDGET_USD,
+    requestLimit: DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT,
+    prompt: '请用一句中文介绍 API402 的按次付费 API 调用方式。',
+  },
+  '/api/gpt-5.4': {
+    model: DEFAULT_OPENROUTER_GPT54_MODEL,
+    budgetUsd: DEFAULT_AI_GPT54_DAILY_BUDGET_USD,
+    requestLimit: DEFAULT_AI_GPT54_DAILY_REQUEST_LIMIT,
+    prompt: 'Summarize why pay-per-call AI APIs are useful for builders in one sentence.',
+  },
+  '/api/gpt-5.4-pro': {
+    model: DEFAULT_OPENROUTER_GPT54_PRO_MODEL,
+    budgetUsd: DEFAULT_AI_GPT54_PRO_DAILY_BUDGET_USD,
+    requestLimit: DEFAULT_AI_GPT54_PRO_DAILY_REQUEST_LIMIT,
+    prompt: 'Review an API product idea in one crisp paragraph with one risk and one upside.',
+  },
+  '/api/claude-4.6': {
+    model: DEFAULT_OPENROUTER_CLAUDE46_MODEL,
+    budgetUsd: DEFAULT_AI_CLAUDE46_DAILY_BUDGET_USD,
+    requestLimit: DEFAULT_AI_CLAUDE46_DAILY_REQUEST_LIMIT,
+    prompt: 'Explain, in one concise paragraph, how to safely expose a paid API to AI agents.',
+  },
+};
+
 export function isAIEndpointPath(path: string): boolean {
-  return path === '/api/deepseek' || path === '/api/qwen';
+  return AI_ENDPOINT_PATHS.includes(path as AIEndpointPath);
 }
 
 export function getOpenRouterModel(path: string, env: UpstreamEnv): string {
-  if (path === '/api/qwen') {
-    return env.OPENROUTER_QWEN_MODEL || DEFAULT_OPENROUTER_QWEN_MODEL;
+  switch (path) {
+    case '/api/qwen':
+      return env.OPENROUTER_QWEN_MODEL || DEFAULT_OPENROUTER_QWEN_MODEL;
+    case '/api/gpt-5.4':
+      return env.OPENROUTER_GPT54_MODEL || DEFAULT_OPENROUTER_GPT54_MODEL;
+    case '/api/gpt-5.4-pro':
+      return env.OPENROUTER_GPT54_PRO_MODEL || DEFAULT_OPENROUTER_GPT54_PRO_MODEL;
+    case '/api/claude-4.6':
+      return env.OPENROUTER_CLAUDE46_MODEL || DEFAULT_OPENROUTER_CLAUDE46_MODEL;
+    default:
+      return env.OPENROUTER_DEEPSEEK_MODEL || DEFAULT_OPENROUTER_DEEPSEEK_MODEL;
   }
-
-  return env.OPENROUTER_DEEPSEEK_MODEL || DEFAULT_OPENROUTER_DEEPSEEK_MODEL;
 }
 
 async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
@@ -212,6 +282,9 @@ export async function fetchUpstreamData(
     '/api/eth-price': 'binance',
     '/api/deepseek': 'openrouter',
     '/api/qwen': 'openrouter',
+    '/api/gpt-5.4': 'openrouter',
+    '/api/gpt-5.4-pro': 'openrouter',
+    '/api/claude-4.6': 'openrouter',
     '/api/whale-positions': 'hyperliquid',
     '/api/kline': 'binance',
   };
@@ -417,7 +490,7 @@ export async function fetchUpstreamData(
       };
     }
 
-    if (path === '/api/deepseek' || path === '/api/qwen') {
+    if (isAIEndpointPath(path)) {
       if (!aiContext) {
         throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing ai request context', retryable: false } as UpstreamFailure;
       }
@@ -529,11 +602,11 @@ export async function fetchUpstreamData(
 }
 
 export function buildDefaultAIPrompt(path: string): string {
-  if (path === '/api/qwen') {
-    return '请用一句中文介绍 API402 的按次付费 API 调用方式。';
+  if (isAIEndpointPath(path)) {
+    return AI_ENDPOINT_DEFAULTS[path as AIEndpointPath].prompt;
   }
 
-  return 'Explain API402 pay-per-call APIs in one concise sentence.';
+  return AI_ENDPOINT_DEFAULTS['/api/deepseek'].prompt;
 }
 
 export function normalizeAIMessageContent(content: unknown): string | null {

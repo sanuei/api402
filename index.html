@@ -196,7 +196,16 @@
                     </div>
                 </div>
 
-                <div id="catalogGrid" class="grid md:grid-cols-2 xl:grid-cols-3 gap-5"></div>
+                <div class="grid xl:grid-cols-[280px_minmax(0,1fr)] gap-5 items-start">
+                    <aside class="soft-card rounded-[28px] p-5 xl:sticky xl:top-24">
+                        <div class="kicker mb-3" data-i18n="catalog.directory">API 快速目录</div>
+                        <p class="text-sm text-slate-400 leading-6" data-i18n="catalog.directoryHint">
+                            先按分类快速定位，再在右侧查看卡片细节与价格。
+                        </p>
+                        <div id="catalogDirectory" class="mt-5 space-y-3"></div>
+                    </aside>
+                    <div id="catalogGrid" class="grid md:grid-cols-2 xl:grid-cols-2 2xl:grid-cols-3 gap-5"></div>
+                </div>
             </div>
         </section>
 

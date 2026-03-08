@@ -51,14 +51,15 @@ import {
 } from './payment';
 import {
   AI_USAGE_WINDOW_MS,
-  DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD,
-  DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
+  AI_ENDPOINT_DEFAULTS,
+  type AIEndpointPath,
   DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD,
   DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT,
-  DEFAULT_AI_QWEN_DAILY_BUDGET_USD,
-  DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT,
   DEFAULT_OPENROUTER_API_BASE,
+  DEFAULT_OPENROUTER_CLAUDE46_MODEL,
   DEFAULT_OPENROUTER_DEEPSEEK_MODEL,
+  DEFAULT_OPENROUTER_GPT54_MODEL,
+  DEFAULT_OPENROUTER_GPT54_PRO_MODEL,
   DEFAULT_OPENROUTER_MAX_INPUT_CHARS,
   DEFAULT_OPENROUTER_MAX_MESSAGES,
   DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS,
@@ -99,15 +100,24 @@ export interface Env {
   OPENROUTER_API_BASE?: string;
   OPENROUTER_DEEPSEEK_MODEL?: string;
   OPENROUTER_QWEN_MODEL?: string;
+  OPENROUTER_GPT54_MODEL?: string;
+  OPENROUTER_GPT54_PRO_MODEL?: string;
+  OPENROUTER_CLAUDE46_MODEL?: string;
   OPENROUTER_MAX_INPUT_CHARS?: string;
   OPENROUTER_MAX_MESSAGES?: string;
   OPENROUTER_MAX_OUTPUT_TOKENS?: string;
   AI_GLOBAL_DAILY_BUDGET_USD?: string;
   AI_DEEPSEEK_DAILY_BUDGET_USD?: string;
   AI_QWEN_DAILY_BUDGET_USD?: string;
+  AI_GPT54_DAILY_BUDGET_USD?: string;
+  AI_GPT54_PRO_DAILY_BUDGET_USD?: string;
+  AI_CLAUDE46_DAILY_BUDGET_USD?: string;
   AI_GLOBAL_DAILY_REQUEST_LIMIT?: string;
   AI_DEEPSEEK_DAILY_REQUEST_LIMIT?: string;
   AI_QWEN_DAILY_REQUEST_LIMIT?: string;
+  AI_GPT54_DAILY_REQUEST_LIMIT?: string;
+  AI_GPT54_PRO_DAILY_REQUEST_LIMIT?: string;
+  AI_CLAUDE46_DAILY_REQUEST_LIMIT?: string;
   PAYMENT_MIN_CONFIRMATIONS?: string;
   PAYMENT_MAX_AGE_SECONDS?: string;
   PAYMENT_MAX_FUTURE_SKEW_SECONDS?: string;
@@ -232,6 +242,66 @@ export const API_ENDPOINTS: APIEndpoint[] = [
       model: DEFAULT_OPENROUTER_QWEN_MODEL,
       response: 'API402 支持在 Base 上用 USDC 按次付费调用 API。',
       usage: { promptTokens: 20, completionTokens: 16, totalTokens: 36 },
+    }),
+  },
+  {
+    path: '/api/gpt-5.4',
+    price: '0.03',
+    method: 'POST',
+    label: { zh: 'GPT-5.4 对话', en: 'GPT-5.4 Chat' },
+    description: {
+      zh: '基于 OpenRouter 的 GPT-5.4 按次调用入口，适合临时体验最新 OpenAI 模型。',
+      en: 'Pay-per-call access to GPT-5.4 via OpenRouter for lightweight trials of the latest OpenAI model.',
+    },
+    category: { zh: '旗舰模型', en: 'Frontier Models' },
+    upstream: 'openrouter',
+    tags: ['ai', 'chat', 'gpt-5.4', 'openai', 'openrouter', 'latest'],
+    status: 'live',
+    sample: () => ({
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_GPT54_MODEL,
+      response: 'GPT-5.4 is useful when you need strong general reasoning without a monthly subscription.',
+      usage: { promptTokens: 22, completionTokens: 30, totalTokens: 52 },
+    }),
+  },
+  {
+    path: '/api/gpt-5.4-pro',
+    price: '0.12',
+    method: 'POST',
+    label: { zh: 'GPT-5.4 Pro 深度推理', en: 'GPT-5.4 Pro Reasoning' },
+    description: {
+      zh: '面向高价值深度推理任务的 GPT-5.4 Pro 按次调用入口，适合代码审查和复杂分析。',
+      en: 'High-value pay-per-call access to GPT-5.4 Pro for deeper reasoning, code review, and complex analysis.',
+    },
+    category: { zh: '旗舰模型', en: 'Frontier Models' },
+    upstream: 'openrouter',
+    tags: ['ai', 'reasoning', 'gpt-5.4-pro', 'openai', 'premium'],
+    status: 'live',
+    sample: () => ({
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_GPT54_PRO_MODEL,
+      response: 'GPT-5.4 Pro is best reserved for expensive, high-confidence reasoning tasks.',
+      usage: { promptTokens: 48, completionTokens: 72, totalTokens: 120 },
+    }),
+  },
+  {
+    path: '/api/claude-4.6',
+    price: '0.04',
+    method: 'POST',
+    label: { zh: 'Claude 4.6 对话', en: 'Claude 4.6 Chat' },
+    description: {
+      zh: '基于 OpenRouter 的 Claude 4.6 按次调用入口，适合长上下文写作、审阅和 agent 安全说明。',
+      en: 'Pay-per-call Claude 4.6 access via OpenRouter for long-context writing, review, and agent-safe explanations.',
+    },
+    category: { zh: '旗舰模型', en: 'Frontier Models' },
+    upstream: 'openrouter',
+    tags: ['ai', 'chat', 'claude-4.6', 'anthropic', 'openrouter', 'latest'],
+    status: 'live',
+    sample: () => ({
+      source: 'openrouter',
+      model: DEFAULT_OPENROUTER_CLAUDE46_MODEL,
+      response: 'Claude 4.6 is useful when you want strong writing and careful instruction following without a separate subscription.',
+      usage: { promptTokens: 28, completionTokens: 34, totalTokens: 62 },
     }),
   },
   {
@@ -1974,6 +2044,23 @@ async function recordUpstreamFailureWithDurable(
 }
 
 function getAIProfitPolicy(path: string, env: Env): AIProfitPolicy {
+  const endpointPath = path as AIEndpointPath;
+  const budgetEnvByPath: Partial<Record<AIEndpointPath, string | undefined>> = {
+    '/api/deepseek': env.AI_DEEPSEEK_DAILY_BUDGET_USD,
+    '/api/qwen': env.AI_QWEN_DAILY_BUDGET_USD,
+    '/api/gpt-5.4': env.AI_GPT54_DAILY_BUDGET_USD,
+    '/api/gpt-5.4-pro': env.AI_GPT54_PRO_DAILY_BUDGET_USD,
+    '/api/claude-4.6': env.AI_CLAUDE46_DAILY_BUDGET_USD,
+  };
+  const requestLimitEnvByPath: Partial<Record<AIEndpointPath, string | undefined>> = {
+    '/api/deepseek': env.AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
+    '/api/qwen': env.AI_QWEN_DAILY_REQUEST_LIMIT,
+    '/api/gpt-5.4': env.AI_GPT54_DAILY_REQUEST_LIMIT,
+    '/api/gpt-5.4-pro': env.AI_GPT54_PRO_DAILY_REQUEST_LIMIT,
+    '/api/claude-4.6': env.AI_CLAUDE46_DAILY_REQUEST_LIMIT,
+  };
+  const defaults = AI_ENDPOINT_DEFAULTS[endpointPath] || AI_ENDPOINT_DEFAULTS['/api/deepseek'];
+
   return {
     windowMs: AI_USAGE_WINDOW_MS,
     provider: 'openrouter',
@@ -1983,17 +2070,11 @@ function getAIProfitPolicy(path: string, env: Env): AIProfitPolicy {
     maxOutputTokens: parsePositiveInt(env.OPENROUTER_MAX_OUTPUT_TOKENS, DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS),
     requestLimit: {
       global: parsePositiveInt(env.AI_GLOBAL_DAILY_REQUEST_LIMIT, DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT),
-      endpoint: parsePositiveInt(
-        path === '/api/qwen' ? env.AI_QWEN_DAILY_REQUEST_LIMIT : env.AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
-        path === '/api/qwen' ? DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT : DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
-      ),
+      endpoint: parsePositiveInt(requestLimitEnvByPath[endpointPath], defaults.requestLimit),
     },
     dailyBudgetUsd: {
       global: parsePositiveFloat(env.AI_GLOBAL_DAILY_BUDGET_USD, DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD),
-      endpoint: parsePositiveFloat(
-        path === '/api/qwen' ? env.AI_QWEN_DAILY_BUDGET_USD : env.AI_DEEPSEEK_DAILY_BUDGET_USD,
-        path === '/api/qwen' ? DEFAULT_AI_QWEN_DAILY_BUDGET_USD : DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD,
-      ),
+      endpoint: parsePositiveFloat(budgetEnvByPath[endpointPath], defaults.budgetUsd),
     },
     quotaErrorCodes: ['AI_BUDGET_EXCEEDED', 'AI_REQUEST_LIMIT_EXCEEDED'],
   };

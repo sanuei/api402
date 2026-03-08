@@ -247,6 +247,9 @@ function createEnv(overrides: Partial<Env> = {}): Env {
     PAY_TO: TEST_PAY_TO,
     OPENROUTER_DEEPSEEK_MODEL: 'deepseek/deepseek-v3.2',
     OPENROUTER_QWEN_MODEL: 'qwen/qwen-plus-2025-07-28',
+    OPENROUTER_GPT54_MODEL: 'openai/gpt-5.4',
+    OPENROUTER_GPT54_PRO_MODEL: 'openai/gpt-5.4-pro',
+    OPENROUTER_CLAUDE46_MODEL: 'anthropic/claude-sonnet-4.6',
     REPLAY_GUARD: createReplayGuardNamespace(),
     METRICS_STORE: createMetricsStoreNamespace(),
     ASSETS: {
@@ -496,10 +499,18 @@ test('catalog exposes enriched endpoint metadata', async () => {
   assert.ok(body.endpoints[0].exampleRequest);
   assert.ok(body.endpoints[0].exampleResponse);
   const deepseek = body.endpoints.find((endpoint) => endpoint.path === '/api/deepseek');
+  const gpt54 = body.endpoints.find((endpoint) => endpoint.path === '/api/gpt-5.4');
+  const gpt54Pro = body.endpoints.find((endpoint) => endpoint.path === '/api/gpt-5.4-pro');
+  const claude46 = body.endpoints.find((endpoint) => endpoint.path === '/api/claude-4.6');
   assert.equal(deepseek?.method, 'POST');
   assert.equal(deepseek?.status, 'live');
   assert.equal(deepseek?.aiPolicy?.provider, 'openrouter');
   assert.ok((deepseek?.aiPolicy?.quotaErrorCodes || []).includes('AI_BUDGET_EXCEEDED'));
+  assert.equal(gpt54?.method, 'POST');
+  assert.equal(gpt54?.aiPolicy?.model, 'openai/gpt-5.4');
+  assert.equal(gpt54Pro?.aiPolicy?.model, 'openai/gpt-5.4-pro');
+  assert.equal(claude46?.method, 'POST');
+  assert.equal(claude46?.aiPolicy?.model, 'anthropic/claude-sonnet-4.6');
   assert.equal(typeof body.endpoints[0].locales?.zh?.label, 'string');
   assert.equal(typeof body.endpoints[0].locales?.en?.label, 'string');
   assert.equal(body.endpoints[0].requestMetrics?.windowMs, 3600000);
@@ -717,6 +728,106 @@ test('qwen endpoint maps abort errors to machine-readable upstream timeout', asy
     assert.equal(body._meta.upstream?.source, 'openrouter');
     assert.equal(body._meta.upstream?.status, 'fallback');
     assert.equal(body._meta.upstream?.reasonCode, 'UPSTREAM_TIMEOUT');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('gpt-5.4 endpoint proxies live openrouter chat completion when configured', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          model?: string;
+          messages?: Array<{ role: string; content: string }>;
+        })
+      : {};
+
+    assert.equal(body.model, 'openai/gpt-5.4');
+    assert.equal(body.messages?.[0]?.role, 'user');
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-gpt54',
+        model: body.model,
+        provider: 'OpenRouter',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'GPT-5.4 is now available pay per call.' } }],
+        usage: { prompt_tokens: 14, completion_tokens: 10, total_tokens: 24 },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/gpt-5.4', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'Why use pay-per-call GPT-5.4?' }),
+      }),
+      {
+        ...createEnv(),
+        OPENROUTER_API_KEY: 'test-openrouter-key',
+      },
+    );
+    const body = (await response.json()) as { model?: string; response?: string; _meta: { origin: string } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.model, 'openai/gpt-5.4');
+    assert.equal(body.response, 'GPT-5.4 is now available pay per call.');
+    assert.equal(body._meta.origin, 'proxied');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('claude-4.6 endpoint proxies live openrouter chat completion when configured', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_input, init) => {
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as {
+          model?: string;
+        })
+      : {};
+
+    assert.equal(body.model, 'anthropic/claude-sonnet-4.6');
+
+    return new Response(
+      JSON.stringify({
+        id: 'chatcmpl-claude46',
+        model: body.model,
+        provider: 'OpenRouter',
+        choices: [{ finish_reason: 'stop', message: { role: 'assistant', content: 'Claude 4.6 is available for writing and review tasks.' } }],
+        usage: { prompt_tokens: 18, completion_tokens: 12, total_tokens: 30 },
+      }),
+      { headers: { 'Content-Type': 'application/json' } },
+    );
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/claude-4.6', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer demo',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ prompt: 'What is Claude 4.6 good at?' }),
+      }),
+      {
+        ...createEnv(),
+        OPENROUTER_API_KEY: 'test-openrouter-key',
+      },
+    );
+    const body = (await response.json()) as { model?: string; response?: string; _meta: { origin: string } };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.model, 'anthropic/claude-sonnet-4.6');
+    assert.equal(body.response, 'Claude 4.6 is available for writing and review tasks.');
+    assert.equal(body._meta.origin, 'proxied');
   } finally {
     globalThis.fetch = originalFetch;
   }
