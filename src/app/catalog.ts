@@ -1,4 +1,4 @@
-import type { CatalogEndpoint, CatalogResponse, HealthResponse } from '../types';
+import type { CatalogEndpoint, CatalogResponse, HealthResponse, MetricsOverviewResponse } from '../types';
 import { API_BASE, BASE_USDC_CONTRACT } from './config';
 import { escapeHtml, getElement, shortenAddress } from './dom';
 import {
@@ -270,6 +270,23 @@ export async function loadHealth() {
   } catch {
     getElement<HTMLSpanElement>('healthStatus').textContent = t('dynamic.gatewayRemote');
     getElement<HTMLDivElement>('heroStatus').textContent = t('dynamic.gatewayRemote');
+  }
+}
+
+export async function loadMetricsOverview() {
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/metrics/overview`);
+    if (!response.ok) throw new Error(`overview ${response.status}`);
+    const data = (await response.json()) as MetricsOverviewResponse;
+    getElement<HTMLDivElement>('totalApiCalls').textContent = data.totalApiCalls.toLocaleString(
+      state.currentLanguage === 'zh' ? 'zh-CN' : 'en-US',
+    );
+    getElement<HTMLDivElement>('totalApiCallsUpdatedAt').textContent = data.lastApiCallAt
+      ? new Date(data.lastApiCallAt).toLocaleString(state.currentLanguage === 'zh' ? 'zh-CN' : 'en-US')
+      : t('dynamic.metricNever');
+  } catch {
+    getElement<HTMLDivElement>('totalApiCalls').textContent = '--';
+    getElement<HTMLDivElement>('totalApiCallsUpdatedAt').textContent = t('dynamic.metricNever');
   }
 }
 

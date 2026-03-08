@@ -4,6 +4,39 @@
 
 ### 本轮目标
 
+- 给首页增加“累计 API 调用总次数”的真实统计，并保持实时更新
+
+### 已完成
+
+- 新增 `GET /api/v1/metrics/overview`
+- Metrics Durable Object 现在会持久化累计 API 调用总次数和最近一次调用时间
+- 首页 Hero 指标区新增总调用次数卡片
+- 前端会每 15 秒轮询一次总览指标，刷新总调用次数和最后更新时间
+- catalog 文档出口也已补 `metricsOverview` 地址
+- 测试已补 overview 路由验证
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [catalog.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/catalog.ts)
+- [bootstrap.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/bootstrap.ts)
+- [types.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/types.ts)
+- [i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 下一步建议
+
+1. 把总调用次数再补成按日趋势或近 24h 增量
+2. 继续推进 `approval-audit`
+3. 把首页 Hero 进一步改成更偏转化的数据面板
+
+## 2026-03-08
+
+### 本轮目标
+
 - 开始落地第一批真正更容易赚钱的高价值接口，优先做 `wallet-risk`
 
 ### 已完成

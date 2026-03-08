@@ -46,6 +46,7 @@
 - catalog / 402 / settlement 响应现在都附带 `remediationRefs`（`changelog` 与 `deprecations` 公告地址），便于 SDK 自动发现兼容变更公告
 - catalog `endpoints[].requestMetrics` 已输出最近 60 分钟请求量、错误码分布、10 分钟分桶错误趋势，以及 `paymentFunnel`（`challenged402` / `settled` / `replayed` 与 challenge→replay 转化率）；漏斗现支持基于 `X-Request-Id` 的精确 challenge→replay 归因
 - 新增 `GET /api/v1/metrics/funnel?window=24h|7d` 机器可读漏斗导出接口，便于外部 dashboard / SDK 拉取长期转化视图
+- 新增 `GET /api/v1/metrics/overview`，返回网关累计 API 调用总次数与最近一次调用时间
 - catalog endpoint 新增 `lastUpdatedAt` 与 `freshness`（`status` / `ageSeconds` / `maxAgeSeconds` / `signal`），方便 SDK 与开发者快速判断数据新鲜度
 - 前端 API 卡片与接口详情面板已直接展示 freshness 状态与更新时间，便于开发者在接入前快速判断数据实时性
 - 支付签名新增时间窗约束：默认 `issuedAt` 最长 15 分钟有效，最多允许 120 秒未来时钟偏差
@@ -64,6 +65,7 @@
 - `/api/v1/health`：健康检查
 - `/api/v1/settlement/{txHash}`：链上结算确认状态查询
 - `/api/v1/metrics/funnel?window=24h|7d`：endpoint 级 request funnel 导出
+- `/api/v1/metrics/overview`：累计 API 调用总览
 - `/prices`：兼容旧版价格接口
 - `/api/*`：付费 API
 

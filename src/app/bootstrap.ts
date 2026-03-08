@@ -1,8 +1,10 @@
-import { executeRequest, loadCatalog, loadHealth, setHeroTerminal, setSelectedEndpoint, testAPI, updatePaymentModule, copyGatewayAddress, closeModal, renderCatalog, renderCatalogDirectory } from './catalog';
+import { executeRequest, loadCatalog, loadHealth, loadMetricsOverview, setHeroTerminal, setSelectedEndpoint, testAPI, updatePaymentModule, copyGatewayAddress, closeModal, renderCatalog, renderCatalogDirectory } from './catalog';
 import { getElement } from './dom';
 import { applyStaticTranslations, syncLanguageUrl, t } from './i18n';
 import { state, LANGUAGE_STORAGE_KEY, type Language } from './state';
 import { closeWalletModal, connectDemo, connectWallet, getWalletErrorMessage, getWalletModeDescription, openWalletModal, updateWalletUI } from './wallet';
+
+const METRICS_OVERVIEW_POLL_MS = 15_000;
 
 function setLanguage(language: Language) {
   state.currentLanguage = language;
@@ -10,6 +12,7 @@ function setLanguage(language: Language) {
   syncLanguageUrl(language);
   applyStaticTranslations();
   updatePaymentModule();
+  void loadMetricsOverview();
   if (state.catalog) {
     renderCatalogDirectory(state.catalog.endpoints);
     renderCatalog(state.catalog.endpoints);
@@ -123,5 +126,9 @@ export function startApp() {
   setHeroTerminal(null);
   bindEvents();
   void loadHealth();
+  void loadMetricsOverview();
   void loadCatalog();
+  window.setInterval(() => {
+    void loadMetricsOverview();
+  }, METRICS_OVERVIEW_POLL_MS);
 }

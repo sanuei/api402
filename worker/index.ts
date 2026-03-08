@@ -140,6 +140,7 @@ declare global {
   var upstreamTelemetryState: Map<string, UpstreamTelemetryEvent[]>;
   var endpointRequestMetricsState: Map<string, EndpointRequestMetricEvent[]>;
   var aiUsageState: Map<string, AIUsageEvent[]>;
+  var totalApiCallState: { total: number; lastApiCallAt: number | null };
 }
 
 export interface APIEndpoint {
@@ -161,6 +162,7 @@ const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const FUNNEL_METRICS_PATH = '/api/v1/metrics/funnel';
+const OVERVIEW_METRICS_PATH = '/api/v1/metrics/overview';
 const ENDPOINT_METRICS_WINDOW_MS = 60 * 60 * 1000;
 const ENDPOINT_METRICS_MAX_EVENTS = 600;
 const ENDPOINT_METRICS_DURABLE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -807,6 +809,9 @@ export class MetricsStoreDurableObject {
           ENDPOINT_METRICS_DURABLE_MAX_EVENTS,
         );
         await this.state.storage.put(storageKey, next);
+        const totalRequests = ((await this.state.storage.get<number>('stats:total_api_calls')) || 0) + 1;
+        await this.state.storage.put('stats:total_api_calls', totalRequests);
+        await this.state.storage.put('stats:last_api_call_at', Date.now());
       }
 
       await this.state.storage.setAlarm(Date.now() + ENDPOINT_METRICS_WINDOW_MS);
@@ -887,6 +892,15 @@ export class MetricsStoreDurableObject {
       }
 
       return jsonResponse(summarizeFunnelFromEndpointMetrics(endpointMetrics, window, now));
+    }
+
+    if (request.method === 'POST' && url.pathname === '/overview') {
+      const totalApiCalls = (await this.state.storage.get<number>('stats:total_api_calls')) || 0;
+      const lastApiCallAt = (await this.state.storage.get<number>('stats:last_api_call_at')) || null;
+      return jsonResponse({
+        totalApiCalls,
+        lastApiCallAt: typeof lastApiCallAt === 'number' ? new Date(lastApiCallAt).toISOString() : null,
+      });
     }
 
     return jsonResponse({ error: 'Not found' }, { status: 404 });
@@ -1051,6 +1065,14 @@ function getEndpointRequestMetricsState(): Map<string, EndpointRequestMetricEven
   return globalThis.endpointRequestMetricsState;
 }
 
+function getTotalApiCallState(): { total: number; lastApiCallAt: number | null } {
+  if (!globalThis.totalApiCallState) {
+    globalThis.totalApiCallState = { total: 0, lastApiCallAt: null };
+  }
+
+  return globalThis.totalApiCallState;
+}
+
 function pruneEndpointRequestEventsWithWindow(
   events: EndpointRequestMetricEvent[],
   now: number,
@@ -1125,6 +1147,9 @@ function recordEndpointRequestMetric(path: string, event: EndpointRequestMetricE
   const store = getEndpointRequestMetricsState();
   const existing = store.get(path) || [];
   store.set(path, pruneEndpointRequestEvents([...existing, event], event.at));
+  const totalState = getTotalApiCallState();
+  totalState.total += 1;
+  totalState.lastApiCallAt = event.at;
 }
 
 async function recordEndpointRequestMetricWithDurable(
@@ -1320,6 +1345,7 @@ export async function createCatalog(
       quickstart: `${baseUrl}/#examples`,
       health: `${baseUrl}${HEALTH_PATH}`,
       catalog: `${baseUrl}${CATALOG_PATH}`,
+      metricsOverview: `${baseUrl}${OVERVIEW_METRICS_PATH}`,
     },
     endpoints: API_ENDPOINTS.map((endpoint) => getCatalogEndpoint(baseUrl, payTo, endpoint, env, snapshot)),
   };
@@ -1731,6 +1757,11 @@ type MetricsSnapshot = {
   endpointMetrics: Record<string, EndpointRequestMetricEvent[]>;
 };
 
+type MetricsOverviewSummary = {
+  totalApiCalls: number;
+  lastApiCallAt: string | null;
+};
+
 type FunnelWindow = '24h' | '7d';
 
 type EndpointFunnelSummary = {
@@ -1883,6 +1914,36 @@ async function getDurableFunnelSummary(
     console.error('metrics store funnel failed', error);
     return null;
   }
+}
+
+async function getDurableMetricsOverview(env: Env): Promise<MetricsOverviewSummary | null> {
+  if (!env.METRICS_STORE) {
+    return null;
+  }
+
+  try {
+    const stub = env.METRICS_STORE.get(env.METRICS_STORE.idFromName('global'));
+    const response = await stub.fetch('https://metrics-store/overview', {
+      method: 'POST',
+    });
+
+    if (!response.ok) {
+      throw new Error(`metrics store ${response.status}`);
+    }
+
+    return (await response.json()) as MetricsOverviewSummary;
+  } catch (error) {
+    console.error('metrics store overview failed', error);
+    return null;
+  }
+}
+
+function getInMemoryMetricsOverview(): MetricsOverviewSummary {
+  const totalState = getTotalApiCallState();
+  return {
+    totalApiCalls: totalState.total,
+    lastApiCallAt: typeof totalState.lastApiCallAt === 'number' ? new Date(totalState.lastApiCallAt).toISOString() : null,
+  };
 }
 
 function getInMemoryFunnelSummary(now: number, window: FunnelWindow): FunnelSummary {
@@ -2472,6 +2533,11 @@ const worker = {
       const window = url.searchParams.get('window') === '7d' ? '7d' : '24h';
       const durableSummary = await getDurableFunnelSummary(env, now, window);
       const summary = durableSummary || getInMemoryFunnelSummary(now, window);
+      return apiResponse(summary);
+    }
+
+    if (path === OVERVIEW_METRICS_PATH) {
+      const summary = (await getDurableMetricsOverview(env)) || getInMemoryMetricsOverview();
       return apiResponse(summary);
     }
 

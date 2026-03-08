@@ -104,6 +104,11 @@ export interface HealthResponse {
   endpoints: number;
 }
 
+export interface MetricsOverviewResponse {
+  totalApiCalls: number;
+  lastApiCallAt: string | null;
+}
+
 export interface EthereumProvider {
   isMetaMask?: boolean;
   isRabby?: boolean;

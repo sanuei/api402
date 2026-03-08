@@ -15,6 +15,7 @@ const ERC20_TRANSFER_TOPIC =
   '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';
 let replayGuardStore = new Map<string, number>();
 let metricsStore = new Map<string, unknown>();
+let metricsOverview = { totalApiCalls: 0, lastApiCallAt: null as number | null };
 
 class FakeReplayGuardStub {
   async fetch(request: Request | string, init?: RequestInit): Promise<Response> {
@@ -87,6 +88,15 @@ class FakeMetricsStoreStub {
       const storageKey = `${payload.kind}:${payload.key}`;
       const existing = (metricsStore.get(storageKey) as unknown[] | undefined) || [];
       metricsStore.set(storageKey, [...existing, payload.event]);
+      if (payload.kind === 'endpoint') {
+        metricsOverview = {
+          totalApiCalls: metricsOverview.totalApiCalls + 1,
+          lastApiCallAt:
+            typeof (payload.event as { at?: unknown }).at === 'number'
+              ? ((payload.event as { at: number }).at)
+              : metricsOverview.lastApiCallAt,
+        };
+      }
       return Response.json({ ok: true });
     }
 
@@ -211,6 +221,13 @@ class FakeMetricsStoreStub {
         windowMs: 24 * 60 * 60 * 1000,
         global: summarize(all),
         endpoint: summarize(endpoint),
+      });
+    }
+
+    if (resolvedRequest.method === 'POST' && url.pathname === '/overview') {
+      return Response.json({
+        totalApiCalls: metricsOverview.totalApiCalls,
+        lastApiCallAt: metricsOverview.lastApiCallAt ? new Date(metricsOverview.lastApiCallAt).toISOString() : null,
       });
     }
 
@@ -547,6 +564,18 @@ test('health endpoint returns status information', async () => {
   assert.equal(response.status, 200);
   assert.equal(body.status, 'ok');
   assert.equal(body.endpoints, API_ENDPOINTS.length);
+});
+
+test('metrics overview returns cumulative total api calls', async () => {
+  await worker.fetch(new Request('https://api-402.com/api/btc-price', { headers: { Authorization: 'Bearer demo' } }), createEnv());
+  await worker.fetch(new Request('https://api-402.com/api/eth-price', { headers: { Authorization: 'Bearer demo' } }), createEnv());
+
+  const response = await worker.fetch(new Request('https://api-402.com/api/v1/metrics/overview'), createEnv());
+  const body = (await response.json()) as { totalApiCalls: number; lastApiCallAt: string | null };
+
+  assert.equal(response.status, 200);
+  assert.equal(body.totalApiCalls >= 2, true);
+  assert.equal(typeof body.lastApiCallAt, 'string');
 });
 
 test('unpaid request returns a 402 challenge with reason code', async () => {
