@@ -897,8 +897,37 @@ export class MetricsStoreDurableObject {
     if (request.method === 'POST' && url.pathname === '/overview') {
       const totalApiCalls = (await this.state.storage.get<number>('stats:total_api_calls')) || 0;
       const lastApiCallAt = (await this.state.storage.get<number>('stats:last_api_call_at')) || null;
+      const now = Date.now();
+      const fromMs = now - 24 * 60 * 60 * 1000;
+      const bucketMs = (24 * 60 * 60 * 1000) / 6;
+      const entries = await this.state.storage.list<EndpointRequestMetricEvent[]>({ prefix: 'endpoint:' });
+      const recentEvents = Array.from(entries.values())
+        .filter((value) => Array.isArray(value))
+        .flatMap((value) => (value as EndpointRequestMetricEvent[]).filter((event) => event.at >= fromMs && event.at <= now));
+      const last24hCalls = recentEvents.length;
+      const successRate24h =
+        last24hCalls > 0
+          ? Number((recentEvents.filter((event) => event.statusCode < 400).length / last24hCalls).toFixed(4))
+          : 1;
+      const paymentRequiredRate24h =
+        last24hCalls > 0
+          ? Number((recentEvents.filter((event) => event.statusCode === 402).length / last24hCalls).toFixed(4))
+          : 0;
+      const trend24h = Array.from({ length: 6 }, (_, index) => {
+        const bucketStartMs = fromMs + index * bucketMs;
+        const bucketEndMs = bucketStartMs + bucketMs;
+        const requests = recentEvents.filter((event) => event.at >= bucketStartMs && event.at < bucketEndMs).length;
+        return {
+          bucketStart: new Date(bucketStartMs).toISOString(),
+          requests,
+        };
+      });
       return jsonResponse({
         totalApiCalls,
+        last24hCalls,
+        successRate24h,
+        paymentRequiredRate24h,
+        trend24h,
         lastApiCallAt: typeof lastApiCallAt === 'number' ? new Date(lastApiCallAt).toISOString() : null,
       });
     }
@@ -1759,6 +1788,10 @@ type MetricsSnapshot = {
 
 type MetricsOverviewSummary = {
   totalApiCalls: number;
+  last24hCalls: number;
+  successRate24h: number;
+  paymentRequiredRate24h: number;
+  trend24h: Array<{ bucketStart: string; requests: number }>;
   lastApiCallAt: string | null;
 };
 
@@ -1940,8 +1973,36 @@ async function getDurableMetricsOverview(env: Env): Promise<MetricsOverviewSumma
 
 function getInMemoryMetricsOverview(): MetricsOverviewSummary {
   const totalState = getTotalApiCallState();
+  const now = Date.now();
+  const fromMs = now - 24 * 60 * 60 * 1000;
+  const buckets = 6;
+  const bucketMs = (24 * 60 * 60 * 1000) / buckets;
+  const allEvents = Array.from(getEndpointRequestMetricsState().values()).flatMap((events) => events);
+  const recentEvents = allEvents.filter((event) => event.at >= fromMs && event.at <= now);
+  const successRate24h =
+    recentEvents.length > 0
+      ? Number((recentEvents.filter((event) => event.statusCode < 400).length / recentEvents.length).toFixed(4))
+      : 1;
+  const paymentRequiredRate24h =
+    recentEvents.length > 0
+      ? Number((recentEvents.filter((event) => event.statusCode === 402).length / recentEvents.length).toFixed(4))
+      : 0;
+  const trend24h = Array.from({ length: buckets }, (_, index) => {
+    const bucketStartMs = fromMs + index * bucketMs;
+    const bucketEndMs = bucketStartMs + bucketMs;
+    const requests = recentEvents.filter((event) => event.at >= bucketStartMs && event.at < bucketEndMs).length;
+    return {
+      bucketStart: new Date(bucketStartMs).toISOString(),
+      requests,
+    };
+  });
+
   return {
     totalApiCalls: totalState.total,
+    last24hCalls: recentEvents.length,
+    successRate24h,
+    paymentRequiredRate24h,
+    trend24h,
     lastApiCallAt: typeof totalState.lastApiCallAt === 'number' ? new Date(totalState.lastApiCallAt).toISOString() : null,
   };
 }

@@ -61,6 +61,22 @@ export function formatTopError(endpoint: CatalogEndpoint): string {
   return `${top.code} · ${top.count}`;
 }
 
+export function formatMetricSparkline(values: number[]): string {
+  if (values.length === 0) {
+    return '-';
+  }
+
+  const max = Math.max(...values, 1);
+  const blocks = '▁▂▃▄▅▆▇█';
+  return values
+    .map((value) => {
+      const ratio = value / max;
+      const index = Math.min(blocks.length - 1, Math.floor(ratio * (blocks.length - 1)));
+      return blocks[index] || blocks[0];
+    })
+    .join('');
+}
+
 export function getGatewayPayTo(): string {
   return state.catalog?.payment.payTo || DEFAULT_GATEWAY_PAY_TO;
 }

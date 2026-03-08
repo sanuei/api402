@@ -225,8 +225,34 @@ class FakeMetricsStoreStub {
     }
 
     if (resolvedRequest.method === 'POST' && url.pathname === '/overview') {
+      const now = Date.now();
+      const fromMs = now - 24 * 60 * 60 * 1000;
+      const bucketMs = (24 * 60 * 60 * 1000) / 6;
+      const recentEvents = Array.from(metricsStore.entries())
+        .filter(([key, value]) => key.startsWith('endpoint:') && Array.isArray(value))
+        .flatMap(([, value]) =>
+          (value as Array<{ at: number; statusCode: number }>)
+            .filter((event) => typeof event.at === 'number' && event.at >= fromMs && event.at <= now),
+        );
       return Response.json({
         totalApiCalls: metricsOverview.totalApiCalls,
+        last24hCalls: recentEvents.length,
+        successRate24h:
+          recentEvents.length > 0
+            ? Number((recentEvents.filter((event) => event.statusCode < 400).length / recentEvents.length).toFixed(4))
+            : 1,
+        paymentRequiredRate24h:
+          recentEvents.length > 0
+            ? Number((recentEvents.filter((event) => event.statusCode === 402).length / recentEvents.length).toFixed(4))
+            : 0,
+        trend24h: Array.from({ length: 6 }, (_, index) => {
+          const bucketStartMs = fromMs + index * bucketMs;
+          const bucketEndMs = bucketStartMs + bucketMs;
+          return {
+            bucketStart: new Date(bucketStartMs).toISOString(),
+            requests: recentEvents.filter((event) => event.at >= bucketStartMs && event.at < bucketEndMs).length,
+          };
+        }),
         lastApiCallAt: metricsOverview.lastApiCallAt ? new Date(metricsOverview.lastApiCallAt).toISOString() : null,
       });
     }
@@ -571,10 +597,21 @@ test('metrics overview returns cumulative total api calls', async () => {
   await worker.fetch(new Request('https://api-402.com/api/eth-price', { headers: { Authorization: 'Bearer demo' } }), createEnv());
 
   const response = await worker.fetch(new Request('https://api-402.com/api/v1/metrics/overview'), createEnv());
-  const body = (await response.json()) as { totalApiCalls: number; lastApiCallAt: string | null };
+  const body = (await response.json()) as {
+    totalApiCalls: number;
+    last24hCalls: number;
+    successRate24h: number;
+    paymentRequiredRate24h: number;
+    trend24h: Array<{ bucketStart: string; requests: number }>;
+    lastApiCallAt: string | null;
+  };
 
   assert.equal(response.status, 200);
   assert.equal(body.totalApiCalls >= 2, true);
+  assert.equal(body.last24hCalls >= 2, true);
+  assert.equal(typeof body.successRate24h, 'number');
+  assert.equal(typeof body.paymentRequiredRate24h, 'number');
+  assert.equal(body.trend24h.length, 6);
   assert.equal(typeof body.lastApiCallAt, 'string');
 });
 

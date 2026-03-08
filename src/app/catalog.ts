@@ -3,6 +3,7 @@ import { API_BASE, BASE_USDC_CONTRACT } from './config';
 import { escapeHtml, getElement, shortenAddress } from './dom';
 import {
   formatFreshnessStatus,
+  formatMetricSparkline,
   formatPercent,
   formatRelativeAge,
   formatTopError,
@@ -284,9 +285,21 @@ export async function loadMetricsOverview() {
     getElement<HTMLDivElement>('totalApiCallsUpdatedAt').textContent = data.lastApiCallAt
       ? new Date(data.lastApiCallAt).toLocaleString(state.currentLanguage === 'zh' ? 'zh-CN' : 'en-US')
       : t('dynamic.metricNever');
+    getElement<HTMLDivElement>('last24hCalls').textContent = data.last24hCalls.toLocaleString(
+      state.currentLanguage === 'zh' ? 'zh-CN' : 'en-US',
+    );
+    getElement<HTMLDivElement>('overviewSuccessRate').textContent = formatPercent(data.successRate24h);
+    getElement<HTMLDivElement>('overview402Rate').textContent = formatPercent(data.paymentRequiredRate24h);
+    getElement<HTMLDivElement>('overviewTrend').textContent = formatMetricSparkline(
+      data.trend24h.map((item) => item.requests),
+    );
   } catch {
     getElement<HTMLDivElement>('totalApiCalls').textContent = '--';
     getElement<HTMLDivElement>('totalApiCallsUpdatedAt').textContent = t('dynamic.metricNever');
+    getElement<HTMLDivElement>('last24hCalls').textContent = '--';
+    getElement<HTMLDivElement>('overviewSuccessRate').textContent = '--';
+    getElement<HTMLDivElement>('overview402Rate').textContent = '--';
+    getElement<HTMLDivElement>('overviewTrend').textContent = '--';
   }
 }
 

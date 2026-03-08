@@ -106,6 +106,10 @@ export interface HealthResponse {
 
 export interface MetricsOverviewResponse {
   totalApiCalls: number;
+  last24hCalls: number;
+  successRate24h: number;
+  paymentRequiredRate24h: number;
+  trend24h: Array<{ bucketStart: string; requests: number }>;
   lastApiCallAt: string | null;
 }
 
