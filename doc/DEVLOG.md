@@ -4,6 +4,39 @@
 
 ### 本轮目标
 
+- 继续做后端结构优化，把实时上游代理和 AI provider 逻辑从 `worker/index.ts` 中抽离出去
+
+### 已完成
+
+- 新增独立上游模块 [upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)，承接：
+  - Binance / HyperLiquid / OpenRouter 实时上游代理
+  - AI provider 模型、配额、请求上下文与消息标准化
+  - 上游超时、熔断、fallback 元信息与统一返回结构
+- `worker/index.ts` 现在通过依赖注入把 circuit、telemetry、AI usage 持久化能力传给 `upstreams.ts`，主流程保留路由编排，不再内联所有上游细节
+- 当前后端主文件规模已从 `3340` 行进一步降到 `2800` 行
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [upstreams.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/upstreams.ts)
+- [README.md](/Users/yangshangwei/Desktop/网页项目/api402/README.md)
+- [ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 27 个测试全部通过
+
+### 下一步建议
+
+1. 继续拆 `worker/index.ts`，优先分出 `metrics` 聚合与 `settlement/status routes`
+2. 然后再做 metrics Durable Object 分片
+3. 结构清完后开始第一组高价值新接口：`Web Search`
+
+## 2026-03-08
+
+### 本轮目标
+
 - 继续做后端结构优化，先把支付协议层从超大 `worker/index.ts` 中抽离出来
 
 ### 已完成

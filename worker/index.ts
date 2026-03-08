@@ -49,6 +49,43 @@ import {
   type SettlementPolicy,
   type SettlementStatusResult,
 } from './payment';
+import {
+  AI_USAGE_WINDOW_MS,
+  DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD,
+  DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT,
+  DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD,
+  DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT,
+  DEFAULT_AI_QWEN_DAILY_BUDGET_USD,
+  DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT,
+  DEFAULT_OPENROUTER_API_BASE,
+  DEFAULT_OPENROUTER_DEEPSEEK_MODEL,
+  DEFAULT_OPENROUTER_MAX_INPUT_CHARS,
+  DEFAULT_OPENROUTER_MAX_MESSAGES,
+  DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS,
+  DEFAULT_OPENROUTER_QWEN_MODEL,
+  DEFAULT_OPENROUTER_TEMPERATURE,
+  UPSTREAM_CIRCUIT_COOLDOWN_MS,
+  UPSTREAM_FAILURE_THRESHOLD,
+  UPSTREAM_TELEMETRY_MAX_EVENTS,
+  UPSTREAM_TELEMETRY_WINDOW_MS,
+  UPSTREAM_TIMEOUT_MS,
+  buildDefaultAIPrompt,
+  fetchUpstreamData,
+  getOpenRouterModel,
+  isAIEndpointPath,
+  normalizeAIMessageContent,
+  type AIProfitPolicy,
+  type AIQuotaCode,
+  type AIRequestContext,
+  type AIUsageAggregate,
+  type AIUsageEvent,
+  type AIUsageSummary,
+  type OpenRouterChatMessage,
+  type UpstreamErrorCode,
+  type UpstreamMeta,
+  type UpstreamTelemetryEvent,
+  type UpstreamTelemetrySummary,
+} from './upstreams';
 export { buildPaymentMessage } from './payment';
 export type { PaymentPayload } from './payment';
 
@@ -108,33 +145,11 @@ export interface APIEndpoint {
 }
 
 const DEFAULT_BASE_RPC_URL = 'https://mainnet.base.org';
-const DEFAULT_OPENROUTER_API_BASE = 'https://openrouter.ai/api/v1';
-const DEFAULT_OPENROUTER_DEEPSEEK_MODEL = 'deepseek/deepseek-v3.2';
-const DEFAULT_OPENROUTER_QWEN_MODEL = 'qwen/qwen-plus-2025-07-28';
-const DEFAULT_OPENROUTER_MAX_INPUT_CHARS = 4000;
-const DEFAULT_OPENROUTER_MAX_MESSAGES = 12;
-const DEFAULT_OPENROUTER_MAX_OUTPUT_TOKENS = 256;
-const DEFAULT_OPENROUTER_TEMPERATURE = 0.7;
-const OPENROUTER_HTTP_REFERER = 'https://api-402.com';
-const OPENROUTER_X_TITLE = 'API Market';
-const OPENROUTER_TIMEOUT_MS = 20_000;
-const AI_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_AI_GLOBAL_DAILY_BUDGET_USD = 3;
-const DEFAULT_AI_DEEPSEEK_DAILY_BUDGET_USD = 1.5;
-const DEFAULT_AI_QWEN_DAILY_BUDGET_USD = 1.5;
-const DEFAULT_AI_GLOBAL_DAILY_REQUEST_LIMIT = 200;
-const DEFAULT_AI_DEEPSEEK_DAILY_REQUEST_LIMIT = 120;
-const DEFAULT_AI_QWEN_DAILY_REQUEST_LIMIT = 80;
 const BASE_RPC_TIMEOUT_MS = 6000;
 const LEGACY_PRICE_PATH = '/prices';
 const CATALOG_PATH = '/api/v1/catalog';
 const HEALTH_PATH = '/api/v1/health';
 const FUNNEL_METRICS_PATH = '/api/v1/metrics/funnel';
-const UPSTREAM_TIMEOUT_MS = 8000;
-const UPSTREAM_FAILURE_THRESHOLD = 3;
-const UPSTREAM_CIRCUIT_COOLDOWN_MS = 30_000;
-const UPSTREAM_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
-const UPSTREAM_TELEMETRY_MAX_EVENTS = 120;
 const ENDPOINT_METRICS_WINDOW_MS = 60 * 60 * 1000;
 const ENDPOINT_METRICS_MAX_EVENTS = 600;
 const ENDPOINT_METRICS_DURABLE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1912,102 +1927,6 @@ export async function verifyPayment(
   };
 }
 
-type UpstreamErrorCode =
-  | 'UPSTREAM_TIMEOUT'
-  | 'UPSTREAM_HTTP_ERROR'
-  | 'UPSTREAM_INVALID_RESPONSE'
-  | 'UPSTREAM_FETCH_FAILED'
-  | 'UPSTREAM_CIRCUIT_OPEN';
-
-type UpstreamFailure = {
-  code: UpstreamErrorCode;
-  message: string;
-  retryable: boolean;
-};
-
-type UpstreamTelemetryEvent = {
-  at: number;
-  ok: boolean;
-  latencyMs: number;
-  code: 'OK' | UpstreamErrorCode;
-};
-
-type UpstreamTelemetrySummary = {
-  windowMs: number;
-  sampleSize: number;
-  successRate: number;
-  avgLatencyMs: number | null;
-  p95LatencyMs: number | null;
-  lastSuccessAt: string | null;
-  lastFailureAt: string | null;
-  lastErrorCode: UpstreamErrorCode | null;
-  updatedAt: string | null;
-};
-
-type UpstreamMeta = {
-  source: string;
-  status: 'live' | 'fallback';
-  reasonCode: 'OK' | UpstreamErrorCode;
-  retryable: boolean;
-};
-
-type UpstreamResult = {
-  data: unknown | null;
-  meta: UpstreamMeta;
-};
-
-type OpenRouterChatMessage = {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-};
-
-type AIRequestContext = {
-  messages: OpenRouterChatMessage[];
-  prompt: string;
-  maxTokens: number;
-  temperature: number;
-  requestMode: 'preview_get' | 'post_chat';
-};
-
-type AIUsageEvent = {
-  at: number;
-  model: string;
-  costUsd: number;
-  totalTokens: number;
-};
-
-type AIUsageAggregate = {
-  totalRequests: number;
-  totalCostUsd: number;
-  oldestAt: string | null;
-};
-
-type AIUsageSummary = {
-  windowMs: number;
-  global: AIUsageAggregate;
-  endpoint: AIUsageAggregate;
-};
-
-type AIQuotaCode = 'AI_BUDGET_EXCEEDED' | 'AI_REQUEST_LIMIT_EXCEEDED';
-
-type AIProfitPolicy = {
-  windowMs: number;
-  provider: 'openrouter';
-  model: string;
-  maxInputChars: number;
-  maxMessages: number;
-  maxOutputTokens: number;
-  requestLimit: {
-    global: number;
-    endpoint: number;
-  };
-  dailyBudgetUsd: {
-    global: number;
-    endpoint: number;
-  };
-  quotaErrorCodes: AIQuotaCode[];
-};
-
 type EndpointRequestMetricEvent = {
   at: number;
   statusCode: number;
@@ -2349,16 +2268,39 @@ function getUpstreamCircuitSnapshot(source: string, now: number): { open: boolea
   return { open: state.openUntil > now, openUntil: state.openUntil };
 }
 
-function isAIEndpointPath(path: string): boolean {
-  return path === '/api/deepseek' || path === '/api/qwen';
+async function recordUpstreamSuccessWithDurable(
+  env: Env,
+  source: string,
+  now: number,
+  latencyMs: number,
+): Promise<void> {
+  getUpstreamCircuitState().set(source, { failures: 0, openUntil: 0 });
+  await recordUpstreamTelemetryWithDurable(env, source, {
+    at: now,
+    ok: true,
+    latencyMs,
+    code: 'OK',
+  });
 }
 
-function getOpenRouterModel(path: string, env: Env): string {
-  if (path === '/api/qwen') {
-    return env.OPENROUTER_QWEN_MODEL || DEFAULT_OPENROUTER_QWEN_MODEL;
-  }
+async function recordUpstreamFailureWithDurable(
+  env: Env,
+  source: string,
+  code: UpstreamErrorCode,
+  now: number,
+  latencyMs: number,
+): Promise<void> {
+  const state = getUpstreamCircuitState().get(source) || { failures: 0, openUntil: 0 };
+  const failures = state.failures + 1;
+  const openUntil = failures >= UPSTREAM_FAILURE_THRESHOLD ? now + UPSTREAM_CIRCUIT_COOLDOWN_MS : state.openUntil;
+  getUpstreamCircuitState().set(source, { failures, openUntil, lastErrorCode: code });
 
-  return env.OPENROUTER_DEEPSEEK_MODEL || DEFAULT_OPENROUTER_DEEPSEEK_MODEL;
+  await recordUpstreamTelemetryWithDurable(env, source, {
+    at: now,
+    ok: false,
+    latencyMs,
+    code,
+  });
 }
 
 function getAIProfitPolicy(path: string, env: Env): AIProfitPolicy {
@@ -2385,47 +2327,6 @@ function getAIProfitPolicy(path: string, env: Env): AIProfitPolicy {
     },
     quotaErrorCodes: ['AI_BUDGET_EXCEEDED', 'AI_REQUEST_LIMIT_EXCEEDED'],
   };
-}
-
-function buildDefaultAIPrompt(path: string): string {
-  if (path === '/api/qwen') {
-    return '请用一句中文介绍 API402 的按次付费 API 调用方式。';
-  }
-
-  return 'Explain API402 pay-per-call APIs in one concise sentence.';
-}
-
-function normalizeAIMessageContent(content: unknown): string | null {
-  if (typeof content === 'string') {
-    const normalized = content.trim();
-    return normalized ? normalized : null;
-  }
-
-  if (!Array.isArray(content)) {
-    return null;
-  }
-
-  const text = content
-    .map((part) => {
-      if (typeof part === 'string') {
-        return part;
-      }
-
-      if (
-        part &&
-        typeof part === 'object' &&
-        'text' in part &&
-        typeof (part as { text?: unknown }).text === 'string'
-      ) {
-        return (part as { text: string }).text;
-      }
-
-      return '';
-    })
-    .join('')
-    .trim();
-
-  return text || null;
 }
 
 function createBadRequestResponse(message: string, requestId: string): Response {
@@ -2690,408 +2591,6 @@ async function prepareAIRequestContext(
   };
 }
 
-async function recordUpstreamSuccess(env: Env, source: string, now: number, latencyMs: number): Promise<void> {
-  const store = getUpstreamCircuitState();
-  store.set(source, { failures: 0, openUntil: 0 });
-  await recordUpstreamTelemetryWithDurable(env, source, { at: now, ok: true, latencyMs, code: 'OK' });
-}
-
-async function recordUpstreamFailure(
-  env: Env,
-  source: string,
-  code: UpstreamErrorCode,
-  now: number,
-  latencyMs: number,
-): Promise<void> {
-  const store = getUpstreamCircuitState();
-  const state = store.get(source) || { failures: 0, openUntil: 0 };
-  const failures = state.failures + 1;
-  const openUntil = failures >= UPSTREAM_FAILURE_THRESHOLD ? now + UPSTREAM_CIRCUIT_COOLDOWN_MS : state.openUntil;
-
-  store.set(source, {
-    failures,
-    openUntil,
-    lastErrorCode: code,
-  });
-  await recordUpstreamTelemetryWithDurable(env, source, { at: now, ok: false, latencyMs, code });
-}
-
-async function fetchJsonWithTimeout(url: string, init: RequestInit, timeoutMs = UPSTREAM_TIMEOUT_MS): Promise<unknown> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    const response = await fetch(url, { ...init, signal: controller.signal });
-    if (!response.ok) {
-      throw {
-        code: 'UPSTREAM_HTTP_ERROR',
-        message: `upstream ${response.status}`,
-        retryable: response.status >= 500 || response.status === 429,
-      } as UpstreamFailure;
-    }
-
-    return (await response.json()) as unknown;
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw {
-        code: 'UPSTREAM_TIMEOUT',
-        message: 'upstream timeout',
-        retryable: true,
-      } as UpstreamFailure;
-    }
-
-    if (typeof error === 'object' && error && 'code' in error && typeof (error as { code?: unknown }).code === 'string') {
-      throw error;
-    }
-
-    throw {
-      code: 'UPSTREAM_FETCH_FAILED',
-      message: error instanceof Error ? error.message : 'unknown upstream error',
-      retryable: true,
-    } as UpstreamFailure;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-type HyperliquidTrade = {
-  coin?: string;
-  side?: string;
-  px?: string;
-  sz?: string;
-  time?: number;
-  users?: string[];
-};
-
-async function fetchHyperliquidRecentTrades(coin: string): Promise<HyperliquidTrade[]> {
-  const payload = await fetchJsonWithTimeout('https://api.hyperliquid.xyz/info', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'recentTrades', coin }),
-  });
-
-  return Array.isArray(payload) ? (payload as HyperliquidTrade[]) : [];
-}
-
-async function fetchUpstreamData(
-  path: string,
-  env: Env,
-  aiContext: AIRequestContext | null = null,
-): Promise<UpstreamResult> {
-  const sourceByPath: Record<string, string | undefined> = {
-    '/api/btc-price': 'binance',
-    '/api/eth-price': 'binance',
-    '/api/deepseek': 'openrouter',
-    '/api/qwen': 'openrouter',
-    '/api/whale-positions': 'hyperliquid',
-    '/api/kline': 'binance',
-  };
-
-  const source = sourceByPath[path];
-  if (!source) {
-    return {
-      data: null,
-      meta: { source: 'none', status: 'fallback', reasonCode: 'UPSTREAM_INVALID_RESPONSE', retryable: false },
-    };
-  }
-
-  if (source === 'openrouter' && !env.OPENROUTER_API_KEY) {
-    return {
-      data: null,
-      meta: { source, status: 'fallback', reasonCode: 'UPSTREAM_FETCH_FAILED', retryable: false },
-    };
-  }
-
-  const now = Date.now();
-  const circuit = getUpstreamCircuitSnapshot(source, now);
-  if (circuit.open) {
-    await recordUpstreamTelemetryWithDurable(env, source, {
-      at: now,
-      ok: false,
-      latencyMs: 0,
-      code: 'UPSTREAM_CIRCUIT_OPEN',
-    });
-    return {
-      data: null,
-      meta: { source, status: 'fallback', reasonCode: 'UPSTREAM_CIRCUIT_OPEN', retryable: true },
-    };
-  }
-
-  const startedAt = Date.now();
-
-  try {
-    if (path === '/api/btc-price') {
-      const data = (await fetchJsonWithTimeout('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT', {
-        method: 'GET',
-      })) as { price?: string };
-
-      if (!data.price) {
-        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
-      }
-
-      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
-      return {
-        data: {
-          symbol: 'BTC',
-          price: Number(data.price),
-          timestamp: Date.now(),
-          source: 'binance',
-        },
-        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
-      };
-    }
-
-    if (path === '/api/eth-price') {
-      const data = (await fetchJsonWithTimeout('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT', {
-        method: 'GET',
-      })) as { price?: string };
-
-      if (!data.price) {
-        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing price', retryable: true } as UpstreamFailure;
-      }
-
-      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
-      return {
-        data: {
-          symbol: 'ETH',
-          price: Number(data.price),
-          timestamp: Date.now(),
-          source: 'binance',
-        },
-        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
-      };
-    }
-
-    if (path === '/api/whale-positions') {
-      const [btcTrades, ethTrades] = await Promise.all([
-        fetchHyperliquidRecentTrades('BTC'),
-        fetchHyperliquidRecentTrades('ETH'),
-      ]);
-
-      const trades = [...btcTrades, ...ethTrades];
-      const byAddress = new Map<
-        string,
-        {
-          address: string;
-          trades: number;
-          notionalUsd: number;
-          buyNotionalUsd: number;
-          sellNotionalUsd: number;
-          lastSeen: number;
-          markets: Set<string>;
-        }
-      >();
-
-      for (const trade of trades) {
-        const users = Array.isArray(trade.users) ? trade.users : [];
-        const maker = users[0]?.toLowerCase();
-        if (!maker || !/^0x[0-9a-f]{40}$/.test(maker)) {
-          continue;
-        }
-
-        const px = Number(trade.px);
-        const sz = Number(trade.sz);
-        if (!Number.isFinite(px) || !Number.isFinite(sz)) {
-          continue;
-        }
-
-        const notionalUsd = Math.abs(px * sz);
-        if (!Number.isFinite(notionalUsd) || notionalUsd <= 0) {
-          continue;
-        }
-
-        const position = byAddress.get(maker) || {
-          address: maker,
-          trades: 0,
-          notionalUsd: 0,
-          buyNotionalUsd: 0,
-          sellNotionalUsd: 0,
-          lastSeen: 0,
-          markets: new Set<string>(),
-        };
-
-        position.trades += 1;
-        position.notionalUsd += notionalUsd;
-        if (trade.side === 'A') {
-          position.buyNotionalUsd += notionalUsd;
-        } else {
-          position.sellNotionalUsd += notionalUsd;
-        }
-        position.lastSeen = Math.max(position.lastSeen, Number(trade.time) || 0);
-        if (trade.coin) {
-          position.markets.add(trade.coin);
-        }
-
-        byAddress.set(maker, position);
-      }
-
-      const positions = [...byAddress.values()]
-        .sort((a, b) => b.notionalUsd - a.notionalUsd)
-        .slice(0, 10)
-        .map((entry) => ({
-          address: entry.address,
-          trades: entry.trades,
-          notionalUsd: Number(entry.notionalUsd.toFixed(2)),
-          dominantSide: entry.buyNotionalUsd >= entry.sellNotionalUsd ? 'buy' : 'sell',
-          markets: [...entry.markets].sort(),
-          lastSeen: entry.lastSeen || null,
-        }));
-
-      if (positions.length === 0) {
-        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'no positions', retryable: true } as UpstreamFailure;
-      }
-
-      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
-      return {
-        data: {
-          source: 'hyperliquid',
-          timeframe: 'recent',
-          markets: ['BTC', 'ETH'],
-          sampledTrades: trades.length,
-          positions,
-          timestamp: Date.now(),
-        },
-        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
-      };
-    }
-
-    if (path === '/api/kline') {
-      const data = (await fetchJsonWithTimeout(
-        'https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=6',
-        { method: 'GET' },
-      )) as Array<[number, string, string, string, string, string, number, string, number, string, string, string]>;
-
-      if (!Array.isArray(data) || data.length === 0) {
-        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing candles', retryable: true } as UpstreamFailure;
-      }
-
-      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
-      return {
-        data: {
-          symbol: 'BTCUSDT',
-          interval: '1h',
-          candles: data.map((candle) => [
-            candle[0],
-            Number(candle[1]),
-            Number(candle[2]),
-            Number(candle[3]),
-            Number(candle[4]),
-            Number(candle[5]),
-          ]),
-          source: 'binance',
-          timestamp: Date.now(),
-        },
-        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
-      };
-    }
-
-    if (path === '/api/deepseek' || path === '/api/qwen') {
-      if (!aiContext) {
-        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing ai request context', retryable: false } as UpstreamFailure;
-      }
-
-      const model = getOpenRouterModel(path, env);
-      const payload = (await fetchJsonWithTimeout(
-        `${env.OPENROUTER_API_BASE || DEFAULT_OPENROUTER_API_BASE}/chat/completions`,
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': OPENROUTER_HTTP_REFERER,
-            'X-Title': OPENROUTER_X_TITLE,
-          },
-          body: JSON.stringify({
-            model,
-            messages: aiContext.messages,
-            temperature: aiContext.temperature,
-            max_tokens: aiContext.maxTokens,
-          }),
-        },
-        OPENROUTER_TIMEOUT_MS,
-      )) as {
-        id?: string;
-        model?: string;
-        provider?: string;
-        choices?: Array<{
-          finish_reason?: string;
-          message?: { role?: string; content?: unknown };
-        }>;
-        usage?: {
-          prompt_tokens?: number;
-          completion_tokens?: number;
-          total_tokens?: number;
-          cost?: number;
-          cost_details?: {
-            upstream_inference_cost?: number;
-          };
-        };
-      };
-
-      const choice = Array.isArray(payload.choices) ? payload.choices[0] : null;
-      const content = normalizeAIMessageContent(choice?.message?.content);
-      if (!content) {
-        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing ai response content', retryable: true } as UpstreamFailure;
-      }
-
-      await recordUpstreamSuccess(env, source, Date.now(), Date.now() - startedAt);
-      const costUsd = Number(
-        (
-          payload.usage?.cost ??
-          payload.usage?.cost_details?.upstream_inference_cost ??
-          0
-        ).toFixed?.(6) || 0,
-      );
-      await recordAIUsageWithDurable(env, path, {
-        at: Date.now(),
-        model: payload.model || model,
-        costUsd: Number.isFinite(costUsd) ? costUsd : 0,
-        totalTokens: payload.usage?.total_tokens ?? 0,
-      });
-      return {
-        data: {
-          source: 'openrouter',
-          provider: payload.provider || 'openrouter',
-          model: payload.model || model,
-          response: content,
-          finishReason: choice?.finish_reason || null,
-          request: {
-            mode: aiContext.requestMode,
-            prompt: aiContext.prompt,
-            maxTokens: aiContext.maxTokens,
-            temperature: aiContext.temperature,
-            messageCount: aiContext.messages.length,
-          },
-          usage: {
-            promptTokens: payload.usage?.prompt_tokens ?? null,
-            completionTokens: payload.usage?.completion_tokens ?? null,
-            totalTokens: payload.usage?.total_tokens ?? null,
-          },
-          timestamp: Date.now(),
-          id: payload.id || null,
-        },
-        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
-      };
-    }
-
-    throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'unsupported path', retryable: false } as UpstreamFailure;
-  } catch (error) {
-    const failure = (error || { code: 'UPSTREAM_FETCH_FAILED', message: 'unknown upstream error', retryable: true }) as UpstreamFailure;
-    await recordUpstreamFailure(env, source, failure.code || 'UPSTREAM_FETCH_FAILED', Date.now(), Date.now() - startedAt);
-    console.error('Upstream fetch failed:', source, failure.code, failure.message);
-
-    return {
-      data: null,
-      meta: {
-        source,
-        status: 'fallback',
-        reasonCode: failure.code || 'UPSTREAM_FETCH_FAILED',
-        retryable: failure.retryable ?? true,
-      },
-    };
-  }
-}
-
 function enforceRateLimit(request: Request): Response | null {
   if (!globalThis.rateLimiter) {
     globalThis.rateLimiter = new Map<string, number[]>();
@@ -3289,7 +2788,14 @@ const worker = {
         return aiQuotaResponse;
       }
 
-      const upstreamResult = await fetchUpstreamData(path, env, preparedAIRequest.context);
+      const upstreamResult = await fetchUpstreamData(path, env, preparedAIRequest.context, {
+        getCircuitSnapshot: getUpstreamCircuitSnapshot,
+        recordTelemetry: (event, source) => recordUpstreamTelemetryWithDurable(env, source, event),
+        recordSuccess: (source, now, latencyMs) => recordUpstreamSuccessWithDurable(env, source, now, latencyMs),
+        recordFailure: (source, code, now, latencyMs) =>
+          recordUpstreamFailureWithDurable(env, source, code, now, latencyMs),
+        recordAIUsage: (metricPath, event) => recordAIUsageWithDurable(env, metricPath, event),
+      });
       const baseData = (upstreamResult.data || endpoint.sample()) as Record<string, unknown>;
 
       const response = apiResponse(
