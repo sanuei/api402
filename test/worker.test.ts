@@ -228,15 +228,39 @@ class FakeMetricsStoreStub {
       const now = Date.now();
       const fromMs = now - 24 * 60 * 60 * 1000;
       const bucketMs = (24 * 60 * 60 * 1000) / 6;
-      const recentEvents = Array.from(metricsStore.entries())
+      const endpointEntries = Array.from(metricsStore.entries())
         .filter(([key, value]) => key.startsWith('endpoint:') && Array.isArray(value))
-        .flatMap(([, value]) =>
-          (value as Array<{ at: number; statusCode: number }>)
-            .filter((event) => typeof event.at === 'number' && event.at >= fromMs && event.at <= now),
+        .map(([key, value]) => [key.slice('endpoint:'.length), value as Array<{ at: number; statusCode: number; paymentCode?: string | null }>] as const);
+      const recentEvents = endpointEntries.flatMap(([, value]) =>
+        value.filter((event) => typeof event.at === 'number' && event.at >= fromMs && event.at <= now),
+      );
+      const totalSettledUsdc = endpointEntries.reduce((sum, [path, events]) => {
+        const endpoint = API_ENDPOINTS.find((item) => item.path === path);
+        if (!endpoint) {
+          return sum;
+        }
+
+        return sum + events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length * Number(endpoint.price);
+      }, 0);
+      const settledUsdc24h = endpointEntries.reduce((sum, [path, events]) => {
+        const endpoint = API_ENDPOINTS.find((item) => item.path === path);
+        if (!endpoint) {
+          return sum;
+        }
+
+        return (
+          sum +
+          events.filter(
+            (event) => event.paymentCode === 'PAYMENT_VALID' && event.at >= fromMs && event.at <= now,
+          ).length *
+            Number(endpoint.price)
         );
+      }, 0);
       return Response.json({
         totalApiCalls: metricsOverview.totalApiCalls,
         last24hCalls: recentEvents.length,
+        totalSettledUsdc: Number(totalSettledUsdc.toFixed(6)),
+        settledUsdc24h: Number(settledUsdc24h.toFixed(6)),
         successRate24h:
           recentEvents.length > 0
             ? Number((recentEvents.filter((event) => event.statusCode < 400).length / recentEvents.length).toFixed(4))
@@ -600,6 +624,8 @@ test('metrics overview returns cumulative total api calls', async () => {
   const body = (await response.json()) as {
     totalApiCalls: number;
     last24hCalls: number;
+    totalSettledUsdc: number;
+    settledUsdc24h: number;
     successRate24h: number;
     paymentRequiredRate24h: number;
     trend24h: Array<{ bucketStart: string; requests: number }>;
@@ -609,6 +635,8 @@ test('metrics overview returns cumulative total api calls', async () => {
   assert.equal(response.status, 200);
   assert.equal(body.totalApiCalls >= 2, true);
   assert.equal(body.last24hCalls >= 2, true);
+  assert.equal(typeof body.totalSettledUsdc, 'number');
+  assert.equal(typeof body.settledUsdc24h, 'number');
   assert.equal(typeof body.successRate24h, 'number');
   assert.equal(typeof body.paymentRequiredRate24h, 'number');
   assert.equal(body.trend24h.length, 6);

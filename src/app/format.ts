@@ -77,6 +77,17 @@ export function formatMetricSparkline(values: number[]): string {
     .join('');
 }
 
+export function formatUsdcAmount(value: number | null | undefined): string {
+  if (value === null || value === undefined || Number.isNaN(value)) {
+    return '0';
+  }
+
+  return value.toLocaleString(state.currentLanguage === 'zh' ? 'zh-CN' : 'en-US', {
+    minimumFractionDigits: value >= 100 ? 0 : 2,
+    maximumFractionDigits: 4,
+  });
+}
+
 export function getGatewayPayTo(): string {
   return state.catalog?.payment.payTo || DEFAULT_GATEWAY_PAY_TO;
 }

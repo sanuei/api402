@@ -901,10 +901,41 @@ export class MetricsStoreDurableObject {
       const fromMs = now - 24 * 60 * 60 * 1000;
       const bucketMs = (24 * 60 * 60 * 1000) / 6;
       const entries = await this.state.storage.list<EndpointRequestMetricEvent[]>({ prefix: 'endpoint:' });
-      const recentEvents = Array.from(entries.values())
-        .filter((value) => Array.isArray(value))
-        .flatMap((value) => (value as EndpointRequestMetricEvent[]).filter((event) => event.at >= fromMs && event.at <= now));
+      const endpointEntries = Array.from(entries.entries())
+        .filter(([, value]) => Array.isArray(value))
+        .map(([key, value]) => [key.slice('endpoint:'.length), value as EndpointRequestMetricEvent[]] as const);
+      const recentEvents = endpointEntries.flatMap(([, value]) =>
+        value.filter((event) => event.at >= fromMs && event.at <= now),
+      );
       const last24hCalls = recentEvents.length;
+      const totalSettledUsdc = Number(
+        endpointEntries
+          .reduce((sum, [path, events]) => {
+            const endpoint = API_INDEX[path];
+            if (!endpoint) {
+              return sum;
+            }
+
+            const settledCount = events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
+            return sum + parseAmount(endpoint.price) * settledCount;
+          }, 0)
+          .toFixed(6),
+      );
+      const settledUsdc24h = Number(
+        endpointEntries
+          .reduce((sum, [path, events]) => {
+            const endpoint = API_INDEX[path];
+            if (!endpoint) {
+              return sum;
+            }
+
+            const settledCount = events.filter(
+              (event) => event.paymentCode === 'PAYMENT_VALID' && event.at >= fromMs && event.at <= now,
+            ).length;
+            return sum + parseAmount(endpoint.price) * settledCount;
+          }, 0)
+          .toFixed(6),
+      );
       const successRate24h =
         last24hCalls > 0
           ? Number((recentEvents.filter((event) => event.statusCode < 400).length / last24hCalls).toFixed(4))
@@ -925,6 +956,8 @@ export class MetricsStoreDurableObject {
       return jsonResponse({
         totalApiCalls,
         last24hCalls,
+        totalSettledUsdc,
+        settledUsdc24h,
         successRate24h,
         paymentRequiredRate24h,
         trend24h,
@@ -1789,6 +1822,8 @@ type MetricsSnapshot = {
 type MetricsOverviewSummary = {
   totalApiCalls: number;
   last24hCalls: number;
+  totalSettledUsdc: number;
+  settledUsdc24h: number;
   successRate24h: number;
   paymentRequiredRate24h: number;
   trend24h: Array<{ bucketStart: string; requests: number }>;
@@ -1977,8 +2012,37 @@ function getInMemoryMetricsOverview(): MetricsOverviewSummary {
   const fromMs = now - 24 * 60 * 60 * 1000;
   const buckets = 6;
   const bucketMs = (24 * 60 * 60 * 1000) / buckets;
-  const allEvents = Array.from(getEndpointRequestMetricsState().values()).flatMap((events) => events);
+  const endpointEntries = Array.from(getEndpointRequestMetricsState().entries());
+  const allEvents = endpointEntries.flatMap(([, events]) => events);
   const recentEvents = allEvents.filter((event) => event.at >= fromMs && event.at <= now);
+  const totalSettledUsdc = Number(
+    endpointEntries
+      .reduce((sum, [path, events]) => {
+        const endpoint = API_INDEX[path];
+        if (!endpoint) {
+          return sum;
+        }
+
+        const settledCount = events.filter((event) => event.paymentCode === 'PAYMENT_VALID').length;
+        return sum + parseAmount(endpoint.price) * settledCount;
+      }, 0)
+      .toFixed(6),
+  );
+  const settledUsdc24h = Number(
+    endpointEntries
+      .reduce((sum, [path, events]) => {
+        const endpoint = API_INDEX[path];
+        if (!endpoint) {
+          return sum;
+        }
+
+        const settledCount = events.filter(
+          (event) => event.paymentCode === 'PAYMENT_VALID' && event.at >= fromMs && event.at <= now,
+        ).length;
+        return sum + parseAmount(endpoint.price) * settledCount;
+      }, 0)
+      .toFixed(6),
+  );
   const successRate24h =
     recentEvents.length > 0
       ? Number((recentEvents.filter((event) => event.statusCode < 400).length / recentEvents.length).toFixed(4))
@@ -2000,6 +2064,8 @@ function getInMemoryMetricsOverview(): MetricsOverviewSummary {
   return {
     totalApiCalls: totalState.total,
     last24hCalls: recentEvents.length,
+    totalSettledUsdc,
+    settledUsdc24h,
     successRate24h,
     paymentRequiredRate24h,
     trend24h,

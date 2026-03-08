@@ -8,6 +8,7 @@ import {
   formatRelativeAge,
   formatTopError,
   formatTrendSparkline,
+  formatUsdcAmount,
   getGatewayExplorerUrl,
   getGatewayPayTo,
   getLocalizedFields,
@@ -288,6 +289,8 @@ export async function loadMetricsOverview() {
     getElement<HTMLDivElement>('last24hCalls').textContent = data.last24hCalls.toLocaleString(
       state.currentLanguage === 'zh' ? 'zh-CN' : 'en-US',
     );
+    getElement<HTMLDivElement>('totalSettledUsdc').textContent = `${formatUsdcAmount(data.totalSettledUsdc)} USDC`;
+    getElement<HTMLDivElement>('settledUsdc24h').textContent = `${formatUsdcAmount(data.settledUsdc24h)} USDC`;
     getElement<HTMLDivElement>('overviewSuccessRate').textContent = formatPercent(data.successRate24h);
     getElement<HTMLDivElement>('overview402Rate').textContent = formatPercent(data.paymentRequiredRate24h);
     getElement<HTMLDivElement>('overviewTrend').textContent = formatMetricSparkline(
@@ -297,6 +300,8 @@ export async function loadMetricsOverview() {
     getElement<HTMLDivElement>('totalApiCalls').textContent = '--';
     getElement<HTMLDivElement>('totalApiCallsUpdatedAt').textContent = t('dynamic.metricNever');
     getElement<HTMLDivElement>('last24hCalls').textContent = '--';
+    getElement<HTMLDivElement>('totalSettledUsdc').textContent = '--';
+    getElement<HTMLDivElement>('settledUsdc24h').textContent = '--';
     getElement<HTMLDivElement>('overviewSuccessRate').textContent = '--';
     getElement<HTMLDivElement>('overview402Rate').textContent = '--';
     getElement<HTMLDivElement>('overviewTrend').textContent = '--';
