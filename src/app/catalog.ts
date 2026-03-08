@@ -6,9 +6,11 @@ import {
   formatMetricSparkline,
   formatPercent,
   formatRelativeAge,
+  formatProviderLabel,
   formatTopError,
   formatTrendSparkline,
   formatUsdcAmount,
+  getCommercialLabels,
   getGatewayExplorerUrl,
   getGatewayPayTo,
   getLocalizedFields,
@@ -145,6 +147,10 @@ export function renderCatalogDirectory(endpoints: CatalogEndpoint[]) {
       const itemHtml = items
         .map((endpoint) => {
           const localized = getLocalizedFields(endpoint);
+          const providerLabel = formatProviderLabel(endpoint);
+          const commercialLabels = getCommercialLabels(endpoint)
+            .map((label) => `<span class="catalog-chip">${escapeHtml(label)}</span>`)
+            .join('');
           return `
             <button
               type="button"
@@ -155,6 +161,10 @@ export function renderCatalogDirectory(endpoints: CatalogEndpoint[]) {
                 <div>
                   <div class="font-semibold">${escapeHtml(localized.label)}</div>
                   <div class="mt-1 text-xs text-slate-500 mono">${escapeHtml(endpoint.path)}</div>
+                  <div class="mt-2 flex flex-wrap gap-2">
+                    <span class="catalog-chip catalog-chip-provider">${escapeHtml(providerLabel)}</span>
+                    ${commercialLabels}
+                  </div>
                 </div>
                 <div class="text-right">
                   <div class="text-xs text-[#33f0b2] mono">${escapeHtml(endpoint.price)} USDC</div>
@@ -183,6 +193,13 @@ export function renderCatalog(endpoints: CatalogEndpoint[]) {
   grid.innerHTML = endpoints
     .map((endpoint, index) => {
       const localized = getLocalizedFields(endpoint);
+      const providerLabel = formatProviderLabel(endpoint);
+      const commercialLabels = getCommercialLabels(endpoint)
+        .map(
+          (label) =>
+            `<span class="catalog-chip">${escapeHtml(label)}</span>`,
+        )
+        .join('');
       const freshnessClass =
         endpoint.freshness?.status === 'fresh'
           ? 'badge-green'
@@ -202,6 +219,10 @@ export function renderCatalog(endpoints: CatalogEndpoint[]) {
           <div class="mt-5">
             <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(localized.label)}</h3>
             <p class="mt-3 text-slate-400 leading-7 md:min-h-[84px]">${escapeHtml(localized.description)}</p>
+          </div>
+          <div class="mt-4 flex flex-wrap gap-2">
+            <span class="catalog-chip catalog-chip-provider">${escapeHtml(providerLabel)}</span>
+            ${commercialLabels}
           </div>
           <div class="mt-5 flex items-center gap-2 text-xs">
             <span class="${freshnessClass} rounded-full px-3 py-1 mono">${escapeHtml(t(`freshness.${endpoint.freshness?.status || 'unknown'}`))}</span>

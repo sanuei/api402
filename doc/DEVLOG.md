@@ -2031,3 +2031,45 @@
 1. 如果继续优化移动端，下一步应给目录增加折叠/展开和当前分类吸顶
 2. 接着继续推进 `Polymarket entry-signal / rotation`
 3. 后面如果增加更多卡片密集内容，需要优先以手机端栅格为基准设计
+
+## 2026-03-08
+
+### 本轮目标
+
+- 把 `claw402.ai` 的竞品研究固化到仓库里
+- 顺手把前端目录从“技术分类视角”提升到“产品目录视角”
+
+### 已完成
+
+- 新增竞品研究文档 [doc/COMPETITOR_CLAW402.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/COMPETITOR_CLAW402.md)
+- 记录了 `claw402` 的公开 catalog 结构、provider 分布、category 分布，以及值得学和不该学的地方
+- 前端目录和卡片增加了 `provider + 用途标签` 显示，不再只有路径、价格和分类
+- 新增目录/卡片用途标签规则:
+  - `旗舰流量 / Frontier`
+  - `流量入口 / Traffic`
+  - `交易准备 / Execution Prep`
+  - `信号扫描 / Signals`
+  - `风控情报 / Risk`
+  - `模型调用 / Model Access`
+- 目录表达更接近产品销售页，而不是纯技术接口列表
+
+### 涉及文件
+
+- [doc/COMPETITOR_CLAW402.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/COMPETITOR_CLAW402.md)
+- [src/app/format.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/format.ts)
+- [src/app/catalog.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/catalog.ts)
+- [src/styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `47/47`
+- `npm run build:frontend` 通过
+- `npx wrangler deploy --dry-run` 通过
+- `npm run deploy` 通过，Cloudflare 当前版本 `25b0fb64-fac9-4493-a5a2-29b424610ff3`
+
+### 下一步建议
+
+1. 继续推进 `Polymarket entry-signal / rotation / range-breakout`
+2. 进一步把目录筛选升级成按 `Use Case` 过滤
+3. 如果后面再研究竞品，优先只研究“目录结构、转化表达、毛利模型”，不追着抄接口数量

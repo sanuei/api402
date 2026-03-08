@@ -236,6 +236,26 @@ body::after {
   box-shadow: 0 0 0 1px rgba(51, 240, 178, 0.14);
 }
 
+.catalog-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--muted);
+  font-size: 0.72rem;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+.catalog-chip-provider {
+  color: var(--cyan);
+  border-color: rgba(141, 231, 255, 0.18);
+  background: rgba(141, 231, 255, 0.08);
+}
+
 .signal-dot {
   width: 10px;
   height: 10px;
