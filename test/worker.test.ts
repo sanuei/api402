@@ -338,6 +338,43 @@ function decodeBase64Header<T>(value: string | null): T | null {
   return JSON.parse(Buffer.from(value, 'base64').toString('utf8')) as T;
 }
 
+function createX402Payload(path: string, amount: string) {
+  return {
+    x402Version: 2 as const,
+    resource: {
+      url: `https://api-402.com${path}`,
+      description: 'paid resource',
+      mimeType: 'application/json' as const,
+    },
+    accepted: {
+      scheme: 'exact',
+      network: 'eip155:8453',
+      amount,
+      maxAmountRequired: amount,
+      asset: BASE_USDC_CONTRACT,
+      payTo: TEST_PAY_TO,
+      maxTimeoutSeconds: 60,
+      extra: {
+        assetTransferMethod: 'eip3009',
+        name: 'USD Coin',
+        version: '2',
+        resourceUrl: `https://api-402.com${path}`,
+      },
+    },
+    payload: {
+      signature: '0xmock-signature',
+      authorization: {
+        from: '0xabc0000000000000000000000000000000000000',
+        to: TEST_PAY_TO,
+        value: amount,
+        validAfter: '1740672089',
+        validBefore: '1740672154',
+        nonce: '0x1234',
+      },
+    },
+  };
+}
+
 async function createSignedPayload(
   path: string,
   amount: string,
@@ -425,6 +462,20 @@ async function withMockedFetch<T>(
 
     return new Response(JSON.stringify({ error: 'Unsupported RPC method in test' }), { status: 500 });
   };
+
+  try {
+    return await handler();
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function withMockedNetworkFetch<T>(
+  handlerFn: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+  handler: () => Promise<T>,
+): Promise<T> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = handlerFn;
 
   try {
     return await handler();
@@ -663,6 +714,7 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
     reason: string;
     requestId?: string;
     x402Version?: number;
+    resource?: { url?: string; mimeType?: string };
     accepts?: Array<{
       scheme: string;
       network: string;
@@ -670,7 +722,8 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
       maxAmountRequired: string;
       asset: string;
       payTo: string;
-      resource: string;
+      maxTimeoutSeconds: number;
+      extra?: { assetTransferMethod?: string; name?: string; version?: string; resourceUrl?: string };
     }>;
     remediationSchemaVersion?: string;
     remediationCompatibility?: string;
@@ -679,6 +732,7 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
   const paymentRequired = decodeBase64Header<{
     x402Version: number;
     error: string;
+    resource: { url: string; mimeType: string };
     accepts: Array<{
       scheme: string;
       network: string;
@@ -686,12 +740,12 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
       maxAmountRequired: string;
       asset: string;
       payTo: string;
-      resource: string;
       maxTimeoutSeconds: number;
       extra: {
         assetTransferMethod: string;
         name: string;
         version: string;
+        resourceUrl: string;
       };
     }>;
   }>(response.headers.get('PAYMENT-REQUIRED'));
@@ -700,12 +754,13 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
   assert.equal(body.code, 'PAYMENT_REQUIRED');
   assert.equal(body.reason, 'PAYMENT_MISSING');
   assert.equal(body.requestId, 'req-402-test');
-  assert.equal(body.x402Version, 1);
+  assert.equal(body.x402Version, 2);
+  assert.equal(body.resource?.url, 'https://api-402.com/api/deepseek');
   assert.equal(body.accepts?.[0]?.network, 'eip155:8453');
-  assert.equal(body.accepts?.[0]?.resource, '/api/deepseek');
   assert.equal(response.headers.get('X-Request-Id'), 'req-402-test');
-  assert.equal(paymentRequired?.x402Version, 1);
-  assert.equal(paymentRequired?.error, 'PAYMENT_REQUIRED');
+  assert.equal(paymentRequired?.x402Version, 2);
+  assert.equal(paymentRequired?.error, 'Payment required');
+  assert.equal(paymentRequired?.resource.url, 'https://api-402.com/api/deepseek');
   assert.equal(paymentRequired?.accepts[0]?.scheme, 'exact');
   assert.equal(paymentRequired?.accepts[0]?.network, 'eip155:8453');
   assert.equal(paymentRequired?.accepts[0]?.amount, '3000');
@@ -714,8 +769,9 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
   assert.equal(paymentRequired?.accepts[0]?.payTo, TEST_PAY_TO);
   assert.equal(paymentRequired?.accepts[0]?.maxTimeoutSeconds, 60);
   assert.equal(paymentRequired?.accepts[0]?.extra.assetTransferMethod, 'eip3009');
-  assert.equal(paymentRequired?.accepts[0]?.extra.name, 'USDC');
+  assert.equal(paymentRequired?.accepts[0]?.extra.name, 'USD Coin');
   assert.equal(paymentRequired?.accepts[0]?.extra.version, '2');
+  assert.equal(paymentRequired?.accepts[0]?.extra.resourceUrl, 'https://api-402.com/api/deepseek');
   assert.equal(body.remediationSchemaVersion, '1.0.0');
   assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
   assert.equal(
@@ -2139,28 +2195,103 @@ test('valid signed payment payload is accepted', async () => {
       assert.equal(body._meta.settlement?.receiptBlock, 256);
       assert.equal(body._meta.settlement?.latestBlock, 257);
       const paymentResponse = decodeBase64Header<{
-        x402Version: number;
         success: boolean;
-        scheme: string;
         network: string;
-        amount: string;
-        resource: string;
-        asset: string;
-        settlement: { txHash: string; confirmations: number };
+        transaction: string;
+        payer?: string;
+        requirements: { amount: string; asset: string; payTo: string };
       }>(response.headers.get('PAYMENT-RESPONSE'));
-      assert.equal(paymentResponse?.x402Version, 1);
       assert.equal(paymentResponse?.success, true);
-      assert.equal(paymentResponse?.scheme, 'exact');
       assert.equal(paymentResponse?.network, 'eip155:8453');
-      assert.equal(paymentResponse?.amount, '3000');
-      assert.equal(paymentResponse?.resource, '/api/deepseek');
-      assert.equal(paymentResponse?.asset, BASE_USDC_CONTRACT);
+      assert.equal(paymentResponse?.requirements.amount, '3000');
+      assert.equal(paymentResponse?.requirements.asset, BASE_USDC_CONTRACT);
+      assert.equal(paymentResponse?.requirements.payTo, TEST_PAY_TO);
       assert.equal(
-        paymentResponse?.settlement.txHash,
+        paymentResponse?.transaction,
         '0x1111111111111111111111111111111111111111111111111111111111111111',
       );
     },
   );
+});
+
+test('official x402 v2 payment payload is verified and settled through facilitator', async () => {
+  const env = createEnv({ FACILITATOR_URL: 'https://facilitator.xpay.sh' });
+  const paymentPayload = createX402Payload('/api/btc-price', '10');
+  const request = new Request('https://api-402.com/api/btc-price', {
+    headers: {
+      'PAYMENT-SIGNATURE': encodeBase64(paymentPayload),
+    },
+  });
+
+  await withMockedNetworkFetch(async (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+    if (url === 'https://facilitator.xpay.sh/verify') {
+      return new Response(
+        JSON.stringify({
+          isValid: true,
+          payer: '0xabc0000000000000000000000000000000000000',
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url === 'https://facilitator.xpay.sh/settle') {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          payer: '0xabc0000000000000000000000000000000000000',
+          transaction: '0x9999999999999999999999999999999999999999999999999999999999999999',
+          network: 'eip155:8453',
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('api.binance.com')) {
+      return new Response(
+        JSON.stringify({
+          symbol: 'BTCUSDT',
+          price: '65000.12',
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    return new Response(JSON.stringify({ error: `unexpected fetch ${url}` }), { status: 500 });
+  }, async () => {
+    const response = await worker.fetch(request, env);
+    const body = (await response.json()) as {
+      _meta: { paymentMode: string; paid: boolean; settlement?: { txHash: string } | null };
+      price?: number;
+      symbol?: string;
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body._meta.paid, true);
+    assert.equal(body._meta.paymentMode, 'PAYMENT_VALID');
+    assert.equal(
+      body._meta.settlement?.txHash,
+      '0x9999999999999999999999999999999999999999999999999999999999999999',
+    );
+
+    const paymentResponse = decodeBase64Header<{
+      success: boolean;
+      payer: string;
+      transaction: string;
+      network: string;
+      requirements: { amount: string; payTo: string };
+    }>(response.headers.get('PAYMENT-RESPONSE'));
+    assert.equal(paymentResponse?.success, true);
+    assert.equal(paymentResponse?.network, 'eip155:8453');
+    assert.equal(paymentResponse?.payer, '0xabc0000000000000000000000000000000000000');
+    assert.equal(
+      paymentResponse?.transaction,
+      '0x9999999999999999999999999999999999999999999999999999999999999999',
+    );
+    assert.equal(paymentResponse?.requirements.amount, '10');
+    assert.equal(paymentResponse?.requirements.payTo, TEST_PAY_TO);
+  });
 });
 
 test('expired signed payment payload is rejected with machine-readable reason', async () => {

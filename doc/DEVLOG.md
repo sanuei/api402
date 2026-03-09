@@ -2000,6 +2000,58 @@
 
 ### 本轮目标
 
+- 修复“Payment was authorized but rejected by server”，让官方 x402 v2 客户端不再被 Worker 的自定义支付协议拒绝
+
+### 已完成
+
+- 确认当前根因不是 challenge 金额格式，而是服务端只识别自定义 `PAYMENT-SIGNATURE + X-PAYMENT-TX-HASH`，不识别官方 x402 v2 `PAYMENT-SIGNATURE`
+- 对照官方 x402 TypeScript 实现核对了 v2 协议结构：
+  - `PAYMENT-REQUIRED` 应为 `x402Version: 2`
+  - 顶层应带 `resource`
+  - `accepts[]` 应仅保留标准 requirement 字段
+  - 客户端重放时发送的是 `accepted + payload`
+- 新增 Worker 里的官方 x402 v2 兼容路径：
+  - 识别标准 `PAYMENT-SIGNATURE`
+  - 校验 `accepted` 是否匹配当前 endpoint / amount / asset / payTo
+  - 调用 facilitator 做 `verify -> settle`
+  - 成功后返回标准 `PAYMENT-RESPONSE`
+- 默认 facilitator 改为支持 Base mainnet 的公开服务 `https://facilitator.xpay.sh`
+- 保留了原有“链上转账 + tx hash 回放”的自定义支付路径，前端和现有手工联调不受影响
+- 把 `PAYMENT-REQUIRED` challenge 进一步对齐到官方 v2：
+  - `x402Version: 2`
+  - 顶层 `resource.url / description / mimeType`
+  - `accepts[].extra.name = USD Coin`
+  - `accepts[].extra.resourceUrl = ...`
+- 新增测试覆盖“官方 x402 v2 payment payload 通过 facilitator verify / settle”
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [worker/payment.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/payment.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `48/48`
+- 新测试 `official x402 v2 payment payload is verified and settled through facilitator` 通过
+
+### 风险和判断
+
+- 当前默认依赖公开 facilitator `facilitator.xpay.sh`
+- 这能让官方 x402 v2 客户端在 Base mainnet 上真正进入 verify / settle，而不是被本地自定义协议直接拒绝
+- 但生产环境要真正成功，还依赖该 facilitator 在线、可用、且接受当前主网 USDC 结算
+
+### 下一步建议
+
+1. 立即重新用同一个真实付费客户端复测 `/api/polymarket/trending`
+2. 如果仍失败，下一步抓服务端收到的 `PAYMENT-SIGNATURE` 和 facilitator 返回的 `invalidReason/errorReason`
+3. 后续可以把 `FACILITATOR_URL` 暴露到部署配置，支持你切换为自建 facilitator
+
+## 2026-03-08
+
+### 本轮目标
+
 - 修复 `awal x402 pay` 在读取 challenge 时因金额格式报 `Cannot convert 0.003 to a BigInt` 的兼容问题
 
 ### 已完成

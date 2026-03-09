@@ -94,6 +94,7 @@ export type { PaymentPayload } from './payment';
 export interface Env {
   PAY_TO?: string;
   APP_NAME?: string;
+  FACILITATOR_URL?: string;
   BASE_RPC_URL?: string;
   BASE_RPC_URLS?: string;
   OPENROUTER_API_KEY?: string;
@@ -655,36 +656,60 @@ type X402Requirement = {
   maxAmountRequired: string;
   asset: string;
   payTo: string;
-  resource: string;
-  description: string;
-  mimeType: 'application/json';
-  outputSchema: null;
   maxTimeoutSeconds: number;
   extra: {
     assetTransferMethod: 'eip3009';
-    name: 'USDC';
+    name: 'USD Coin';
     version: '2';
-    currency: 'USDC';
-    chain: 'base';
-    chainId: 8453;
-    settlementMethod: 'base-usdc-transfer-receipt';
-    settlementProofHeader: string;
-    settlementConfirmationsRequired: number;
-    maxSettlementAgeBlocks: number;
-    maxPaymentAgeSeconds: number;
-    maxFutureSkewSeconds: number;
-    requestId: string;
+    resourceUrl: string;
   };
 };
 
+type X402ResourceInfo = {
+  url: string;
+  description: string;
+  mimeType: 'application/json';
+};
+
+type X402PaymentRequired = {
+  x402Version: 2;
+  error: string;
+  resource: X402ResourceInfo;
+  accepts: X402Requirement[];
+};
+
+type X402PaymentPayload = {
+  x402Version: 2;
+  resource?: Partial<X402ResourceInfo>;
+  accepted: X402Requirement;
+  payload: Record<string, unknown>;
+  extensions?: Record<string, unknown>;
+};
+
+type X402FacilitatorVerifyResponse = {
+  isValid: boolean;
+  invalidReason?: string;
+  invalidMessage?: string;
+  payer?: string;
+  extensions?: Record<string, unknown>;
+};
+
+type X402FacilitatorSettleResponse = {
+  success: boolean;
+  errorReason?: string;
+  errorMessage?: string;
+  payer?: string;
+  transaction: string;
+  network: string;
+  extensions?: Record<string, unknown>;
+};
+
+const DEFAULT_FACILITATOR_URL = 'https://facilitator.xpay.sh';
+
 function buildX402Requirement(
+  baseUrl: string,
   endpoint: APIEndpoint,
   payTo: string,
-  requestId: string,
-  minConfirmations: number,
-  maxAgeSeconds: number,
-  futureSkewSeconds: number,
-  maxSettlementAgeBlocks: number,
 ): X402Requirement {
   const atomicAmount = parseTokenAmount(endpoint.price, 6);
   const amount = atomicAmount ? atomicAmount.toString() : endpoint.price;
@@ -696,27 +721,106 @@ function buildX402Requirement(
     maxAmountRequired: amount,
     asset: BASE_USDC_CONTRACT,
     payTo,
-    resource: endpoint.path,
-    description: endpoint.description.en,
-    mimeType: 'application/json',
-    outputSchema: null,
     maxTimeoutSeconds: 60,
     extra: {
       assetTransferMethod: 'eip3009',
-      name: 'USDC',
+      name: 'USD Coin',
       version: '2',
-      currency: 'USDC',
-      chain: 'base',
-      chainId: 8453,
-      settlementMethod: 'base-usdc-transfer-receipt',
-      settlementProofHeader: PAYMENT_TX_HASH_HEADER,
-      settlementConfirmationsRequired: minConfirmations,
-      maxSettlementAgeBlocks,
-      maxPaymentAgeSeconds: maxAgeSeconds,
-      maxFutureSkewSeconds: futureSkewSeconds,
-      requestId,
+      resourceUrl: `${baseUrl}${endpoint.path}`,
     },
   };
+}
+
+function buildX402ResourceInfo(baseUrl: string, endpoint: APIEndpoint): X402ResourceInfo {
+  return {
+    url: `${baseUrl}${endpoint.path}`,
+    description: endpoint.description.en,
+    mimeType: 'application/json',
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function isX402Requirement(value: unknown): value is X402Requirement {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    value.scheme === 'exact' &&
+    value.network === 'eip155:8453' &&
+    typeof value.amount === 'string' &&
+    typeof value.asset === 'string' &&
+    typeof value.payTo === 'string' &&
+    typeof value.maxTimeoutSeconds === 'number' &&
+    isRecord(value.extra)
+  );
+}
+
+function isX402PaymentPayload(value: unknown): value is X402PaymentPayload {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return value.x402Version === 2 && isX402Requirement(value.accepted) && isRecord(value.payload);
+}
+
+function extractX402PaymentPayload(request: Request): X402PaymentPayload | null {
+  const paymentSignature = request.headers.get('PAYMENT-SIGNATURE');
+  if (!paymentSignature) {
+    return null;
+  }
+
+  const payload = decodeBase64Json(paymentSignature);
+  return isX402PaymentPayload(payload) ? payload : null;
+}
+
+function getFacilitatorUrl(env: Env): string {
+  const configured = env.FACILITATOR_URL?.trim();
+  return configured || DEFAULT_FACILITATOR_URL;
+}
+
+function matchesX402AcceptedRequirement(
+  accepted: X402Requirement,
+  expected: X402Requirement,
+): boolean {
+  return (
+    accepted.scheme === expected.scheme &&
+    accepted.network === expected.network &&
+    accepted.amount === expected.amount &&
+    accepted.asset.toLowerCase() === expected.asset.toLowerCase() &&
+    accepted.payTo.toLowerCase() === expected.payTo.toLowerCase()
+  );
+}
+
+async function postFacilitator<T>(
+  url: string,
+  path: '/verify' | '/settle',
+  paymentPayload: X402PaymentPayload,
+  paymentRequirements: X402Requirement,
+): Promise<T> {
+  const response = await fetch(`${url}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      x402Version: 2,
+      paymentPayload,
+      paymentRequirements,
+    }),
+  });
+  const data = (await response.json().catch(() => null)) as T | null;
+
+  if (!data) {
+    throw new Error(`Facilitator ${path} returned an empty response.`);
+  }
+
+  if (!response.ok) {
+    throw new Error(JSON.stringify(data));
+  }
+
+  return data;
 }
 
 function buildX402PaymentResponse(
@@ -725,6 +829,10 @@ function buildX402PaymentResponse(
   requestId: string,
   verification: PaymentVerificationResult,
 ): string | null {
+  if (verification.paymentResponseHeader) {
+    return verification.paymentResponseHeader;
+  }
+
   if (!verification.ok || verification.code !== 'PAYMENT_VALID' || !verification.settlement) {
     return null;
   }
@@ -735,24 +843,141 @@ function buildX402PaymentResponse(
   return encodeJsonBase64({
     x402Version: 1,
     success: true,
-    scheme: 'exact',
     network: 'eip155:8453',
-    payTo,
-    resource: endpoint.path,
-    amount,
-    asset: BASE_USDC_CONTRACT,
+    transaction: verification.settlement.txHash,
+    payer: verification.payer,
     requestId,
-    settlement: {
-      txHash: verification.settlement.txHash,
-      chainId: verification.settlement.chainId,
-      tokenContract: verification.settlement.tokenContract,
-      settlementMethod: verification.settlement.settlementMethod,
-      requiredConfirmations: verification.settlement.requiredConfirmations,
-      confirmations: verification.settlement.confirmations,
-      receiptBlock: verification.settlement.receiptBlock,
-      latestBlock: verification.settlement.latestBlock,
+    requirements: {
+      scheme: 'exact',
+      network: 'eip155:8453',
+      amount,
+      asset: BASE_USDC_CONTRACT,
+      payTo,
+      maxTimeoutSeconds: 60,
+      extra: {
+        assetTransferMethod: 'eip3009',
+        name: 'USD Coin',
+        version: '2',
+      },
     },
   });
+}
+
+async function verifyAndSettleX402Payment(
+  request: Request,
+  endpoint: APIEndpoint,
+  payTo: string,
+  env: Env,
+): Promise<PaymentVerificationResult | null> {
+  const paymentPayload = extractX402PaymentPayload(request);
+  if (!paymentPayload) {
+    return null;
+  }
+
+  const baseUrl = new URL(request.url).origin;
+  const expectedRequirement = buildX402Requirement(baseUrl, endpoint, payTo);
+  const resourceInfo = buildX402ResourceInfo(baseUrl, endpoint);
+
+  if (!matchesX402AcceptedRequirement(paymentPayload.accepted, expectedRequirement)) {
+    return {
+      ok: false,
+      code: 'INVALID_PAYMENT_PAYLOAD',
+      message: 'x402 accepted requirements do not match this endpoint.',
+    };
+  }
+
+  if (paymentPayload.resource?.url) {
+    try {
+      const resourceUrl = new URL(paymentPayload.resource.url);
+      if (resourceUrl.origin !== baseUrl || resourceUrl.pathname !== endpoint.path) {
+        return {
+          ok: false,
+          code: 'PAYMENT_RESOURCE_MISMATCH',
+          message: 'x402 payment payload resource does not match the requested endpoint.',
+        };
+      }
+    } catch {
+      return {
+        ok: false,
+        code: 'INVALID_PAYMENT_PAYLOAD',
+        message: 'x402 payment payload resource URL is invalid.',
+      };
+    }
+  }
+
+  const normalizedPayload: X402PaymentPayload = {
+    ...paymentPayload,
+    resource: resourceInfo,
+    accepted: {
+      ...paymentPayload.accepted,
+      extra: {
+        ...(paymentPayload.accepted.extra || {}),
+        resourceUrl: resourceInfo.url,
+      },
+    },
+  };
+
+  try {
+    const facilitatorUrl = getFacilitatorUrl(env);
+    const verifyResponse = await postFacilitator<X402FacilitatorVerifyResponse>(
+      facilitatorUrl,
+      '/verify',
+      normalizedPayload,
+      normalizedPayload.accepted,
+    );
+
+    if (!verifyResponse.isValid) {
+      return {
+        ok: false,
+        code: 'PAYMENT_SIGNATURE_INVALID',
+        message: verifyResponse.invalidMessage || verifyResponse.invalidReason || 'x402 payment verification failed.',
+        payer: verifyResponse.payer,
+      };
+    }
+
+    const settleResponse = await postFacilitator<X402FacilitatorSettleResponse>(
+      facilitatorUrl,
+      '/settle',
+      normalizedPayload,
+      normalizedPayload.accepted,
+    );
+
+    if (!settleResponse.success) {
+      return {
+        ok: false,
+        code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
+        message: settleResponse.errorMessage || settleResponse.errorReason || 'x402 settlement failed.',
+        payer: settleResponse.payer,
+      };
+    }
+
+    return {
+      ok: true,
+      code: 'PAYMENT_VALID',
+      message: 'x402 payment verified and settled successfully.',
+      payer: settleResponse.payer,
+      paymentResponseHeader: encodeJsonBase64({
+        ...settleResponse,
+        requirements: normalizedPayload.accepted,
+      }),
+      settlement: {
+        txHash: settleResponse.transaction,
+        chainId: 8453,
+        tokenContract: BASE_USDC_CONTRACT,
+        settlementMethod: 'base-usdc-transfer-receipt',
+        requiredConfirmations: 0,
+        receiptBlock: null,
+        latestBlock: null,
+        confirmations: 0,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      code: 'PAYMENT_SETTLEMENT_RPC_FAILED',
+      message: error instanceof Error ? error.message : 'x402 facilitator request failed.',
+    };
+  }
 }
 
 function getClientIP(request: Request): string {
@@ -1783,20 +2008,14 @@ function createPaymentRequired(
     [REQUEST_ID_HEADER]: requestId,
   };
 
-  const x402Requirement = buildX402Requirement(
-    endpoint,
-    payTo,
-    requestId,
-    minConfirmations,
-    maxAgeSeconds,
-    futureSkewSeconds,
-    maxSettlementAgeBlocks,
-  );
+  const x402Requirement = buildX402Requirement(baseUrl, endpoint, payTo);
+  const x402Resource = buildX402ResourceInfo(baseUrl, endpoint);
   responseHeaders['PAYMENT-REQUIRED'] = encodeJsonBase64({
-    x402Version: 1,
-    error: 'PAYMENT_REQUIRED',
+    x402Version: 2,
+    error: 'Payment required',
+    resource: x402Resource,
     accepts: [x402Requirement],
-  });
+  } satisfies X402PaymentRequired);
 
   if (verification.code === 'PAYMENT_TX_NOT_CONFIRMED') {
     responseHeaders['Retry-After'] = settlementPolicy.recommendedRetryAfterSeconds.toString();
@@ -1824,7 +2043,8 @@ function createPaymentRequired(
       acceptance: 'base-mainnet-usdc-only',
       path: endpoint.path,
       description: endpoint.description.en,
-      x402Version: 1,
+      x402Version: 2,
+      resource: x402Resource,
       accepts: [x402Requirement],
       acceptedHeaders: ['Authorization', 'PAYMENT-SIGNATURE', PAYMENT_TX_HASH_HEADER, 'X-Payment-Proof', REQUEST_ID_HEADER],
       settlementProofHeader: PAYMENT_TX_HASH_HEADER,
@@ -1935,6 +2155,11 @@ export async function verifyPayment(
   env: Env,
   now = Date.now(),
 ): Promise<PaymentVerificationResult> {
+  const x402Verification = await verifyAndSettleX402Payment(request, endpoint, payTo, env);
+  if (x402Verification) {
+    return x402Verification;
+  }
+
   const maxPaymentAgeSeconds = parsePositiveInt(env.PAYMENT_MAX_AGE_SECONDS, DEFAULT_PAYMENT_MAX_AGE_SECONDS);
   const maxFutureSkewSeconds = parsePositiveInt(
     env.PAYMENT_MAX_FUTURE_SKEW_SECONDS,

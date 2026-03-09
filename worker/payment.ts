@@ -89,6 +89,8 @@ export interface PaymentVerificationResult {
     | 'PAYMENT_SIGNATURE_INVALID';
   message: string;
   settlement?: PaymentSettlementContext;
+  payer?: string;
+  paymentResponseHeader?: string;
 }
 
 export type JsonRpcReceiptLog = {
