@@ -2000,6 +2000,44 @@
 
 ### 本轮目标
 
+- 提升首页转化表达，并补 OpenClaw / SDK 接入入口，让用户一眼知道网站用途且能快速集成
+
+### 已完成
+
+- 重写 Hero 区文案，不再强调“技术实现感”，而是直接说明“用 USDC 按次购买 API 和 AI 模型”
+- Hero 徽章改成更接近用户价值的表达：
+  - `先调后付`
+  - `支持 OpenClaw`
+  - `Base USDC 结算`
+- 顶部导航新增 `接入 / Integrations`
+- 新增页面区块 `#integrations`
+  - OpenClaw 快速接入说明
+  - 轻量 JS SDK 说明
+  - 可直接复制的接入代码块
+- 新增轻量 ESM SDK 静态文件 [public/sdk/api402-client.mjs](/Users/yangshangwei/Desktop/网页项目/api402/public/sdk/api402-client.mjs)
+  - 支持 `catalog`
+  - 支持 `health`
+  - 支持普通 request
+  - 支持遇到 `402` 后通过 `paymentHandler` 注入 `PAYMENT-SIGNATURE`
+- 新增接入文档 [doc/OPENCLAW_GUIDE.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/OPENCLAW_GUIDE.md)
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/app/i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [public/sdk/api402-client.mjs](/Users/yangshangwei/Desktop/网页项目/api402/public/sdk/api402-client.mjs)
+- [doc/OPENCLAW_GUIDE.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/OPENCLAW_GUIDE.md)
+
+### 下一步建议
+
+1. 如果继续做转化，下一步补一个真正的 `SDK / Docs` 顶层页，而不是只放首页区块
+2. 给 SDK 再补一个 Node CLI 例子，方便直接在服务器和 agent runner 里调用
+3. 后面如果要公开推广，可以把 OpenClaw guide 单独做成 blog / docs 页面
+
+## 2026-03-08
+
+### 本轮目标
+
 - 修复“Payment was authorized but rejected by server”，让官方 x402 v2 客户端不再被 Worker 的自定义支付协议拒绝
 
 ### 已完成

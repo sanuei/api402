@@ -76,6 +76,7 @@
                 <a href="#catalog" class="hover:text-white transition-colors" data-i18n="nav.catalog">Catalog</a>
                 <a href="#flow" class="hover:text-white transition-colors" data-i18n="nav.flow">Flow</a>
                 <a href="#examples" class="hover:text-white transition-colors" data-i18n="nav.examples">Examples</a>
+                <a href="#integrations" class="hover:text-white transition-colors" data-i18n="nav.integrations">Integrations</a>
                 <a href="#faq" class="hover:text-white transition-colors" data-i18n="nav.faq">FAQ</a>
             </div>
             <div class="flex items-center gap-2 sm:gap-3 ml-auto">
@@ -101,6 +102,7 @@
                     <a href="#catalog" class="mobile-nav-link" data-i18n="nav.catalog">Catalog</a>
                     <a href="#flow" class="mobile-nav-link" data-i18n="nav.flow">Flow</a>
                     <a href="#examples" class="mobile-nav-link" data-i18n="nav.examples">Examples</a>
+                    <a href="#integrations" class="mobile-nav-link" data-i18n="nav.integrations">Integrations</a>
                     <a href="#faq" class="mobile-nav-link" data-i18n="nav.faq">FAQ</a>
                 </div>
             </div>
@@ -116,14 +118,13 @@
                             <span class="signal-dot"></span>
                             <span>Base + USDC + <strong>x402-style challenge</strong></span>
                         </div>
-                        <p class="kicker mb-4" data-i18n="hero.kicker">Micropayments For Agents And Developers</p>
+                        <p class="kicker mb-4" data-i18n="hero.kicker">Pay-per-call API marketplace</p>
                         <h1 class="text-4xl sm:text-5xl md:text-7xl font-bold tracking-tight leading-[0.95]">
-                            <span data-i18n="hero.title.prefix">按次付费调用 API，</span>
-                            <span class="text-[#33f0b2]" data-i18n="hero.title.mid">不注册</span>，
-                            <span class="text-[#8de7ff]" data-i18n="hero.title.end">不发 Key</span>。
+                            <span data-i18n="hero.title.line1">用 USDC 按次购买</span><br>
+                            <span class="text-[#8de7ff]" data-i18n="hero.title.line2">API 和 AI 模型</span>
                         </h1>
                         <p class="mt-7 text-lg md:text-xl text-slate-400 max-w-2xl leading-relaxed" data-i18n="hero.description">
-                            面向 AI Agent、自动化工作流和开发者的 API 支付网关。先请求，收到 402 挑战，再用钱包授权完成单次调用。
+                            这是一个按次付费 API 商店。先看目录，发起请求，收到 402 后付款，再拿到真实数据或模型结果。
                         </p>
                         <div class="mt-8 flex flex-col sm:flex-row gap-4">
                             <a href="#catalog"
@@ -138,9 +139,9 @@
                             </a>
                         </div>
                         <div class="mt-8 flex flex-wrap items-center gap-3 text-sm text-slate-400">
-                            <span class="badge-green rounded-full px-3 py-1.5" data-i18n="hero.badge1">No signup</span>
-                            <span class="badge-blue rounded-full px-3 py-1.5" data-i18n="hero.badge2">Wallet as identity</span>
-                            <span class="badge-amber rounded-full px-3 py-1.5" data-i18n="hero.badge3">Pay only when called</span>
+                            <span class="badge-green rounded-full px-3 py-1.5" data-i18n="hero.badge1">先调后付</span>
+                            <span class="badge-blue rounded-full px-3 py-1.5" data-i18n="hero.badge2">支持 OpenClaw</span>
+                            <span class="badge-amber rounded-full px-3 py-1.5" data-i18n="hero.badge3">Base USDC 结算</span>
                         </div>
                     </div>
 
@@ -436,6 +437,95 @@
                             </div>
                             <pre class="p-6 md:p-7 overflow-x-auto text-sm leading-7 mono text-slate-200"
                                 id="jsExample"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section id="integrations" class="py-16 md:py-24 border-y border-white/5 bg-black/10">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="max-w-3xl mb-10">
+                    <p class="kicker mb-3" data-i18n="integrations.kicker">OpenClaw And SDK</p>
+                    <h2 class="text-4xl md:text-5xl font-bold tracking-tight" data-i18n="integrations.title">给 Agent、OpenClaw 和脚本的最快接入方式</h2>
+                    <p class="mt-4 text-slate-400 text-lg leading-8" data-i18n="integrations.description">
+                        现在先提供最轻量的两条路：直接让 OpenClaw 调你的 API，或者用浏览器 / Node 都能跑的轻量 SDK 包一层。
+                    </p>
+                </div>
+
+                <div class="grid lg:grid-cols-2 gap-6">
+                    <div class="soft-card rounded-[32px] p-7 md:p-8">
+                        <div class="badge-blue inline-flex rounded-full px-3 py-1 text-sm mb-5" data-i18n="integrations.openclawBadge">OpenClaw Quickstart</div>
+                        <h3 class="text-2xl font-bold" data-i18n="integrations.openclawTitle">先读目录，再让 OpenClaw 调付费接口</h3>
+                        <p class="mt-4 text-slate-400 leading-7" data-i18n="integrations.openclawBody">
+                            最稳的方式是先读取 catalog 发现价格和路径，再用 x402 兼容客户端重放请求。这样更适合给 Agent 自动挑接口。
+                        </p>
+                        <div class="mt-6 space-y-3 text-sm text-slate-300">
+                            <div class="log-box rounded-2xl p-4">
+                                <div class="mono text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Step 1</div>
+                                <div data-i18n="integrations.openclawStep1">先读取 catalog，给 OpenClaw 暴露可用接口、价格和请求方式。</div>
+                            </div>
+                            <div class="log-box rounded-2xl p-4">
+                                <div class="mono text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Step 2</div>
+                                <div data-i18n="integrations.openclawStep2">先发第一次请求拿到 402 challenge，再用 PAYMENT-SIGNATURE 重放。</div>
+                            </div>
+                            <div class="log-box rounded-2xl p-4">
+                                <div class="mono text-xs uppercase tracking-[0.2em] text-slate-500 mb-2">Step 3</div>
+                                <div data-i18n="integrations.openclawStep3">把返回的 `_meta` 和 PAYMENT-RESPONSE 保存下来，方便 Agent 做日志和重试。</div>
+                            </div>
+                        </div>
+                        <div class="terminal rounded-[28px] mt-6">
+                            <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                                <div class="mono text-xs uppercase tracking-[0.25em] text-slate-500">OpenClaw</div>
+                                <span class="text-xs text-slate-500" data-i18n="integrations.openclawHint">Catalog first, then paid replay</span>
+                            </div>
+                            <pre class="p-6 md:p-7 overflow-x-auto text-sm leading-7 mono text-slate-200">curl https://api-402.com/api/v1/catalog
+
+curl -i https://api-402.com/api/polymarket/trending
+
+# Replay with an x402-compatible client
+fetch("https://api-402.com/api/polymarket/trending", {
+  headers: {
+    "PAYMENT-SIGNATURE": paymentHeader
+  }
+})</pre>
+                        </div>
+                    </div>
+
+                    <div class="soft-card rounded-[32px] p-7 md:p-8">
+                        <div class="badge-green inline-flex rounded-full px-3 py-1 text-sm mb-5" data-i18n="integrations.sdkBadge">SDK Starter</div>
+                        <h3 class="text-2xl font-bold" data-i18n="integrations.sdkTitle">轻量 JS SDK 已可直接接入</h3>
+                        <p class="mt-4 text-slate-400 leading-7" data-i18n="integrations.sdkBody">
+                            现在已经提供一个轻量 ESM SDK，用来统一 catalog、health、402 challenge 和 replay 请求。你只需要接自己的 payment handler。
+                        </p>
+                        <div class="mt-6 flex flex-wrap gap-3">
+                            <a href="/sdk/api402-client.mjs" target="_blank" rel="noreferrer"
+                                class="secondary-btn rounded-full px-5 py-3 text-sm font-semibold transition">
+                                <span data-i18n="integrations.sdkOpen">打开 SDK 文件</span>
+                            </a>
+                            <a href="https://api-402.com/api/v1/catalog" target="_blank" rel="noreferrer"
+                                class="secondary-btn rounded-full px-5 py-3 text-sm font-semibold transition">
+                                <span data-i18n="integrations.sdkCatalog">查看 Catalog JSON</span>
+                            </a>
+                        </div>
+                        <div class="terminal rounded-[28px] mt-6">
+                            <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
+                                <div class="mono text-xs uppercase tracking-[0.25em] text-slate-500">JavaScript SDK</div>
+                                <span class="text-xs text-slate-500" data-i18n="integrations.sdkHint">Bring your own payment signer</span>
+                            </div>
+                            <pre class="p-6 md:p-7 overflow-x-auto text-sm leading-7 mono text-slate-200">import { API402Client } from "https://api-402.com/sdk/api402-client.mjs";
+
+const client = new API402Client({
+  baseUrl: "https://api-402.com",
+  async paymentHandler({ paymentRequired }) {
+    return {
+      "PAYMENT-SIGNATURE": await createX402PaymentHeader(paymentRequired)
+    };
+  }
+});
+
+const data = await client.get("/api/polymarket/trending");
+console.log(data);</pre>
                         </div>
                     </div>
                 </div>
