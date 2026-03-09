@@ -72,12 +72,12 @@
                     <div class="text-xs text-slate-500 truncate">USDC micropayments for APIs</div>
                 </div>
             </div>
-            <div class="hidden lg:flex items-center gap-7 text-sm text-slate-400">
-                <a href="#catalog" class="hover:text-white transition-colors" data-i18n="nav.catalog">Catalog</a>
-                <a href="#flow" class="hover:text-white transition-colors" data-i18n="nav.flow">Flow</a>
-                <a href="#examples" class="hover:text-white transition-colors" data-i18n="nav.examples">Examples</a>
-                <a href="#integrations" class="hover:text-white transition-colors" data-i18n="nav.integrations">Integrations</a>
-                <a href="#faq" class="hover:text-white transition-colors" data-i18n="nav.faq">FAQ</a>
+            <div class="hidden xl:flex items-center gap-2 nav-pills text-sm text-slate-300">
+                <a href="#catalog" class="nav-pill" data-i18n="nav.catalog">Catalog</a>
+                <a href="#integrations" class="nav-pill nav-pill-strong" data-i18n="nav.openclaw">OpenClaw</a>
+                <a href="#flow" class="nav-pill" data-i18n="nav.flow">Flow</a>
+                <a href="#examples" class="nav-pill" data-i18n="nav.examples">Examples</a>
+                <a href="#faq" class="nav-pill" data-i18n="nav.faq">FAQ</a>
             </div>
             <div class="flex items-center gap-2 sm:gap-3 ml-auto">
                 <button id="languageToggle"
@@ -100,9 +100,9 @@
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                 <div class="mobile-nav-links py-3">
                     <a href="#catalog" class="mobile-nav-link" data-i18n="nav.catalog">Catalog</a>
+                    <a href="#integrations" class="mobile-nav-link mobile-nav-link-strong" data-i18n="nav.openclaw">OpenClaw</a>
                     <a href="#flow" class="mobile-nav-link" data-i18n="nav.flow">Flow</a>
                     <a href="#examples" class="mobile-nav-link" data-i18n="nav.examples">Examples</a>
-                    <a href="#integrations" class="mobile-nav-link" data-i18n="nav.integrations">Integrations</a>
                     <a href="#faq" class="mobile-nav-link" data-i18n="nav.faq">FAQ</a>
                 </div>
             </div>
@@ -252,40 +252,56 @@
 
         <section id="flow" class="py-16 md:py-24 border-y border-white/5 bg-black/10">
             <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="max-w-3xl">
-                    <p class="kicker mb-3" data-i18n="flow.kicker">Builder Workflow</p>
-                    <h2 class="text-4xl md:text-5xl font-bold tracking-tight" data-i18n="flow.title">支付流程保持简单，接入模型尽量稳定</h2>
-                </div>
-                <div class="grid md:grid-cols-3 gap-5 mt-10">
-                    <div class="soft-card rounded-3xl p-7">
-                        <div
-                            class="w-14 h-14 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center mono text-lg mb-5">
-                            01
-                        </div>
-                        <h3 class="text-2xl font-bold" data-i18n="flow.step1.title">请求 API</h3>
-                        <p class="mt-3 text-slate-400 leading-7" data-i18n="flow.step1.body">
-                            客户端先正常调用 API。如果还没支付，网关返回 402，并附带 `payTo`、价格和支付头要求。
+                <div class="grid lg:grid-cols-[0.82fr_1.18fr] gap-8 items-start">
+                    <div class="soft-card rounded-[32px] p-7 md:p-8 flow-overview">
+                        <p class="kicker mb-3" data-i18n="flow.kicker">Builder Workflow</p>
+                        <h2 class="text-4xl md:text-5xl font-bold tracking-tight" data-i18n="flow.title">三步接入，不用自己再拼支付协议</h2>
+                        <p class="mt-4 text-slate-400 text-lg leading-8" data-i18n="flow.summary">
+                            先发现接口，再拿 402 challenge，最后用兼容客户端重放请求。OpenClaw、浏览器脚本和服务端作业都走同一套流程。
                         </p>
+                        <div class="mt-6 flow-summary-grid">
+                            <div class="log-box rounded-2xl p-4">
+                                <div class="mono text-xs uppercase tracking-[0.2em] text-slate-500 mb-2" data-i18n="flow.summaryItem1Label">发现</div>
+                                <div class="text-sm text-slate-200" data-i18n="flow.summaryItem1Value">读 catalog 拿到路径、价格、支付要求</div>
+                            </div>
+                            <div class="log-box rounded-2xl p-4">
+                                <div class="mono text-xs uppercase tracking-[0.2em] text-slate-500 mb-2" data-i18n="flow.summaryItem2Label">授权</div>
+                                <div class="text-sm text-slate-200" data-i18n="flow.summaryItem2Value">收到 402 后，用钱包或 x402 客户端签名</div>
+                            </div>
+                            <div class="log-box rounded-2xl p-4">
+                                <div class="mono text-xs uppercase tracking-[0.2em] text-slate-500 mb-2" data-i18n="flow.summaryItem3Label">回放</div>
+                                <div class="text-sm text-slate-200" data-i18n="flow.summaryItem3Value">带 PAYMENT-SIGNATURE 重放并拿到结果</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="soft-card rounded-3xl p-7">
-                        <div
-                            class="w-14 h-14 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center mono text-lg mb-5">
-                            02
+                    <div class="flow-rail">
+                        <div class="flow-step-card soft-card rounded-[32px] p-6 md:p-7">
+                            <div class="flow-step-marker">01</div>
+                            <div>
+                                <h3 class="text-2xl font-bold" data-i18n="flow.step1.title">请求 API</h3>
+                                <p class="mt-3 text-slate-400 leading-7" data-i18n="flow.step1.body">
+                                    客户端先正常调用 API。如果还没支付，网关返回 402，并附带 `payTo`、价格和支付头要求。
+                                </p>
+                            </div>
                         </div>
-                        <h3 class="text-2xl font-bold" data-i18n="flow.step2.title">签名或演示授权</h3>
-                        <p class="mt-3 text-slate-400 leading-7" data-i18n="flow.step2.body">
-                            现在支持 demo token，也预留了 `PAYMENT-SIGNATURE` / `Authorization` 的签名承载方式。
-                        </p>
-                    </div>
-                    <div class="soft-card rounded-3xl p-7">
-                        <div
-                            class="w-14 h-14 rounded-2xl border border-white/10 bg-white/5 flex items-center justify-center mono text-lg mb-5">
-                            03
+                        <div class="flow-step-card soft-card rounded-[32px] p-6 md:p-7">
+                            <div class="flow-step-marker">02</div>
+                            <div>
+                                <h3 class="text-2xl font-bold" data-i18n="flow.step2.title">签名或演示授权</h3>
+                                <p class="mt-3 text-slate-400 leading-7" data-i18n="flow.step2.body">
+                                    现在支持 demo token，也预留了 `PAYMENT-SIGNATURE` / `Authorization` 的签名承载方式。
+                                </p>
+                            </div>
                         </div>
-                        <h3 class="text-2xl font-bold" data-i18n="flow.step3.title">拿回数据</h3>
-                        <p class="mt-3 text-slate-400 leading-7" data-i18n="flow.step3.body">
-                            网关验证通过后返回真实上游数据或 demo 数据，并附带 `_meta` 方便前端与 SDK 做调试。
-                        </p>
+                        <div class="flow-step-card soft-card rounded-[32px] p-6 md:p-7">
+                            <div class="flow-step-marker">03</div>
+                            <div>
+                                <h3 class="text-2xl font-bold" data-i18n="flow.step3.title">拿回数据</h3>
+                                <p class="mt-3 text-slate-400 leading-7" data-i18n="flow.step3.body">
+                                    网关验证通过后返回真实上游数据或 demo 数据，并附带 `_meta` 方便前端与 SDK 做调试。
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

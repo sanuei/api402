@@ -2000,6 +2000,48 @@
 
 ### 本轮目标
 
+- 解决目录卡片过长、快速目录不够简洁、顶部导航不好看、开发者工作流区域不专业的问题
+
+### 已完成
+
+- 安装了 `pbakaus/impeccable` 技能集合
+  - 命令：`npx skills add pbakaus/impeccable --yes --global`
+  - 结果：已安装到本机 skills 目录
+  - 注意：需要重启 Codex 才能在后续会话里真正启用这些新 skill
+- 重做顶部导航
+  - 原来的普通文字导航改成胶囊式导航
+  - 新增顶部 `OpenClaw` 快捷入口
+  - 移动端导航也同步增加更醒目的 `OpenClaw` 快捷项
+- 简化 API 快速目录
+  - 去掉目录项里过多的 path / tags / provider 堆叠
+  - 改成更接近“清单导航”的极简结构：名称 + provider/method + 价格
+  - 分类标题也做了压缩
+- 压缩 catalog 卡片信息密度
+  - 去掉卡片里第二层趋势/错误信息堆叠
+  - 说明文字改成 3 行截断
+  - 指标压缩成 3 个小统计块：请求 / 402 / 转化
+  - 底部只保留 access 和 trend sparkline
+- 重做 `开发者工作流` 区块
+  - 从普通三列卡片改成“左侧总览 + 右侧时间线步骤”
+  - 视觉层级更清楚，也更接近产品说明页而不是模板区块
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/app/catalog.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/catalog.ts)
+- [src/app/i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [src/styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+
+### 下一步建议
+
+1. 重启 Codex，下一轮可以正式用新安装的 `impeccable` 技能再做一轮视觉 polish
+2. 如果继续优化 catalog，下一步把右侧卡片做成更强的“列表 + 详情”双栏，而不是纯卡片墙
+3. 如果继续优化转化，下一步把 `OpenClaw` 区块做成更像产品 landing 的专用入口
+
+## 2026-03-08
+
+### 本轮目标
+
 - 提升首页转化表达，并补 OpenClaw / SDK 接入入口，让用户一眼知道网站用途且能快速集成
 
 ### 已完成

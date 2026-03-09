@@ -112,6 +112,38 @@ body::after {
   color: var(--green);
 }
 
+.nav-pills {
+  padding: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.nav-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 1rem;
+  border-radius: 999px;
+  color: #b8c2cf;
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.nav-pill:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-pill-strong {
+  color: var(--cyan);
+  background: rgba(141, 231, 255, 0.08);
+  border: 1px solid rgba(141, 231, 255, 0.14);
+}
+
 .touch-target {
   min-height: 44px;
   min-width: 44px;
@@ -141,6 +173,12 @@ body::after {
   color: var(--text);
   white-space: nowrap;
   font-size: 0.92rem;
+}
+
+.mobile-nav-link-strong {
+  color: var(--cyan);
+  border-color: rgba(141, 231, 255, 0.18);
+  background: rgba(141, 231, 255, 0.08);
 }
 
 .wallet-option {
@@ -203,8 +241,8 @@ body::after {
 }
 
 .api-directory-section {
-  border-top: 1px solid rgba(255, 255, 255, 0.07);
-  padding-top: 0.9rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 0.85rem;
 }
 
 .api-directory-section:first-child {
@@ -212,12 +250,19 @@ body::after {
   padding-top: 0;
 }
 
+.api-directory-heading {
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
 .api-directory-item {
   width: 100%;
-  min-height: 52px;
+  min-height: 44px;
   text-align: left;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.015);
   color: var(--text);
   transition:
     border-color 180ms ease,
@@ -234,6 +279,58 @@ body::after {
   border-color: rgba(51, 240, 178, 0.42);
   background: rgba(51, 240, 178, 0.08);
   box-shadow: 0 0 0 1px rgba(51, 240, 178, 0.14);
+}
+
+.api-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 332px;
+}
+
+.api-card-description {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.7;
+  min-height: 5.1em;
+}
+
+.api-card-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.api-card-stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.api-mini-stat {
+  padding: 0.75rem 0.8rem;
+  border-radius: 1rem;
+  background: rgba(2, 5, 8, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.api-mini-stat-label {
+  font-size: 0.62rem;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.api-mini-stat-value {
+  margin-top: 0.4rem;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: var(--text);
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .catalog-chip {
@@ -295,6 +392,58 @@ body::after {
   border-color: rgba(60, 125, 255, 0.24);
 }
 
+.flow-overview {
+  position: sticky;
+  top: 6.5rem;
+}
+
+.flow-summary-grid {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.flow-rail {
+  position: relative;
+  display: grid;
+  gap: 1rem;
+}
+
+.flow-rail::before {
+  content: '';
+  position: absolute;
+  left: 1.45rem;
+  top: 1.25rem;
+  bottom: 1.25rem;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(60, 125, 255, 0.35), rgba(51, 240, 178, 0.12));
+}
+
+.flow-step-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 1rem;
+  align-items: start;
+  min-height: 152px;
+}
+
+.flow-step-marker {
+  position: relative;
+  z-index: 1;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  color: var(--cyan);
+  border: 1px solid rgba(141, 231, 255, 0.18);
+  background: rgba(141, 231, 255, 0.08);
+  box-shadow: 0 0 0 10px rgba(4, 5, 6, 0.85);
+}
+
 .badge-blue {
   color: var(--cyan);
   background: rgba(141, 231, 255, 0.08);
@@ -326,6 +475,10 @@ body::after {
     max-height: 28rem;
     overflow: auto;
   }
+
+  .flow-overview {
+    position: static;
+  }
 }
 
 @media (max-width: 560px) {
@@ -353,6 +506,22 @@ body::after {
 
   .api-card p {
     min-height: auto;
+  }
+
+  .api-card-stats {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-step-card {
+    grid-template-columns: 1fr;
+  }
+
+  .flow-rail::before {
+    display: none;
+  }
+
+  .flow-step-marker {
+    box-shadow: none;
   }
 
   .hero-chip {

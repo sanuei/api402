@@ -158,19 +158,13 @@ export function renderCatalogDirectory(endpoints: CatalogEndpoint[]) {
               data-endpoint-path="${escapeHtml(endpoint.path)}"
             >
               <div class="flex items-center justify-between gap-3">
-                <div>
-                  <div class="font-semibold">${escapeHtml(localized.label)}</div>
-                  <div class="mt-1 text-xs text-slate-500 mono">${escapeHtml(endpoint.path)}</div>
-                  <div class="mt-2 flex flex-wrap gap-2">
-                    <span class="catalog-chip catalog-chip-provider">${escapeHtml(providerLabel)}</span>
-                    ${commercialLabels}
-                  </div>
+                <div class="min-w-0">
+                  <div class="font-semibold truncate">${escapeHtml(localized.label)}</div>
+                  <div class="mt-1 text-xs text-slate-500 truncate">${escapeHtml(providerLabel)} · ${escapeHtml(endpoint.method || 'GET')}</div>
                 </div>
-                <div class="text-right">
-                  <div class="text-xs text-[#33f0b2] mono">${escapeHtml(endpoint.price)} USDC</div>
-                  <div class="mt-1 text-[10px] uppercase tracking-[0.15em] text-slate-500">${escapeHtml(
-                    endpoint.method || 'GET',
-                  )}</div>
+                <div class="text-right shrink-0">
+                  <div class="text-xs text-[#33f0b2] mono">${escapeHtml(endpoint.price)}</div>
+                  <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500">USDC</div>
                 </div>
               </div>
             </button>
@@ -180,7 +174,7 @@ export function renderCatalogDirectory(endpoints: CatalogEndpoint[]) {
 
       return `
         <div class="api-directory-section">
-          <div class="text-xs uppercase tracking-[0.2em] text-slate-500 mono">${escapeHtml(category)}</div>
+          <div class="api-directory-heading">${escapeHtml(category)}</div>
           ${itemHtml}
         </div>
       `;
@@ -209,56 +203,47 @@ export function renderCatalog(endpoints: CatalogEndpoint[]) {
       return `
         <button
           type="button"
-          class="api-card soft-card rounded-[28px] p-5 sm:p-6 text-left transition-all duration-300"
+          class="api-card soft-card rounded-[28px] p-5 text-left transition-all duration-300"
           data-endpoint-path="${escapeHtml(endpoint.path)}"
         >
           <div class="flex items-start justify-between gap-4">
-            <div class="badge-blue rounded-full px-3 py-1 text-xs mono">${escapeHtml(localized.category)}</div>
-            <div class="badge-green rounded-full px-3 py-1 text-xs mono">${escapeHtml(endpoint.price)} USDC</div>
+            <div class="min-w-0">
+              <div class="text-[11px] uppercase tracking-[0.18em] text-slate-500 mono">${escapeHtml(localized.category)}</div>
+              <h3 class="mt-3 text-[1.75rem] font-bold tracking-tight leading-tight">${escapeHtml(localized.label)}</h3>
+            </div>
+            <div class="badge-green rounded-full px-3 py-1 text-xs mono shrink-0">${escapeHtml(endpoint.price)} USDC</div>
           </div>
-          <div class="mt-5">
-            <h3 class="text-2xl font-bold tracking-tight">${escapeHtml(localized.label)}</h3>
-            <p class="mt-3 text-slate-400 leading-7 md:min-h-[84px]">${escapeHtml(localized.description)}</p>
-          </div>
+          <p class="api-card-description mt-3 text-slate-400">${escapeHtml(localized.description)}</p>
           <div class="mt-4 flex flex-wrap gap-2">
             <span class="catalog-chip catalog-chip-provider">${escapeHtml(providerLabel)}</span>
             ${commercialLabels}
           </div>
-          <div class="mt-5 flex items-center gap-2 text-xs">
-            <span class="${freshnessClass} rounded-full px-3 py-1 mono">${escapeHtml(t(`freshness.${endpoint.freshness?.status || 'unknown'}`))}</span>
-            <span class="text-slate-500 mono">${escapeHtml(formatRelativeAge(endpoint.freshness?.ageSeconds))}</span>
+          <div class="api-card-meta mt-4">
+            <span class="${freshnessClass} rounded-full px-3 py-1 mono text-xs">${escapeHtml(t(`freshness.${endpoint.freshness?.status || 'unknown'}`))}</span>
+            <span class="text-slate-500 mono text-xs">${escapeHtml(formatRelativeAge(endpoint.freshness?.ageSeconds))}</span>
+            <span class="text-slate-500 mono text-xs">${escapeHtml(endpoint.method || 'GET')}</span>
           </div>
-          <div class="mt-5 grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div class="log-box rounded-xl p-2.5">
-              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.recentRequests'))}</div>
-              <div class="mt-1 text-sm font-semibold text-slate-200 mono">${escapeHtml(String(endpoint.requestMetrics?.totalRequests || 0))}</div>
+          <div class="api-card-stats mt-5">
+            <div class="api-mini-stat">
+              <div class="api-mini-stat-label">${escapeHtml(t('requestMetrics.recentRequestsShort'))}</div>
+              <div class="api-mini-stat-value">${escapeHtml(String(endpoint.requestMetrics?.totalRequests || 0))}</div>
             </div>
-            <div class="log-box rounded-xl p-2.5">
-              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.payment402Rate'))}</div>
-              <div class="mt-1 text-sm font-semibold text-[#ffcf66] mono">${escapeHtml(formatPercent(endpoint.requestMetrics?.paymentRequiredRate))}</div>
+            <div class="api-mini-stat">
+              <div class="api-mini-stat-label">${escapeHtml(t('requestMetrics.payment402RateShort'))}</div>
+              <div class="api-mini-stat-value text-[#ffcf66]">${escapeHtml(formatPercent(endpoint.requestMetrics?.paymentRequiredRate))}</div>
             </div>
-            <div class="log-box rounded-xl p-2.5">
-              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.replayConversion'))}</div>
-              <div class="mt-1 text-sm font-semibold text-[#33f0b2] mono">${escapeHtml(
+            <div class="api-mini-stat">
+              <div class="api-mini-stat-label">${escapeHtml(t('requestMetrics.replayConversionShort'))}</div>
+              <div class="api-mini-stat-value text-[#33f0b2]">${escapeHtml(
                 formatPercent(endpoint.requestMetrics?.paymentFunnel?.challengeToReplayConversionRate),
               )}</div>
-            </div>
-          </div>
-          <div class="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <div class="log-box rounded-xl p-2.5">
-              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.trend'))}</div>
-              <div class="mt-1 text-sm font-semibold text-slate-200 mono">${escapeHtml(formatTrendSparkline(endpoint))}</div>
-            </div>
-            <div class="log-box rounded-xl p-2.5">
-              <div class="text-[10px] uppercase tracking-[0.15em] text-slate-500 mono">${escapeHtml(t('requestMetrics.topError'))}</div>
-              <div class="mt-1 text-xs font-semibold text-[#ff8f8f] mono truncate" title="${escapeHtml(formatTopError(endpoint))}">${escapeHtml(formatTopError(endpoint))}</div>
             </div>
           </div>
           <div class="mt-6 flex items-center justify-between text-sm">
             <span class="${endpoint.access === 'mock_demo' ? 'badge-amber' : 'badge-green'} rounded-full px-3 py-1 text-xs mono">
               ${escapeHtml(endpoint.access)}
             </span>
-            <span class="text-slate-500 mono">${String(index + 1).padStart(2, '0')}</span>
+            <span class="text-slate-500 mono">${escapeHtml(formatTrendSparkline(endpoint))}</span>
           </div>
         </button>
       `;
