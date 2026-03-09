@@ -2000,6 +2000,45 @@
 
 ### 本轮目标
 
+- 修复 `awal x402 pay` 在读取 challenge 时因金额格式报 `Cannot convert 0.003 to a BigInt` 的兼容问题
+
+### 已完成
+
+- 对照官方 x402 exact EVM 规范确认 `accepts[].amount` 应使用资产最小单位整数，而不是 `0.003` 这种小数字符串
+- 将 `PAYMENT-REQUIRED` 头和响应体里的 `accepts` 金额从十进制 USDC 改为 6 位精度原子单位
+  - `0.003 USDC -> 3000`
+  - `0.00001 USDC -> 10`
+- 为 challenge 增加 `maxTimeoutSeconds` 以及 `extra.assetTransferMethod = eip3009`、`name = USDC`、`version = 2`
+- 同步把 `PAYMENT-RESPONSE` 头里的 `amount` 改成原子单位，保持 transport 层一致
+- 补测试锁定 `PAYMENT-REQUIRED` / `PAYMENT-RESPONSE` 的原子单位金额格式
+
+### 涉及文件
+
+- [worker/index.ts](/Users/yangshangwei/Desktop/网页项目/api402/worker/index.ts)
+- [test/worker.test.ts](/Users/yangshangwei/Desktop/网页项目/api402/test/worker.test.ts)
+
+### 验证结果
+
+- `npm run typecheck` 通过
+- `npm test` 通过，当前 `47/47`
+
+### 风险和判断
+
+- 这次修复针对的是 challenge transport 的金额格式 bug，能够解决客户端在发现支付要求时就因 `BigInt` 解析失败的问题
+- 但当前网关仍然主要基于“链上转账 + tx hash 回放”模型
+- 官方 x402 exact EVM 规范的主路径是 `PAYMENT-SIGNATURE + EIP-3009/Permit2 + facilitator settlement`
+- 所以即便 `BigInt` 报错消失，官方客户端后续仍有可能在真正提交支付 payload 时遇到协议不兼容
+
+### 下一步建议
+
+1. 重新用 `awal x402 pay` 测一次，看是否已经越过 `Cannot convert ... to a BigInt`
+2. 如果还有后续错误，下一步不是再猜 challenge，而是要针对官方 `PAYMENT-SIGNATURE` payload 做兼容适配
+3. 如果目标是全面兼容官方 x402 客户端，后面要决定是否引入真正的 facilitator / EIP-3009 结算路径
+
+## 2026-03-08
+
+### 本轮目标
+
 - 修复真实 x402 自动支付客户端在 challenge 发现阶段报 `Invalid request` 的兼容性问题
 
 ### 已完成

@@ -659,7 +659,11 @@ type X402Requirement = {
   description: string;
   mimeType: 'application/json';
   outputSchema: null;
+  maxTimeoutSeconds: number;
   extra: {
+    assetTransferMethod: 'eip3009';
+    name: 'USDC';
+    version: '2';
     currency: 'USDC';
     chain: 'base';
     chainId: 8453;
@@ -682,18 +686,25 @@ function buildX402Requirement(
   futureSkewSeconds: number,
   maxSettlementAgeBlocks: number,
 ): X402Requirement {
+  const atomicAmount = parseTokenAmount(endpoint.price, 6);
+  const amount = atomicAmount ? atomicAmount.toString() : endpoint.price;
+
   return {
     scheme: 'exact',
     network: 'eip155:8453',
-    amount: endpoint.price,
-    maxAmountRequired: endpoint.price,
+    amount,
+    maxAmountRequired: amount,
     asset: BASE_USDC_CONTRACT,
     payTo,
     resource: endpoint.path,
     description: endpoint.description.en,
     mimeType: 'application/json',
     outputSchema: null,
+    maxTimeoutSeconds: 60,
     extra: {
+      assetTransferMethod: 'eip3009',
+      name: 'USDC',
+      version: '2',
       currency: 'USDC',
       chain: 'base',
       chainId: 8453,
@@ -718,6 +729,9 @@ function buildX402PaymentResponse(
     return null;
   }
 
+  const atomicAmount = parseTokenAmount(endpoint.price, 6);
+  const amount = atomicAmount ? atomicAmount.toString() : endpoint.price;
+
   return encodeJsonBase64({
     x402Version: 1,
     success: true,
@@ -725,7 +739,7 @@ function buildX402PaymentResponse(
     network: 'eip155:8453',
     payTo,
     resource: endpoint.path,
-    amount: endpoint.price,
+    amount,
     asset: BASE_USDC_CONTRACT,
     requestId,
     settlement: {

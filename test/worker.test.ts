@@ -687,6 +687,12 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
       asset: string;
       payTo: string;
       resource: string;
+      maxTimeoutSeconds: number;
+      extra: {
+        assetTransferMethod: string;
+        name: string;
+        version: string;
+      };
     }>;
   }>(response.headers.get('PAYMENT-REQUIRED'));
 
@@ -702,10 +708,14 @@ test('unpaid request returns a 402 challenge with reason code', async () => {
   assert.equal(paymentRequired?.error, 'PAYMENT_REQUIRED');
   assert.equal(paymentRequired?.accepts[0]?.scheme, 'exact');
   assert.equal(paymentRequired?.accepts[0]?.network, 'eip155:8453');
-  assert.equal(paymentRequired?.accepts[0]?.amount, '0.003');
-  assert.equal(paymentRequired?.accepts[0]?.maxAmountRequired, '0.003');
+  assert.equal(paymentRequired?.accepts[0]?.amount, '3000');
+  assert.equal(paymentRequired?.accepts[0]?.maxAmountRequired, '3000');
   assert.equal(paymentRequired?.accepts[0]?.asset, BASE_USDC_CONTRACT);
   assert.equal(paymentRequired?.accepts[0]?.payTo, TEST_PAY_TO);
+  assert.equal(paymentRequired?.accepts[0]?.maxTimeoutSeconds, 60);
+  assert.equal(paymentRequired?.accepts[0]?.extra.assetTransferMethod, 'eip3009');
+  assert.equal(paymentRequired?.accepts[0]?.extra.name, 'USDC');
+  assert.equal(paymentRequired?.accepts[0]?.extra.version, '2');
   assert.equal(body.remediationSchemaVersion, '1.0.0');
   assert.equal(body.remediationCompatibility, 'semver-minor-backward-compatible');
   assert.equal(
@@ -2142,7 +2152,7 @@ test('valid signed payment payload is accepted', async () => {
       assert.equal(paymentResponse?.success, true);
       assert.equal(paymentResponse?.scheme, 'exact');
       assert.equal(paymentResponse?.network, 'eip155:8453');
-      assert.equal(paymentResponse?.amount, '0.003');
+      assert.equal(paymentResponse?.amount, '3000');
       assert.equal(paymentResponse?.resource, '/api/deepseek');
       assert.equal(paymentResponse?.asset, BASE_USDC_CONTRACT);
       assert.equal(
