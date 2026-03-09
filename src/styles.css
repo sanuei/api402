@@ -392,6 +392,59 @@ body::after {
   border-color: rgba(60, 125, 255, 0.24);
 }
 
+.site-footer-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(0, 0.8fr));
+  gap: 2rem;
+}
+
+.site-footer-brand {
+  padding-right: 1rem;
+}
+
+.site-footer-heading {
+  margin: 0 0 0.9rem;
+  font-size: 0.82rem;
+  line-height: 1;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted);
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.site-footer-links {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.site-footer-links a {
+  color: var(--text);
+  text-decoration: none;
+  transition: color 180ms ease, transform 180ms ease;
+}
+
+.site-footer-links a:hover {
+  color: var(--cyan);
+  transform: translateX(2px);
+}
+
+.site-footer-bottom {
+  margin-top: 2rem;
+  padding-top: 1.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.site-footer-meta {
+  color: var(--muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
 .flow-overview {
   position: sticky;
   top: 6.5rem;
@@ -479,6 +532,15 @@ body::after {
   .flow-overview {
     position: static;
   }
+
+  .site-footer-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .site-footer-brand {
+    grid-column: 1 / -1;
+    padding-right: 0;
+  }
 }
 
 @media (max-width: 560px) {
@@ -531,5 +593,14 @@ body::after {
 
   .catalog-directory-panel {
     max-height: 22rem;
+  }
+
+  .site-footer-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .site-footer-bottom {
+    align-items: flex-start;
   }
 }

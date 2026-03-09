@@ -626,20 +626,54 @@ console.log(data);</pre>
 
     <footer class="pb-12">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div class="soft-card rounded-[32px] px-6 py-6 md:px-8 md:py-7 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-                <div>
-                    <div class="font-bold text-xl">
-                        <img src="/logo-wordmark.svg" alt="API Market wordmark" class="h-8">
+            <div class="soft-card rounded-[32px] p-6 md:p-8">
+                <div class="site-footer-grid">
+                    <div class="site-footer-brand">
+                        <div class="font-bold text-xl">
+                            <img src="/logo-wordmark.svg" alt="API Market wordmark" class="h-8">
+                        </div>
+                        <p class="text-slate-300 mt-5 max-w-md leading-7" data-i18n="footer.summary">
+                            用 Base USDC 按次购买最新模型、Polymarket 情报和 agent-ready APIs。无需注册，不需要长期订阅。
+                        </p>
+                        <div class="mt-5 flex flex-wrap gap-2 text-sm">
+                            <span class="catalog-chip catalog-chip-provider" data-i18n="footer.pillUsdc">Base USDC</span>
+                            <span class="catalog-chip" data-i18n="footer.pillX402">x402 checkout</span>
+                            <span class="catalog-chip" data-i18n="footer.pillAgents">Agent-ready</span>
+                        </div>
                     </div>
-                    <div class="text-slate-500 mt-1" data-i18n="footer.tagline">Cloudflare Worker based x402 API payment gateway demo</div>
+                    <div>
+                        <p class="site-footer-heading" data-i18n="footer.productTitle">Product</p>
+                        <div class="site-footer-links">
+                            <a href="#catalog" data-i18n="footer.linkCatalog">API 目录</a>
+                            <a href="#examples" data-i18n="footer.linkExamples">调用示例</a>
+                            <a href="#integrations" data-i18n="footer.linkOpenClaw">OpenClaw 接入</a>
+                            <a href="/sdk/api402-client.mjs" target="_blank" rel="noreferrer" data-i18n="footer.linkSdk">SDK Starter</a>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="site-footer-heading" data-i18n="footer.developerTitle">Developer</p>
+                        <div class="site-footer-links">
+                            <a href="/api/v1/catalog" target="_blank" rel="noreferrer" data-i18n="footer.linkCatalogJson">Catalog JSON</a>
+                            <a href="/api/v1/health" target="_blank" rel="noreferrer" data-i18n="footer.linkHealth">Health</a>
+                            <a href="/api/v1/metrics/overview" target="_blank" rel="noreferrer" data-i18n="footer.linkMetrics">Metrics</a>
+                            <a href="https://github.com/sanuei/api402" target="_blank" rel="noreferrer" data-i18n="footer.linkGithub">GitHub</a>
+                        </div>
+                    </div>
+                    <div>
+                        <p class="site-footer-heading" data-i18n="footer.infrastructureTitle">Infrastructure</p>
+                        <div class="site-footer-links">
+                            <a href="https://x402.org" target="_blank" rel="noreferrer" data-i18n="footer.linkX402">x402</a>
+                            <a href="https://docs.base.org" target="_blank" rel="noreferrer" data-i18n="footer.linkBase">Base</a>
+                            <a href="https://facilitator.xpay.sh/supported" target="_blank" rel="noreferrer" data-i18n="footer.linkFacilitator">x402 Facilitator</a>
+                            <a href="https://workers.cloudflare.com" target="_blank" rel="noreferrer" data-i18n="footer.linkCloudflare">Cloudflare Workers</a>
+                        </div>
+                    </div>
                 </div>
-                <div class="flex flex-wrap gap-3 text-sm">
-                    <a href="https://x402.org" target="_blank" rel="noreferrer"
-                        class="secondary-btn rounded-full px-4 py-2 font-medium transition">x402</a>
-                    <a href="https://docs.cdp.coinbase.com/x402" target="_blank" rel="noreferrer"
-                        class="secondary-btn rounded-full px-4 py-2 font-medium transition">Coinbase CDP</a>
-                    <a href="https://workers.cloudflare.com" target="_blank" rel="noreferrer"
-                        class="secondary-btn rounded-full px-4 py-2 font-medium transition">Cloudflare</a>
+                <div class="site-footer-bottom">
+                    <div class="text-slate-400 text-sm" data-i18n="footer.tagline">Pay-per-call frontier models and agent-ready APIs on Base</div>
+                    <div class="site-footer-meta">
+                        <span data-i18n="footer.note">Built for one-off model access, trading prep, and agent workflows.</span>
+                    </div>
                 </div>
             </div>
         </div>

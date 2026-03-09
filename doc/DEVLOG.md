@@ -1,5 +1,35 @@
 # Development Log
 
+## 2026-03-09
+
+### 本轮目标
+
+- 给首页补一个更完整的正式页脚，让页面收尾更像产品站而不是 demo 落版
+
+### 已完成
+
+- 用多栏 footer 替换了原来的单条 tagline 结构
+- 页脚现在包含：
+  - 品牌摘要
+  - 产品入口
+  - 开发者入口
+  - 基础设施链接
+- 增加了 `Catalog JSON / Health / Metrics / SDK Starter / OpenClaw` 等直接入口
+- 双语 footer 文案已同步补齐
+- 补了独立 footer 样式，并处理了平板和手机端的栅格收缩
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/app/i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [src/styles.css](/Users/yangshangwei/Desktop/网页项目/api402/src/styles.css)
+
+### 下一步建议
+
+1. 继续收紧首页 Hero 文案，让首屏更像“买 API”的一句话销售页
+2. 再单独优化 integrations / OpenClaw 区块，把接入步骤压缩成更短的 3 步
+3. 后面如果继续 polish，可以把 catalog 做成更明显的“目录 + 详情”双栏产品布局
+
 ## 2026-03-08
 
 ### 本轮目标
