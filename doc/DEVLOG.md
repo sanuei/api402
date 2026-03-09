@@ -4,6 +4,57 @@
 
 ### 本轮目标
 
+- 检查并补强首页的 SEO 和社交媒体分享配置
+
+### 已完成
+
+- 收紧默认 `title` 和 `description`，让搜索结果更接近用户会搜的词：
+  - AI 模型
+  - Polymarket
+  - Agent APIs
+  - OpenClaw
+- 扩展 `robots` 策略，补上 `max-image-preview` / `max-snippet` / `max-video-preview`
+- 新增 `theme-color`、`application-name`、`apple-mobile-web-app-*` 元信息
+- Open Graph 和 Twitter 卡片改用 `PNG` 分享图，不再只依赖 `SVG`
+- 补齐了：
+  - `og:image:width`
+  - `og:image:height`
+  - `og:image:type`
+  - `og:image:alt`
+  - `twitter:url`
+  - `twitter:image:alt`
+- 新增 `Organization` 结构化数据，并给 `WebSite` / `WebAPI` schema 补了 `publisher`、`logo`、`image`
+- 新增 `site.webmanifest`
+- 生成并加入：
+  - [og-card.png](/Users/yangshangwei/Desktop/网页项目/api402/public/og-card.png)
+  - [apple-touch-icon.png](/Users/yangshangwei/Desktop/网页项目/api402/public/apple-touch-icon.png)
+  - [favicon.png](/Users/yangshangwei/Desktop/网页项目/api402/public/favicon.png)
+  - [icon-192.png](/Users/yangshangwei/Desktop/网页项目/api402/public/icon-192.png)
+  - [icon-512.png](/Users/yangshangwei/Desktop/网页项目/api402/public/icon-512.png)
+- `sitemap.xml` 现已补 `lastmod`
+
+### 涉及文件
+
+- [index.html](/Users/yangshangwei/Desktop/网页项目/api402/index.html)
+- [src/app/i18n.ts](/Users/yangshangwei/Desktop/网页项目/api402/src/app/i18n.ts)
+- [public/site.webmanifest](/Users/yangshangwei/Desktop/网页项目/api402/public/site.webmanifest)
+- [public/sitemap.xml](/Users/yangshangwei/Desktop/网页项目/api402/public/sitemap.xml)
+- [public/og-card.png](/Users/yangshangwei/Desktop/网页项目/api402/public/og-card.png)
+- [public/apple-touch-icon.png](/Users/yangshangwei/Desktop/网页项目/api402/public/apple-touch-icon.png)
+- [public/favicon.png](/Users/yangshangwei/Desktop/网页项目/api402/public/favicon.png)
+- [public/icon-192.png](/Users/yangshangwei/Desktop/网页项目/api402/public/icon-192.png)
+- [public/icon-512.png](/Users/yangshangwei/Desktop/网页项目/api402/public/icon-512.png)
+
+### 下一步建议
+
+1. 真正进一步提升多语言 SEO 时，应该把 `?lang=zh/en` 做成服务端输出不同 head，而不是完全依赖前端 JS 改写
+2. 后续如果开始运营社媒，可再补真实的 Twitter/X handle 和 `sameAs`
+3. 如果要继续做转化，下一步该补“专门给 OpenClaw / agent 搜索流量”的落地页文案
+
+## 2026-03-09
+
+### 本轮目标
+
 - 给首页补一个更完整的正式页脚，让页面收尾更像产品站而不是 demo 落版
 
 ### 已完成

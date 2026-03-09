@@ -4,9 +4,10 @@ import { state, type Language } from './state';
 
 const translations: Record<Language, Record<string, string>> = {
   zh: {
-    'meta.title': 'API Market | Base 上的 x402 API 支付网关',
+    'meta.title': 'API Market | 按次购买 AI 模型与 API',
     'meta.description':
-      'API Market 是一个基于 Base 和 USDC 的 x402 API Payment Gateway，支持开发者与 AI Agent 按次付费调用 API，无需注册，无需 API Key。',
+      '用 Base USDC 按次调用 GPT-5.4、Claude 4.6、Polymarket 和 Agent APIs。无需注册，无需 API Key，支持 OpenClaw 接入。',
+    'meta.socialAlt': 'API Market 社交分享图，展示按次付费购买 AI 模型与 API',
     'nav.catalog': '目录',
     'nav.flow': '流程',
     'nav.examples': '示例',
@@ -248,9 +249,10 @@ const translations: Record<Language, Record<string, string>> = {
     'requestMetrics.none': '无',
   },
   en: {
-    'meta.title': 'API Market | x402 API Payment Gateway on Base',
+    'meta.title': 'API Market | Pay-per-call AI models and APIs',
     'meta.description':
-      'API Market is an x402 API payment gateway on Base with USDC for developers and AI agents. Pay per API call with no signup and no API keys.',
+      'Pay for GPT-5.4, Claude 4.6, Polymarket, and agent-ready APIs with Base USDC. No signup, no API keys, and OpenClaw-ready integration.',
+    'meta.socialAlt': 'API Market social card for pay-per-call AI models and APIs on Base',
     'nav.catalog': 'Catalog',
     'nav.flow': 'Flow',
     'nav.examples': 'Examples',
@@ -516,6 +518,7 @@ export function syncLanguageUrl(language: Language) {
 
 function updateStructuredData() {
   const websiteSchema = document.getElementById('websiteSchema');
+  const organizationSchema = document.getElementById('organizationSchema');
   const webApiSchema = document.getElementById('webApiSchema');
   const description = t('meta.description');
 
@@ -528,6 +531,27 @@ function updateStructuredData() {
         url: getLanguageUrl(state.currentLanguage),
         inLanguage: state.currentLanguage === 'zh' ? 'zh-CN' : 'en',
         description,
+        publisher: {
+          '@type': 'Organization',
+          name: 'API Market',
+          url: SITE_URL,
+          logo: `${SITE_URL}logo-mark.svg`,
+        },
+      },
+      null,
+      2,
+    );
+  }
+
+  if (organizationSchema) {
+    organizationSchema.textContent = JSON.stringify(
+      {
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: 'API Market',
+        url: SITE_URL,
+        logo: `${SITE_URL}logo-mark.svg`,
+        sameAs: ['https://github.com/sanuei/api402'],
       },
       null,
       2,
@@ -545,9 +569,12 @@ function updateStructuredData() {
         provider: {
           '@type': 'Organization',
           name: 'API Market',
+          url: SITE_URL,
+          logo: `${SITE_URL}logo-mark.svg`,
         },
         inLanguage: state.currentLanguage === 'zh' ? 'zh-CN' : 'en',
         description,
+        image: `${SITE_URL}og-card.png`,
       },
       null,
       2,
@@ -575,6 +602,8 @@ export function applyStaticTranslations() {
   if (ogDescription) ogDescription.content = t('meta.description');
   const ogUrl = document.querySelector<HTMLMetaElement>('meta[property="og:url"]');
   if (ogUrl) ogUrl.content = getLanguageUrl(state.currentLanguage);
+  const ogImageAlt = document.querySelector<HTMLMetaElement>('meta[property="og:image:alt"]');
+  if (ogImageAlt) ogImageAlt.content = t('meta.socialAlt');
   const ogLocale = document.querySelector<HTMLMetaElement>('meta[property="og:locale"]');
   if (ogLocale) ogLocale.content = state.currentLanguage === 'zh' ? 'zh_CN' : 'en_US';
   const ogLocaleAlternate = document.querySelector<HTMLMetaElement>('meta[property="og:locale:alternate"]');
@@ -584,6 +613,10 @@ export function applyStaticTranslations() {
   if (twitterTitle) twitterTitle.content = t('meta.title');
   const twitterDescription = document.querySelector<HTMLMetaElement>('meta[name="twitter:description"]');
   if (twitterDescription) twitterDescription.content = t('meta.description');
+  const twitterUrl = document.querySelector<HTMLMetaElement>('meta[name="twitter:url"]');
+  if (twitterUrl) twitterUrl.content = getLanguageUrl(state.currentLanguage);
+  const twitterImageAlt = document.querySelector<HTMLMetaElement>('meta[name="twitter:image:alt"]');
+  if (twitterImageAlt) twitterImageAlt.content = t('meta.socialAlt');
 
   document.querySelectorAll<HTMLElement>('[data-i18n]').forEach((element) => {
     const key = element.dataset.i18n;

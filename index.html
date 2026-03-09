@@ -4,29 +4,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Market | x402 API Payment Gateway on Base</title>
-    <meta name="description" content="API Market 是一个基于 Base 和 USDC 的 x402 API Payment Gateway，支持开发者与 AI Agent 按次付费调用 API，无需注册，无需 API Key。">
+    <title>API Market | 按次购买 AI 模型与 API</title>
+    <meta name="description" content="用 Base USDC 按次调用 GPT-5.4、Claude 4.6、Polymarket 和 Agent APIs。无需注册，无需 API Key，支持 OpenClaw 接入。">
     <meta name="keywords" content="x402, API payment gateway, USDC API, Base micropayments, AI agent API, Rabby wallet, crypto API market">
     <meta name="author" content="API Market">
-    <meta name="robots" content="index,follow">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+    <meta name="theme-color" content="#040506">
+    <meta name="application-name" content="API Market">
+    <meta name="apple-mobile-web-app-title" content="API Market">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="canonical" id="canonicalLink" href="https://api-402.com/?lang=zh">
     <link rel="alternate" id="alternateZh" hreflang="zh-CN" href="https://api-402.com/?lang=zh">
     <link rel="alternate" id="alternateEn" hreflang="en" href="https://api-402.com/?lang=en">
     <link rel="alternate" hreflang="x-default" href="https://api-402.com/">
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-    <link rel="apple-touch-icon" href="/logo-mark.svg">
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon.png">
+    <link rel="apple-touch-icon" sizes="512x512" href="/apple-touch-icon.png">
+    <link rel="manifest" href="/site.webmanifest">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="API Market">
     <meta property="og:locale" content="zh_CN">
     <meta property="og:locale:alternate" content="en_US">
-    <meta property="og:title" content="API Market | Pay per API call with USDC">
-    <meta property="og:description" content="An x402 API gateway for developers and AI agents. Pay only when you call, on Base with USDC.">
+    <meta property="og:title" content="API Market | 按次购买 AI 模型与 API">
+    <meta property="og:description" content="用 Base USDC 按次调用 GPT-5.4、Claude 4.6、Polymarket 和 Agent APIs。无需注册，无需 API Key。">
     <meta property="og:url" content="https://api-402.com/?lang=zh">
-    <meta property="og:image" content="https://api-402.com/og-card.svg">
+    <meta property="og:image" content="https://api-402.com/og-card.png">
+    <meta property="og:image:secure_url" content="https://api-402.com/og-card.png">
+    <meta property="og:image:type" content="image/png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="API Market 社交分享图，展示按次付费购买 AI 模型与 API">
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="API Market | x402 API Payment Gateway">
-    <meta name="twitter:description" content="Pay per API call with USDC on Base. Built for developers and AI agents.">
-    <meta name="twitter:image" content="https://api-402.com/og-card.svg">
+    <meta name="twitter:title" content="API Market | 按次购买 AI 模型与 API">
+    <meta name="twitter:description" content="用 Base USDC 按次调用 GPT-5.4、Claude 4.6、Polymarket 和 Agent APIs。">
+    <meta name="twitter:url" content="https://api-402.com/?lang=zh">
+    <meta name="twitter:image" content="https://api-402.com/og-card.png">
+    <meta name="twitter:image:alt" content="API Market 社交分享图，展示按次付费购买 AI 模型与 API">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -41,7 +55,25 @@
           "name": "API Market",
           "url": "https://api-402.com/?lang=zh",
           "inLanguage": "zh-CN",
-          "description": "x402 API Payment Gateway on Base for developers and AI agents."
+          "description": "用 Base USDC 按次购买 AI 模型、Polymarket 和 Agent APIs。",
+          "publisher": {
+            "@type": "Organization",
+            "name": "API Market",
+            "url": "https://api-402.com",
+            "logo": "https://api-402.com/logo-mark.svg"
+          }
+        }
+    </script>
+    <script id="organizationSchema" type="application/ld+json">
+        {
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "name": "API Market",
+          "url": "https://api-402.com",
+          "logo": "https://api-402.com/logo-mark.svg",
+          "sameAs": [
+            "https://github.com/sanuei/api402"
+          ]
         }
     </script>
     <script id="webApiSchema" type="application/ld+json">
@@ -53,10 +85,13 @@
           "documentation": "https://api-402.com/#examples",
           "provider": {
             "@type": "Organization",
-            "name": "API Market"
+            "name": "API Market",
+            "url": "https://api-402.com",
+            "logo": "https://api-402.com/logo-mark.svg"
           },
           "inLanguage": "zh-CN",
-          "description": "Machine-readable API marketplace using x402-style micropayments with USDC on Base."
+          "description": "Machine-readable API marketplace using x402-style micropayments with USDC on Base.",
+          "image": "https://api-402.com/og-card.png"
         }
     </script>
     <script type="module" src="/src/main.ts"></script>

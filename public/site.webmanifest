@@ -1,0 +1,21 @@
+{
+  "name": "API Market",
+  "short_name": "API Market",
+  "description": "Pay-per-call AI models and APIs with Base USDC.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#040506",
+  "theme_color": "#040506",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
