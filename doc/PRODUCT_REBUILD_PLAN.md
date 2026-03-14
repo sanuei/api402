@@ -95,7 +95,7 @@
 ### 下一批应该做
 
 1. `GET /api/wallet-risk?address=...`
-2. `POST /api/approval-audit`
+2. `GET /api/approval-audit?address=0x...`
 3. `POST /api/tx-simulate-explain`
 4. `GET /api/monitor/protocol-change-feed`
 5. `GET /api/monitor/pricing-diff`

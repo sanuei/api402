@@ -834,6 +834,22 @@ test('wallet-risk rejects missing address before payment challenge', async () =>
   assert.match(body.message || '', /wallet-risk requires \?address=/);
 });
 
+test('approval-audit rejects missing address before payment challenge', async () => {
+  const response = await worker.fetch(
+    new Request('https://api-402.com/api/approval-audit', {
+      headers: {
+        'X-Request-Id': 'req-approval-audit-missing',
+      },
+    }),
+    createEnv(),
+  );
+  const body = (await response.json()) as { message?: string; requestId?: string };
+
+  assert.equal(response.status, 400);
+  assert.equal(body.requestId, 'req-approval-audit-missing');
+  assert.match(body.message || '', /approval-audit requires \?address=/);
+});
+
 test('catalog prioritizes frontier models and polymarket ahead of commodity price feeds', () => {
   const orderedPaths = API_ENDPOINTS.map((endpoint) => endpoint.path);
 
@@ -1916,6 +1932,184 @@ test('wallet-risk endpoint returns structured Base risk profile when upstream da
     assert.equal(body._meta.upstream?.status, 'live');
     assert.ok((body.signals || []).some((signal) => signal.code === 'PUBLIC_TAGS_PRESENT'));
     assert.ok(['low', 'moderate', 'high', 'critical'].includes(body.riskLevel || ''));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('approval-audit endpoint returns structured Base approval risk profile when upstream data is available', async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    const url =
+      typeof input === 'string'
+        ? input
+        : input instanceof URL
+          ? input.toString()
+          : input.url;
+
+    if (url.includes('/api/v2/addresses/0xdef0000000000000000000000000000000000000/counters')) {
+      return new Response(
+        JSON.stringify({
+          transactions_count: '88',
+          token_transfers_count: '23',
+          validations_count: '0',
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xdef0000000000000000000000000000000000000/transactions')) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              hash: '0xapprove1',
+              timestamp: '2026-03-14T01:05:59.000000Z',
+              result: 'ok',
+              method: 'approve',
+              from: { hash: '0xdef0000000000000000000000000000000000000' },
+              to: { hash: '0xspender000000000000000000000000000000000001' },
+            },
+            {
+              hash: '0xapprove2',
+              timestamp: '2026-03-14T02:05:59.000000Z',
+              result: 'ok',
+              method: 'setApprovalForAll',
+              from: { hash: '0xdef0000000000000000000000000000000000000' },
+              to: { hash: '0xspender000000000000000000000000000000000002' },
+            },
+            {
+              hash: '0xtransfer',
+              timestamp: '2026-03-14T03:05:59.000000Z',
+              result: 'ok',
+              method: 'transfer',
+              from: { hash: '0xdef0000000000000000000000000000000000000' },
+              to: { hash: '0x1111111111111111111111111111111111111111' },
+            },
+          ],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xdef0000000000000000000000000000000000000/token-transfers')) {
+      return new Response(
+        JSON.stringify({
+          items: [
+            {
+              timestamp: '2026-03-14T01:15:59.000000Z',
+              method: 'transfer',
+              from: { hash: '0xdef0000000000000000000000000000000000000' },
+              to: { hash: '0xspender000000000000000000000000000000000001' },
+              token: { symbol: 'USDC', type: 'ERC-20' },
+              total: { value: '5000000', decimals: '6' },
+            },
+            {
+              timestamp: '2026-03-14T02:15:59.000000Z',
+              method: 'transfer',
+              from: { hash: '0xspender000000000000000000000000000000000002' },
+              to: { hash: '0xdef0000000000000000000000000000000000000' },
+              token: { symbol: 'DEGEN', type: 'ERC-20' },
+              total: { value: '1200000000000000000', decimals: '18' },
+            },
+          ],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xspender000000000000000000000000000000000001')) {
+      return new Response(
+        JSON.stringify({
+          hash: '0xspender000000000000000000000000000000000001',
+          is_contract: true,
+          is_scam: false,
+          is_verified: true,
+          reputation: 'ok',
+          name: 'Known Router',
+          public_tags: [{ name: 'DEX' }],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xspender000000000000000000000000000000000002')) {
+      return new Response(
+        JSON.stringify({
+          hash: '0xspender000000000000000000000000000000000002',
+          is_contract: true,
+          is_scam: false,
+          is_verified: false,
+          reputation: 'warning',
+          name: 'Unknown Marketplace',
+          public_tags: [],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    if (url.includes('/api/v2/addresses/0xdef0000000000000000000000000000000000000')) {
+      return new Response(
+        JSON.stringify({
+          hash: '0xdef0000000000000000000000000000000000000',
+          is_contract: false,
+          is_scam: false,
+          is_verified: false,
+          reputation: 'ok',
+          name: 'Trader Wallet',
+          public_tags: [{ name: 'Active wallet' }],
+        }),
+        { headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+
+    return new Response(JSON.stringify({ error: 'unexpected upstream target' }), { status: 500 });
+  };
+
+  try {
+    const response = await worker.fetch(
+      new Request('https://api-402.com/api/approval-audit?address=0xdef0000000000000000000000000000000000000', {
+        headers: {
+          Authorization: 'Bearer demo',
+        },
+      }),
+      createEnv(),
+    );
+    const body = (await response.json()) as {
+      address?: string;
+      methodology?: string;
+      summary?: {
+        sampledApprovalTransactions?: number;
+        collectionWideApprovals?: number;
+        highRiskApprovals?: number;
+        aggregateRiskLevel?: string;
+      };
+      exposures?: Array<{
+        txHash?: string | null;
+        approvalType?: string;
+        riskLevel?: string;
+        reasons?: string[];
+        spender?: { name?: string | null; isVerified?: boolean };
+        relatedTokenSymbols?: string[];
+      }>;
+      recommendedActions?: string[];
+      _meta: { origin: string; upstream?: { source: string; status: string } };
+    };
+
+    assert.equal(response.status, 200);
+    assert.equal(body.address, '0xdef0000000000000000000000000000000000000');
+    assert.equal(body.methodology, 'heuristic_recent_approval_scan');
+    assert.equal(body.summary?.sampledApprovalTransactions, 2);
+    assert.equal(body.summary?.collectionWideApprovals, 1);
+    assert.equal(body._meta.origin, 'proxied');
+    assert.equal(body._meta.upstream?.source, 'blockscout');
+    assert.equal(body._meta.upstream?.status, 'live');
+    assert.equal(body.exposures?.[0]?.spender?.name, 'Known Router');
+    assert.ok((body.exposures || []).some((exposure) => exposure.approvalType === 'collection_wide'));
+    assert.ok((body.exposures || []).some((exposure) => (exposure.reasons || []).includes('SPENDER_CONTRACT_UNVERIFIED')));
+    assert.ok((body.exposures || []).some((exposure) => (exposure.relatedTokenSymbols || []).length > 0));
+    assert.ok((body.recommendedActions || []).length > 0);
+    assert.ok(['low', 'moderate', 'high', 'critical'].includes(body.summary?.aggregateRiskLevel || ''));
   } finally {
     globalThis.fetch = originalFetch;
   }

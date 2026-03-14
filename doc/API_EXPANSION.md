@@ -1,6 +1,6 @@
 # API Expansion Backlog
 
-更新日期: 2026-03-08
+更新日期: 2026-03-14
 
 ## 目标
 
@@ -39,11 +39,12 @@
 
 当前进度更新:
 
-- `Onchain Wallet Intelligence` 已开始落地，首个接口为 `GET /api/wallet-risk?address=0x...`
+- `Onchain Wallet Intelligence` 已开始落地，已新增 `GET /api/wallet-risk?address=0x...`
+- `Onchain Wallet Security` 已开始落地，已新增 `GET /api/approval-audit?address=0x...`
 - `Prediction Markets` 已开始落地，已新增 `GET /api/polymarket/trending`、`GET /api/polymarket/search?q=...`、`GET /api/polymarket/event?slug=...`
 - `Prediction Market Trading` 已开始落地，已新增 `GET /api/polymarket/orderbook`、`GET /api/polymarket/quote`、`GET /api/polymarket/price-history`
 - `Prediction Market Discovery` 已继续扩展，已新增 `GET /api/polymarket/topic`、`GET /api/polymarket/related`、`GET /api/polymarket/mispricing`
-- 下一步建议继续扩 `approval-audit` 与 `tx-simulate-explain`
+- 下一步建议继续扩 `tx-simulate-explain` 与 `polymarket/entry-signal`
 
 ### 补充方向: Prediction Markets / Attention APIs
 

@@ -30,6 +30,7 @@ export const UPSTREAM_CIRCUIT_COOLDOWN_MS = 30_000;
 export const UPSTREAM_TELEMETRY_WINDOW_MS = 15 * 60 * 1000;
 export const UPSTREAM_TELEMETRY_MAX_EVENTS = 120;
 const POLYMARKET_GAMMA_API_BASE = 'https://gamma-api.polymarket.com';
+const BLOCKSCOUT_BASE_API = 'https://base.blockscout.com/api/v2';
 
 export type UpstreamErrorCode =
   | 'UPSTREAM_TIMEOUT'
@@ -110,6 +111,12 @@ export type AIUsageSummary = {
 export type AIQuotaCode = 'AI_BUDGET_EXCEEDED' | 'AI_REQUEST_LIMIT_EXCEEDED';
 
 type WalletRiskSignal = {
+  code: string;
+  severity: 'info' | 'warning' | 'high' | 'critical';
+  message: string;
+};
+
+type ApprovalAuditSignal = {
   code: string;
   severity: 'info' | 'warning' | 'high' | 'critical';
   message: string;
@@ -291,20 +298,21 @@ export async function fetchUpstreamData(
     '/api/deepseek': 'openrouter',
     '/api/qwen': 'openrouter',
     '/api/gpt-5.4': 'openrouter',
-  '/api/gpt-5.4-pro': 'openrouter',
-  '/api/claude-4.6': 'openrouter',
-  '/api/polymarket/trending': 'polymarket',
-  '/api/polymarket/search': 'polymarket',
-  '/api/polymarket/event': 'polymarket',
+    '/api/gpt-5.4-pro': 'openrouter',
+    '/api/claude-4.6': 'openrouter',
+    '/api/polymarket/trending': 'polymarket',
+    '/api/polymarket/search': 'polymarket',
+    '/api/polymarket/event': 'polymarket',
     '/api/polymarket/orderbook': 'polymarket',
     '/api/polymarket/quote': 'polymarket',
     '/api/polymarket/price-history': 'polymarket',
     '/api/polymarket/topic': 'polymarket',
     '/api/polymarket/related': 'polymarket',
     '/api/polymarket/mispricing': 'polymarket',
+    '/api/approval-audit': 'blockscout',
     '/api/wallet-risk': 'blockscout',
-  '/api/whale-positions': 'hyperliquid',
-  '/api/kline': 'binance',
+    '/api/whale-positions': 'hyperliquid',
+    '/api/kline': 'binance',
   };
 
   const source = sourceByPath[path];
@@ -772,14 +780,14 @@ export async function fetchUpstreamData(
       }
 
       const [details, counters, transactions, tokenTransfers] = (await Promise.all([
-        fetchJsonWithTimeout(`https://base.blockscout.com/api/v2/addresses/${address}`, { method: 'GET' }),
-        fetchJsonWithTimeout(`https://base.blockscout.com/api/v2/addresses/${address}/counters`, { method: 'GET' }),
+        fetchJsonWithTimeout(`${BLOCKSCOUT_BASE_API}/addresses/${address}`, { method: 'GET' }),
+        fetchJsonWithTimeout(`${BLOCKSCOUT_BASE_API}/addresses/${address}/counters`, { method: 'GET' }),
         fetchJsonWithTimeout(
-          `https://base.blockscout.com/api/v2/addresses/${address}/transactions?items_count=10`,
+          `${BLOCKSCOUT_BASE_API}/addresses/${address}/transactions?items_count=10`,
           { method: 'GET' },
         ),
         fetchJsonWithTimeout(
-          `https://base.blockscout.com/api/v2/addresses/${address}/token-transfers?items_count=10`,
+          `${BLOCKSCOUT_BASE_API}/addresses/${address}/token-transfers?items_count=10`,
           { method: 'GET' },
         ),
       ])) as [
@@ -794,6 +802,45 @@ export async function fetchUpstreamData(
 
       return {
         data: riskProfile,
+        meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
+      };
+    }
+
+    if (path === '/api/approval-audit') {
+      const address = requestUrl.searchParams.get('address')?.trim();
+      if (!address) {
+        throw { code: 'UPSTREAM_INVALID_RESPONSE', message: 'missing wallet address', retryable: false } as UpstreamFailure;
+      }
+
+      const [details, counters, transactions, tokenTransfers] = (await Promise.all([
+        fetchJsonWithTimeout(`${BLOCKSCOUT_BASE_API}/addresses/${address}`, { method: 'GET' }),
+        fetchJsonWithTimeout(`${BLOCKSCOUT_BASE_API}/addresses/${address}/counters`, { method: 'GET' }),
+        fetchJsonWithTimeout(
+          `${BLOCKSCOUT_BASE_API}/addresses/${address}/transactions?items_count=40`,
+          { method: 'GET' },
+        ),
+        fetchJsonWithTimeout(
+          `${BLOCKSCOUT_BASE_API}/addresses/${address}/token-transfers?items_count=20`,
+          { method: 'GET' },
+        ),
+      ])) as [
+        BlockscoutAddressDetails,
+        BlockscoutAddressCounters,
+        BlockscoutItemsResponse<BlockscoutTransactionItem>,
+        BlockscoutItemsResponse<BlockscoutTokenTransferItem>
+      ];
+
+      const approvalAudit = await buildApprovalAuditProfile(
+        address,
+        details,
+        counters,
+        transactions.items || [],
+        tokenTransfers.items || [],
+      );
+      await deps.recordSuccess(source, Date.now(), Date.now() - startedAt);
+
+      return {
+        data: approvalAudit,
         meta: { source, status: 'live', reasonCode: 'OK', retryable: false },
       };
     }
@@ -1698,6 +1745,320 @@ function buildWalletRiskProfile(
       })),
     },
     signals,
+  };
+}
+
+function getApprovalMethodType(method: string | null | undefined) {
+  const normalized = (method || '').replace(/\s+/g, '').toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes('setapprovalforall') || normalized.includes('permitall')) {
+    return { raw: method || null, normalized, type: 'collection_wide' as const };
+  }
+
+  if (normalized.includes('increaseallowance') || normalized.includes('decreaseallowance') || normalized.includes('approve')) {
+    return { raw: method || null, normalized, type: 'token_allowance' as const };
+  }
+
+  if (normalized.includes('permit')) {
+    return { raw: method || null, normalized, type: 'permit' as const };
+  }
+
+  return null;
+}
+
+async function fetchBlockscoutAddressProfile(address: string) {
+  try {
+    const payload = (await fetchJsonWithTimeout(`${BLOCKSCOUT_BASE_API}/addresses/${address}`, {
+      method: 'GET',
+    })) as BlockscoutAddressDetails;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+function clampRiskScore(value: number): number {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function toRiskLevel(score: number): 'low' | 'moderate' | 'high' | 'critical' {
+  if (score >= 80) {
+    return 'critical';
+  }
+  if (score >= 55) {
+    return 'high';
+  }
+  if (score >= 30) {
+    return 'moderate';
+  }
+  return 'low';
+}
+
+function collectRecentTokenSymbolsByCounterparty(
+  address: string,
+  tokenTransfers: BlockscoutTokenTransferItem[],
+) {
+  const ownAddress = address.toLowerCase();
+  const symbolsByCounterparty = new Map<string, Set<string>>();
+
+  for (const transfer of tokenTransfers) {
+    const tokenSymbol = transfer.token?.symbol?.trim();
+    if (!tokenSymbol) {
+      continue;
+    }
+
+    const from = transfer.from?.hash?.toLowerCase();
+    const to = transfer.to?.hash?.toLowerCase();
+    let counterparty: string | null = null;
+
+    if (from === ownAddress && to && to !== ownAddress) {
+      counterparty = to;
+    } else if (to === ownAddress && from && from !== ownAddress) {
+      counterparty = from;
+    }
+
+    if (!counterparty) {
+      continue;
+    }
+
+    const existing = symbolsByCounterparty.get(counterparty) || new Set<string>();
+    existing.add(tokenSymbol);
+    symbolsByCounterparty.set(counterparty, existing);
+  }
+
+  return symbolsByCounterparty;
+}
+
+async function buildApprovalAuditProfile(
+  address: string,
+  details: BlockscoutAddressDetails,
+  counters: BlockscoutAddressCounters,
+  transactions: BlockscoutTransactionItem[],
+  tokenTransfers: BlockscoutTokenTransferItem[],
+) {
+  const ownAddress = address.toLowerCase();
+  const approvalTransactions = transactions
+    .map((transaction) => ({
+      transaction,
+      method: getApprovalMethodType(transaction.method),
+    }))
+    .filter(
+      (
+        entry,
+      ): entry is {
+        transaction: BlockscoutTransactionItem;
+        method: NonNullable<ReturnType<typeof getApprovalMethodType>>;
+      } => entry.method !== null,
+    );
+
+  const spenderCounts = new Map<string, number>();
+  for (const entry of approvalTransactions) {
+    const spender = entry.transaction.to?.hash?.toLowerCase();
+    if (!spender) {
+      continue;
+    }
+    spenderCounts.set(spender, (spenderCounts.get(spender) || 0) + 1);
+  }
+
+  const spenderAddresses = [...spenderCounts.keys()].slice(0, 8);
+  const spenderProfiles = new Map<string, BlockscoutAddressDetails | null>();
+  await Promise.all(
+    spenderAddresses.map(async (spender) => {
+      spenderProfiles.set(spender, await fetchBlockscoutAddressProfile(spender));
+    }),
+  );
+
+  const tokenSymbolsByCounterparty = collectRecentTokenSymbolsByCounterparty(address, tokenTransfers);
+  const exposures = approvalTransactions.slice(0, 12).map((entry) => {
+    const spenderAddress = entry.transaction.to?.hash?.toLowerCase() || null;
+    const spenderDetails = spenderAddress ? spenderProfiles.get(spenderAddress) || null : null;
+    const reasons: string[] = [];
+    let riskScore = 12;
+
+    if (entry.method.type === 'collection_wide') {
+      reasons.push('COLLECTION_WIDE_APPROVAL');
+      riskScore += 34;
+    }
+
+    if (entry.method.type === 'permit') {
+      reasons.push('PERMIT_BASED_APPROVAL');
+      riskScore += 8;
+    }
+
+    if (!spenderAddress) {
+      reasons.push('SPENDER_MISSING');
+      riskScore += 14;
+    } else if (!spenderDetails) {
+      reasons.push('SPENDER_PROFILE_UNAVAILABLE');
+      riskScore += 12;
+    } else {
+      if (spenderDetails.is_scam) {
+        reasons.push('SPENDER_SCAM_FLAGGED');
+        riskScore += 50;
+      }
+
+      if ((spenderDetails.reputation || '').toLowerCase() !== 'ok') {
+        reasons.push('SPENDER_REPUTATION_NOT_OK');
+        riskScore += 18;
+      }
+
+      if (spenderDetails.is_contract && !spenderDetails.is_verified) {
+        reasons.push('SPENDER_CONTRACT_UNVERIFIED');
+        riskScore += 24;
+      }
+
+      if (!spenderDetails.is_contract) {
+        reasons.push('SPENDER_IS_EOA');
+        riskScore += 20;
+      }
+    }
+
+    if (spenderAddress && (spenderCounts.get(spenderAddress) || 0) > 1) {
+      reasons.push('REPEATED_SPENDER_APPROVAL');
+      riskScore += 8;
+    }
+
+    const normalizedScore = clampRiskScore(riskScore);
+    const riskLevel = toRiskLevel(normalizedScore);
+
+    return {
+      txHash: entry.transaction.hash || null,
+      timestamp: entry.transaction.timestamp || null,
+      method: entry.method.raw,
+      approvalType: entry.method.type,
+      spender: {
+        address: spenderAddress,
+        name: spenderDetails?.name || null,
+        isContract: Boolean(spenderDetails?.is_contract),
+        isVerified: Boolean(spenderDetails?.is_verified),
+        isScam: Boolean(spenderDetails?.is_scam),
+        reputation: spenderDetails?.reputation || 'unknown',
+        publicTags: Array.isArray(spenderDetails?.public_tags)
+          ? spenderDetails!.public_tags!.map((tag) => tag?.name).filter((tag): tag is string => Boolean(tag))
+          : [],
+      },
+      relatedTokenSymbols: spenderAddress
+        ? [...(tokenSymbolsByCounterparty.get(spenderAddress) || new Set<string>())].slice(0, 5)
+        : [],
+      riskScore: normalizedScore,
+      riskLevel,
+      reasons,
+    };
+  });
+
+  const uniqueSpendersRecent = new Set(
+    exposures.map((exposure) => exposure.spender.address).filter((value): value is string => Boolean(value)),
+  ).size;
+  const collectionWideApprovals = exposures.filter((exposure) => exposure.approvalType === 'collection_wide').length;
+  const highRiskApprovals = exposures.filter(
+    (exposure) => exposure.riskLevel === 'high' || exposure.riskLevel === 'critical',
+  ).length;
+  const flaggedSpenders = [
+    ...new Set(
+      exposures
+        .filter((exposure) => exposure.riskLevel === 'high' || exposure.riskLevel === 'critical')
+        .map((exposure) => exposure.spender.address)
+        .filter((value): value is string => Boolean(value)),
+    ),
+  ];
+
+  const signals: ApprovalAuditSignal[] = [];
+  if (exposures.length === 0) {
+    signals.push({
+      code: 'NO_RECENT_APPROVALS',
+      severity: 'info',
+      message: 'No approval-like transactions were detected in the sampled recent activity.',
+    });
+  }
+  if (collectionWideApprovals > 0) {
+    signals.push({
+      code: 'COLLECTION_WIDE_APPROVALS_PRESENT',
+      severity: 'high',
+      message: 'At least one setApprovalForAll-style approval was found in recent activity.',
+    });
+  }
+  if (flaggedSpenders.length > 0) {
+    signals.push({
+      code: 'FLAGGED_SPENDERS_PRESENT',
+      severity: exposures.some((exposure) => exposure.riskLevel === 'critical') ? 'critical' : 'high',
+      message: 'Recent approval history includes spender contracts that deserve immediate review.',
+    });
+  }
+  if (uniqueSpendersRecent >= 3) {
+    signals.push({
+      code: 'APPROVAL_SPRAWL',
+      severity: 'warning',
+      message: 'Approvals are spread across several spender addresses, increasing revoke overhead.',
+    });
+  }
+  if (exposures.length > 0 && flaggedSpenders.length === 0 && collectionWideApprovals === 0) {
+    signals.push({
+      code: 'APPROVALS_PRESENT_BUT_NOT_FLAGGED',
+      severity: 'info',
+      message: 'Recent approvals exist, but none of the sampled spenders triggered a high-risk heuristic.',
+    });
+  }
+
+  const aggregateRiskScore = clampRiskScore(
+    10 +
+      exposures.reduce((sum, exposure) => sum + exposure.riskScore, 0) / Math.max(exposures.length, 1) +
+      highRiskApprovals * 4,
+  );
+  const topRecentTokenSymbols = [
+    ...new Set(
+      tokenTransfers
+        .map((transfer) => transfer.token?.symbol?.trim())
+        .filter((symbol): symbol is string => Boolean(symbol)),
+    ),
+  ].slice(0, 8);
+
+  const recommendedActions = [
+    ...(flaggedSpenders.length > 0
+      ? ['Revoke approvals to flagged or unknown spender contracts before using the wallet for new automation.']
+      : []),
+    ...(collectionWideApprovals > 0
+      ? ['Review collection-wide approvals first; they usually carry the widest blast radius.']
+      : []),
+    ...(uniqueSpendersRecent >= 3
+      ? ['Split experimental dapps and production automation across separate wallets to reduce approval sprawl.']
+      : []),
+    ...(exposures.length === 0
+      ? ['No recent approvals were detected in the sampled history. Keep monitoring before rotating funds into this wallet.']
+      : ['Use a revoke tool or wallet-native approval manager to remove stale spender permissions.']),
+  ];
+
+  return {
+    address,
+    chain: 'base',
+    methodology: 'heuristic_recent_approval_scan',
+    note: 'This audit reviews recent approval-like transactions and spender metadata. It does not decode current allowance storage slots.',
+    owner: {
+      address,
+      name: details.name || null,
+      isContract: Boolean(details.is_contract),
+      isVerified: Boolean(details.is_verified),
+      isScam: Boolean(details.is_scam),
+      reputation: details.reputation || 'unknown',
+    },
+    summary: {
+      totalTransactionsCount: parseCount(counters.transactions_count),
+      tokenTransfersCount: parseCount(counters.token_transfers_count),
+      reviewedTransactions: transactions.length,
+      sampledApprovalTransactions: exposures.length,
+      uniqueSpendersRecent,
+      collectionWideApprovals,
+      highRiskApprovals,
+      flaggedSpenders,
+      recentTokenSymbols: topRecentTokenSymbols,
+      aggregateRiskScore,
+      aggregateRiskLevel: toRiskLevel(aggregateRiskScore),
+    },
+    exposures,
+    signals,
+    recommendedActions,
   };
 }
 

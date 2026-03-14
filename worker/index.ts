@@ -547,6 +547,50 @@ export const API_ENDPOINTS: APIEndpoint[] = [
     }),
   },
   {
+    path: '/api/approval-audit',
+    price: '0.03',
+    label: { zh: '授权审计', en: 'Approval Audit' },
+    description: {
+      zh: '基于 Base 链近期授权交易和 spender 元数据生成结构化授权风险审计，适合 agent 和钱包工作流做前置风控。',
+      en: 'Structured approval-risk audit for a Base wallet using recent approval-like transactions and spender metadata.',
+    },
+    category: { zh: '链上情报', en: 'Onchain Intelligence' },
+    upstream: 'blockscout',
+    tags: ['wallet', 'approval', 'risk', 'base', 'security', 'onchain'],
+    status: 'live',
+    sample: () => ({
+      address: '0xabc0000000000000000000000000000000000000',
+      chain: 'base',
+      methodology: 'heuristic_recent_approval_scan',
+      summary: {
+        sampledApprovalTransactions: 2,
+        uniqueSpendersRecent: 2,
+        collectionWideApprovals: 1,
+        highRiskApprovals: 1,
+        aggregateRiskScore: 61,
+        aggregateRiskLevel: 'high',
+      },
+      exposures: [
+        {
+          txHash: '0xapproval1',
+          method: 'setApprovalForAll',
+          approvalType: 'collection_wide',
+          spender: {
+            address: '0xspender000000000000000000000000000000000001',
+            name: 'Unknown marketplace',
+            isContract: true,
+            isVerified: false,
+            isScam: false,
+            reputation: 'unknown',
+          },
+          riskLevel: 'high',
+          reasons: ['COLLECTION_WIDE_APPROVAL', 'SPENDER_CONTRACT_UNVERIFIED'],
+        },
+      ],
+      recommendedActions: ['Review collection-wide approvals first; they usually carry the widest blast radius.'],
+    }),
+  },
+  {
     path: '/api/whale-positions',
     price: '0.00002',
     label: { zh: '巨鲸仓位', en: 'Whale Positions' },
@@ -2901,6 +2945,7 @@ function createBadRequestResponse(message: string, requestId: string): Response 
 function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, requestId: string): Response | null {
   const requiresValidatedGet =
     endpoint.path === '/api/wallet-risk' ||
+    endpoint.path === '/api/approval-audit' ||
     endpoint.path === '/api/polymarket/search' ||
     endpoint.path === '/api/polymarket/event' ||
     endpoint.path === '/api/polymarket/orderbook' ||
@@ -2928,14 +2973,20 @@ function prepareSpecialEndpointRequest(request: Request, endpoint: APIEndpoint, 
   }
 
   const url = new URL(request.url);
-  if (endpoint.path === '/api/wallet-risk') {
+  if (endpoint.path === '/api/wallet-risk' || endpoint.path === '/api/approval-audit') {
     const address = url.searchParams.get('address')?.trim() || '';
     if (!address) {
-      return createBadRequestResponse('wallet-risk requires ?address=0x... before payment can be evaluated.', requestId);
+      return createBadRequestResponse(
+        `${endpoint.path === '/api/approval-audit' ? 'approval-audit' : 'wallet-risk'} requires ?address=0x... before payment can be evaluated.`,
+        requestId,
+      );
     }
 
     if (!isHexAddress(address)) {
-      return createBadRequestResponse('wallet-risk address must be a valid EVM hex address.', requestId);
+      return createBadRequestResponse(
+        `${endpoint.path === '/api/approval-audit' ? 'approval-audit' : 'wallet-risk'} address must be a valid EVM hex address.`,
+        requestId,
+      );
     }
 
     return null;

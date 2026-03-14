@@ -66,7 +66,9 @@
 - 已补网页内 API 快速目录，支持按分类快速选中接口
 - 已新增 `GPT-5.4`、`GPT-5.4 Pro`、`Claude 4.6` 三个按次调用入口，并纳入 OpenRouter 成本保护体系
 - 已补产品级重构方案文档 [PRODUCT_REBUILD_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PRODUCT_REBUILD_PLAN.md)，明确“最新模型获客 + Web3 AI 高价值接口盈利”的主线
+- 已新增盈利优化文档 [PROFIT_IMPROVEMENT_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PROFIT_IMPROVEMENT_PLAN.md)，记录 challenge 高、转化低的原因和盈利优先级
 - 已新增 `GET /api/wallet-risk?address=0x...`，基于 Base Blockscout 地址详情、计数器和近期活动输出结构化钱包风险画像
+- 已新增 `GET /api/approval-audit?address=0x...`，基于 Base Blockscout 的近期授权交易和 spender 元数据输出结构化授权风险审计
 - 已新增 `GET /api/v1/metrics/overview`，首页可实时轮询展示累计 API 调用总次数
 - 首页统计面板已升级为更偏专业产品页的布局，包含累计调用、已结算 USDC、24h 趋势、成功率和 402 比率
 - 已补 3 个新的 logo 概念稿到 `public/logo-concepts/`
@@ -145,15 +147,13 @@
 
 ## Immediate Next Tasks
 
-建议下一轮直接做下面 4 项:
+建议下一轮直接做下面几项:
 
-1. 继续扩展高价值链上接口，优先 `approval-audit`
-2. 增加 `tx-simulate-explain`
+1. 继续扩展高价值链上接口，优先 `tx-simulate-explain`
+2. 在 `Polymarket` 上继续补高频策略型接口，优先 `entry-signal`、`rotation`、`range-breakout`
 3. 为最新模型入口补更明确的产品位和对比说明，提升付费转化
 4. 为 AI 类接口补成本统计面板与毛利监控，直接展示收入 vs 上游成本
-5. 继续扩展 `Polymarket` 相关的高流量预测市场接口，把首页目录和默认曝光位优先给更容易被点击和传播的能力
-6. 先把 `Polymarket` 交易前接口做完整，包括 orderbook / quote / price-history / topic / mispricing，再评估是否进入真实下单执行
-7. 在 `Polymarket` 上继续补高频策略型接口，优先 `entry-signal`、`rotation`、`range-breakout`
+5. 把低护城河接口从首页主卖点降级，把首单付费入口收敛到 1 到 2 个更值钱的接口
 
 ## Operations
 

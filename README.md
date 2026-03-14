@@ -58,6 +58,7 @@
 - `/api/polymarket/orderbook`、`/api/polymarket/quote`、`/api/polymarket/price-history` 已接入 Polymarket 公开交易数据上游，适合自动交易前的盘口和滑点分析
 - `/api/polymarket/topic`、`/api/polymarket/related`、`/api/polymarket/mispricing` 已接入 Polymarket 主题和交易候选扫描逻辑
 - `/api/wallet-risk?address=0x...` 已接入 Base Blockscout 公共数据源，返回结构化钱包风险画像
+- `/api/approval-audit?address=0x...` 已接入 Base Blockscout 公共数据源，返回结构化近期授权风险审计
 - AI 请求体不合法时会先返回 `400`，避免开发者因参数错误先进入付费流程
 - AI 接口已加入 24 小时预算保护与请求数上限，超额时返回 `429` 和机器可读错误码：`AI_BUDGET_EXCEEDED` / `AI_REQUEST_LIMIT_EXCEEDED`
 
@@ -115,6 +116,7 @@ npm run deploy
 - `Polymarket orderbook / quote / price-history` 已接入公开交易数据上游
 - `Polymarket topic / related / mispricing` 已接入主题发现和启发式交易机会扫描
 - `wallet-risk` 已接入 Base Blockscout 公共上游
+- `approval-audit` 已接入 Base Blockscout 公共上游
 - 仍有部分接口保留 demo/mock 数据
 - 支付验证已支持结构化 `PAYMENT-SIGNATURE` payload、金额/路径/过期时间校验、nonce 防重放和 demo token
 - 已有最小集成测试覆盖 catalog、health、402 challenge、demo replay、签名验证和 nonce 重放
@@ -122,5 +124,7 @@ npm run deploy
 ## Next Steps
 
 详细规划见 [doc/ROADMAP.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/ROADMAP.md)。
+
+盈利改进和接口优先级判断见 [doc/PROFIT_IMPROVEMENT_PLAN.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/PROFIT_IMPROVEMENT_PLAN.md)。
 
 Polymarket 交易研究与阶段边界见 [doc/POLYMARKET_TRADING.md](/Users/yangshangwei/Desktop/网页项目/api402/doc/POLYMARKET_TRADING.md)。
